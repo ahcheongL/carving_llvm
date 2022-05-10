@@ -1,0 +1,13 @@
+*.o
+*.swo
+*.swp
+*.so
+*.a
+a.out
+.vscode
+*.pyc
+
+*.lo
+*.i
+*.s
+.DS_Store
