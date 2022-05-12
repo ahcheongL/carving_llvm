@@ -11,3 +11,6 @@ a.out
 *.i
 *.s
 .DS_Store
+
+.Note.txt
+*.carv
