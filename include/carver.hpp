@@ -1,7 +1,7 @@
 #ifndef __CROWN_CARVE_HEADER
 #define __CROWN_CARVE_HEADER
 
-enum inputtypes {
+enum INPUT_TYPE {
   CHAR,
   UCHAR,
   SHORT,
@@ -22,16 +22,20 @@ enum inputtypes {
   FUNCTION,
 };
 
-class IVAR {};
+class IVAR {
+public:
+  enum INPUT_TYPE type;
+  std::string name;
+};
 
 template<class input_type>
 class VAR : public IVAR {
 public:
 
-  VAR(input_type _input, std::string _name) : input(_input), name(_name) {}
+  VAR(input_type _input, std::string _name, enum INPUT_TYPE _type)
+    : input(_input) { name = _name; type = _type; }
 
   input_type input;
-  std::string name;
 };
 
 typedef struct _mem_info {
@@ -39,17 +43,14 @@ typedef struct _mem_info {
   int size;
 } mem_info;
 
-void __CROWN_CARVER_INIT();
+void __carv_init();
 
-void __CROWN_MALLOC_PROBE(void * ptr, int size);
+void __mem_allocated_probe(void * ptr, int size);
+void __remove_mem_allocated_probe(void * ptr);
+
 int __CROWN_POINTER_CARVER(void * ptr);
+void Write_carved(char *, int);
 
-int __CROWN_CARVE_END(char *, int);
-void __CROWN_REMOVE_CARVER(void * ptr);
-
-void __CROWN_argv_modifier(int * argcptr, char *** argvptr);
-
-char __CROWN_POINTER_CHECK_CARVER(void *, int);
-
-void __CROWN_FINI();
+void __argv_modifier(int * argcptr, char *** argvptr);
+void __carv_FINI();
 #endif

@@ -1,11 +1,10 @@
-__CROWN_CARVER_INIT
-__CROWN_MALLOC_PROBE
+__carv_init
+__mem_allocated_probe
 __CROWN_POINTER_CARVER
-__CROWN_CARVE_END
-__CROWN_REMOVE_CARVER
-__CROWN_argv_modifier
-__CROWN_POINTER_CHECK_CARVER
-__CROWN_FINI
+Write_carved
+__remove_mem_allocated_probe
+__argv_modifier
+__carv_FINI
 Carv_char
 Carv_short
 Carv_int

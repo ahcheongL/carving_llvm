@@ -26,7 +26,7 @@ lib/pass1.so: src/pass1.cc
 	$(CXX) $(CXXFLAGS) -ggdb -O0 -shared $(MAKEFILE_DIR)/$< -o $@
 
 src/carver.o: src/carver.cc
-	$(CC) $(CFLAGS) -I include/ -c $^ -o $@
+	$(CXX) $(CXXFLAGS) -ggdb -O0 -I include/ -c $^ -o $@
 
 lib/carver.a: src/carver.o
 	$(AR) rsv $@ $^

@@ -14,3 +14,6 @@ a.out
 
 .Note.txt
 *.carv
+*.ll
+
+lib/probe_names.txt

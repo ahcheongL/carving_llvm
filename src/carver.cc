@@ -33,43 +33,44 @@ static int callseq_index;
 
 static std::vector<IVAR *> inputs;
 
-void Carv_char(char * input, char * name) {
-  VAR<char> * inputv = new VAR<char>(*input, name);
+void Carv_char(char input, char * name) {
+  VAR<char> * inputv = new VAR<char>(input, name, INPUT_TYPE::CHAR);
   inputs.push_back((IVAR *) inputv);
 }
 
-void Carv_short(short * input, char * name) {
-  VAR<short> * inputv = new VAR<short>(*input, name);
+void Carv_short(short input, char * name) {
+  VAR<short> * inputv = new VAR<short>(input, name, INPUT_TYPE::SHORT);
   inputs.push_back((IVAR *) inputv);
 }
 
-void Carv_int(int * input, char * name) {
-  VAR<int> * inputv = new VAR<int>(*input, name);
+void Carv_int(int input, char * name) {
+  VAR<int> * inputv = new VAR<int>(input, name, INPUT_TYPE::INT);
   inputs.push_back((IVAR *) inputv);
 }
 
-void Carv_long(long * input, char * name) {
-  VAR<long> * inputv = new VAR<long>(*input, name);
+void Carv_long(long input, char * name) {
+  VAR<long> * inputv = new VAR<long>(input, name, INPUT_TYPE::LONG);
   inputs.push_back((IVAR *) inputv);
 }
 
-void Carv_longlong(long long * input, char * name) {
-  VAR<long long> * inputv = new VAR<long long>(*input, name);
+void Carv_longlong(long long input, char * name) {
+  VAR<long long> * inputv
+    = new VAR<long long>(input, name, INPUT_TYPE::LONGLONG);
   inputs.push_back((IVAR *) inputv);
 }
 
-void Carv_float(float * input, char * name) {
-  VAR<float> * inputv = new VAR<float>(*input, name);
+void Carv_float(float input, char * name) {
+  VAR<float> * inputv = new VAR<float>(input, name, INPUT_TYPE::FLOAT);
   inputs.push_back((IVAR *) inputv);
 }
 
-void Carv_double(double * input, char * name) {
-  VAR<double> * inputv = new VAR<double>(*input, name);
+void Carv_double(double input, char * name) {
+  VAR<double> * inputv = new VAR<double>(input, name, INPUT_TYPE::DOUBLE);
   inputs.push_back((IVAR *) inputv);
 }
 
 
-void __CROWN_REMOVE_CARVER(void * ptr) {
+void __remove_mem_allocated_probe(void * ptr) {
   int i ;
   for (i = 0; i < num_alloced_addresses; i++) {
     void * addr = alloced_addresses[i].addr;
@@ -140,7 +141,7 @@ void __CROWN_REMOVE_CARVER(void * ptr) {
 //   return 0;
 // }
 
-void __CROWN_MALLOC_PROBE(void * ptr, int size) {
+void __mem_allocated_probe(void * ptr, int size) {
   int i;
   int zero_idx = -1;
   for (i = 0; i < num_alloced_addresses; i++) {
@@ -172,7 +173,7 @@ void __CROWN_MALLOC_PROBE(void * ptr, int size) {
   return;
 }
 
-void __CROWN_CARVER_INIT() {
+void __carv_init() {
   alloced_addresses_size = 4096;
   alloced_addresses = (mem_info *) malloc(alloced_addresses_size
     * sizeof(mem_info));
@@ -192,7 +193,7 @@ void __CROWN_CARVER_INIT() {
 int carved_index = 0;
 
 //Insert at the begining of 
-int __CROWN_CARVE_END(char * func_name, int func_id) {
+void Write_carved(char * func_name, int func_id) {
 
   //Write call sequence
   callseq[callseq_index++] = func_id;
@@ -222,11 +223,44 @@ int __CROWN_CARVE_END(char * func_name, int func_id) {
 
   std::ofstream outfile(outfile_name);  
 
+  for (auto iter = inputs.begin(); iter != inputs.end(); iter++) {
+    IVAR * elem = *iter;
+    if (elem->type == INPUT_TYPE::CHAR) {
+      outfile << elem->name << ":CHAR:"
+              << ((VAR<char>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::SHORT) {
+      outfile << elem->name << ":SHORT:"
+              << ((VAR<short>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::INT) {
+      outfile << elem->name << ":INT:"
+              << ((VAR<int>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::LONG) {
+      outfile << elem->name << ":LONG:"
+              << ((VAR<long>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::LONGLONG) {
+      outfile << elem->name << ":lONGLONG:"
+              << ((VAR<long long>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::FLOAT) {
+      outfile << elem->name << ":FLOAT:"
+              << ((VAR<float>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::DOUBLE) {
+      outfile << elem->name << ":SHORT:"
+              << ((VAR<double>*) elem)->input << "\n";
+    }
+  }
+
   int filesize = (int) outfile.tellp();
   outfile.close();
 
+  for (auto iter = inputs.begin(); iter != inputs.end(); iter++) {
+    IVAR * elem = *iter;
+    delete elem;
+  }
+
+  inputs.clear();
+
   if ((filesize <= 64) || (filesize > 1048576)) {
-    remove(outfile_name.c_str());
+    //remove(outfile_name.c_str());
   }
 
   int tmp = 128;
@@ -246,10 +280,10 @@ int __CROWN_CARVE_END(char * func_name, int func_id) {
     func_carved_filesize[func_id][index] += 1;
   }  
 
-  return true;
+  return;
 }
 
-void __CROWN_argv_modifier(int * argcptr, char *** argvptr) {
+void __argv_modifier(int * argcptr, char *** argvptr) {
   int argc = (*argcptr) - 1;
   *argcptr = argc;
 
@@ -259,7 +293,7 @@ void __CROWN_argv_modifier(int * argcptr, char *** argvptr) {
   return;
 }
 
-void __CROWN_FINI() {
+void __carv_FINI() {
   char buffer[256];
   snprintf(buffer, 256, "%s/call_seq", outdir_name);
   FILE * __call_seq_file = fopen(buffer, "w");
