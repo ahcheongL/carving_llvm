@@ -1,29 +1,12 @@
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <fstream>
-#include <memory>
-#include <map>
-#include "carver.hpp"
-#include <vector>
-
 #ifndef __CROWN_CARVER_DEF
 #define __CROWN_CARVER_DEF
 
-static char * outdir_name = NULL;
+#include "carver.hpp"
 
-static mem_info * alloced_addresses;
-static int alloced_addresses_size;
-static int num_alloced_addresses;
+static char * outdir_name = NULL;
 
 static int * num_func_calls;
 static int num_func_calls_size;
-
-static void ** carved_ptrs;
-static int carved_ptrs_size;
-static int num_carved_ptrs;
 
 static int ** func_carved_filesize;
 
@@ -32,157 +15,117 @@ static int callseq_size;
 static int callseq_index;
 
 static std::vector<IVAR *> inputs;
+static std::vector<PTR> carved_ptrs;
+static std::map<void *, int> alloced_ptrs;
+static std::vector<PTR_NAME> array_index;
 
 void Carv_char(char input, char * name) {
-  VAR<char> * inputv = new VAR<char>(input, name, INPUT_TYPE::CHAR);
+  std::string updated_name = put_ptr_index(name);
+  VAR<char> * inputv = new VAR<char>(input, updated_name, INPUT_TYPE::CHAR);
   inputs.push_back((IVAR *) inputv);
 }
 
 void Carv_short(short input, char * name) {
-  VAR<short> * inputv = new VAR<short>(input, name, INPUT_TYPE::SHORT);
+  std::string updated_name = put_ptr_index(name);
+  VAR<short> * inputv = new VAR<short>(input, updated_name, INPUT_TYPE::SHORT);
   inputs.push_back((IVAR *) inputv);
 }
 
 void Carv_int(int input, char * name) {
-  VAR<int> * inputv = new VAR<int>(input, name, INPUT_TYPE::INT);
+  std::string updated_name = put_ptr_index(name);
+  VAR<int> * inputv = new VAR<int>(input, updated_name, INPUT_TYPE::INT);
   inputs.push_back((IVAR *) inputv);
 }
 
 void Carv_long(long input, char * name) {
-  VAR<long> * inputv = new VAR<long>(input, name, INPUT_TYPE::LONG);
+  std::string updated_name = put_ptr_index(name);
+  VAR<long> * inputv = new VAR<long>(input, updated_name, INPUT_TYPE::LONG);
   inputs.push_back((IVAR *) inputv);
 }
 
 void Carv_longlong(long long input, char * name) {
+  std::string updated_name = put_ptr_index(name);
   VAR<long long> * inputv
-    = new VAR<long long>(input, name, INPUT_TYPE::LONGLONG);
+    = new VAR<long long>(input, updated_name, INPUT_TYPE::LONGLONG);
   inputs.push_back((IVAR *) inputv);
 }
 
 void Carv_float(float input, char * name) {
-  VAR<float> * inputv = new VAR<float>(input, name, INPUT_TYPE::FLOAT);
+  std::string updated_name = put_ptr_index(name);
+  VAR<float> * inputv = new VAR<float>(input, updated_name, INPUT_TYPE::FLOAT);
   inputs.push_back((IVAR *) inputv);
 }
 
 void Carv_double(double input, char * name) {
-  VAR<double> * inputv = new VAR<double>(input, name, INPUT_TYPE::DOUBLE);
+  std::string updated_name = put_ptr_index(name);
+  VAR<double> * inputv = new VAR<double>(input, updated_name, INPUT_TYPE::DOUBLE);
   inputs.push_back((IVAR *) inputv);
 }
 
+int Carv_pointer(void * ptr, char * name) {
+  std::string updated_name = put_ptr_index(name);
+  if (ptr == NULL) {
+    VAR<void *> * inputv = new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
+    inputs.push_back((IVAR *) inputv);
+    return 0;
+  }
 
-void __remove_mem_allocated_probe(void * ptr) {
-  int i ;
-  for (i = 0; i < num_alloced_addresses; i++) {
-    void * addr = alloced_addresses[i].addr;
-    size_t cur_size = alloced_addresses[i].size;
-    if (addr == ptr) {
-      alloced_addresses[i].addr = 0;
-      break;
+  //Find already carved ptr
+  int index = 0;
+  for (auto iter = carved_ptrs.begin(); iter != carved_ptrs.end(); iter++) {
+    char * carved_addr = (char *) iter->addr;
+    if ((carved_addr <= ptr) && (ptr < (carved_addr + iter->alloc_size))) {
+      int offset = carved_addr - ((char *) ptr);
+      VAR<int> * inputv = new VAR<int>(
+        index, updated_name, offset, INPUT_TYPE::POINTER);
+      inputs.push_back((IVAR *) inputv);
+      //Won't carve again.
+      return 0;
+    }
+    index ++;
+  }
+
+  //Check whether it is alloced area
+  for (auto iter = alloced_ptrs.begin(); iter != alloced_ptrs.end(); iter++) {
+    char * alloced_ptr = (char *) iter->first;
+    if ((alloced_ptr <= ptr) && (ptr < (alloced_ptr + iter->second))) {
+      int size = alloced_ptr + iter->second - ((char *) ptr);
+      index = carved_ptrs.size();
+      carved_ptrs.push_back(PTR(ptr, size));
+
+      VAR<int> * inputv = new VAR<int>(
+        index, updated_name, 0, INPUT_TYPE::POINTER);
+      inputs.push_back((IVAR *) inputv);
+
+      return size;
     }
   }
+
+  return 0;
 }
 
-// int __CROWN_POINTER_CARVER(void * ptr) {
-//   int size = 0;
-
-//   //Find already carved ptr
-//   int idx;
-
-//   for (idx = 0; idx < num_carved_ptrs; idx++) {
-//     if (ptr == carved_ptrs[idx]) {
-//       //Already carved pointer
-//       fwrite(&idx, 4, 1, __CROWN_OUTFILE);
-//       return 0;
-//     }
-//   }
-
-//   idx = -1;
-//   fwrite(&idx, 4, 1, __CROWN_OUTFILE);
-
-//   if (ptr != 0) {
-//     for (idx = 0; idx < num_alloced_addresses; idx++) {
-//       char * addr = (char *) alloced_addresses[idx].addr;
-//       if (addr == 0) continue;
-//       int cur_size = alloced_addresses[idx].size;
-//       if (addr == ptr) {
-//         size = cur_size;
-//         break;
-//       } else if ((addr < ptr) && ((addr + cur_size) > ptr)) {
-//         size = 1;
-//       }
-//     }
-
-//     carved_ptrs[num_carved_ptrs++] = ptr;
-//     if (num_carved_ptrs >= carved_ptrs_size) {
-//       carved_ptrs_size *= 2;
-//       carved_ptrs = (void **) realloc(carved_ptrs
-//         , sizeof(void *) * carved_ptrs_size);
-//     }
-//   }
-
-//   fwrite(&size, 4, 1, __CROWN_OUTFILE);
-
-//   return size;
-// }
-
-// char __CROWN_POINTER_CHECK_CARVER(void * ptr, int size) {
-//   int idx;
-//   for (idx = 0; idx < num_alloced_addresses; idx++) {
-//     char * addr = (char *) alloced_addresses[idx].addr;
-//     int cur_size = alloced_addresses[idx].size;
-//     if ((addr <= ptr) && ((addr + cur_size) >= ((char *) ptr + size))) {
-//       fputc(1, __CROWN_OUTFILE);
-//       return 1;
-//     }
-//   }
-//   fputc(0, __CROWN_OUTFILE);
-
-//   fwrite(ptr, size, 1, __CROWN_OUTFILE);
-//   return 0;
-// }
-
 void __mem_allocated_probe(void * ptr, int size) {
-  int i;
-  int zero_idx = -1;
-  for (i = 0; i < num_alloced_addresses; i++) {
-    void * addr = alloced_addresses[i].addr;
-    if (addr == ptr) {
-      alloced_addresses[i].size = size;
-      break;
-    } else if ((zero_idx == -1) && (addr == 0)) {
-      zero_idx = i;
-    }
+  auto search = alloced_ptrs.find(ptr);
+
+  if (search != alloced_ptrs.end()) {
+    search->second = size;
+    return;
   }
 
-  if (i == num_alloced_addresses) {
-    if (zero_idx != -1) {
-      alloced_addresses[zero_idx].addr = ptr;
-      alloced_addresses[zero_idx].size = size;
-    } else {
-      alloced_addresses[i].addr = ptr;
-      alloced_addresses[i].size = size;
-      num_alloced_addresses++;
-      if (num_alloced_addresses == alloced_addresses_size) {
-        alloced_addresses_size *= 2;
-        alloced_addresses = (mem_info *) realloc(alloced_addresses,
-          sizeof(mem_info) * alloced_addresses_size);
-      }
-    }
-  }
-
+  alloced_ptrs.insert(std::make_pair(ptr, size));
   return;
 }
 
+void __remove_mem_allocated_probe(void * ptr) {
+  auto search = alloced_ptrs.find(ptr);
+  if (search != alloced_ptrs.end()) {
+    alloced_ptrs.erase(search);
+  }
+}
+
 void __carv_init() {
-  alloced_addresses_size = 4096;
-  alloced_addresses = (mem_info *) malloc(alloced_addresses_size
-    * sizeof(mem_info));
-  num_alloced_addresses = 0;
   num_func_calls_size = 256;
   num_func_calls = (int *) calloc(num_func_calls_size, sizeof(int));
-  carved_ptrs_size = 256;
-  carved_ptrs = (void **) malloc(carved_ptrs_size * sizeof(void *));
-  num_carved_ptrs = 0;
   func_carved_filesize = (int **) calloc(num_func_calls_size, sizeof(int *));
   callseq_size = 16384;
   callseq = (int *) malloc(callseq_size * sizeof(int));
@@ -193,7 +136,7 @@ void __carv_init() {
 int carved_index = 0;
 
 //Insert at the begining of 
-void Write_carved(char * func_name, int func_id) {
+void __write_carved(char * func_name, int func_id) {
 
   //Write call sequence
   callseq[callseq_index++] = func_id;
@@ -223,6 +166,13 @@ void Write_carved(char * func_name, int func_id) {
 
   std::ofstream outfile(outfile_name);  
 
+  //Write carved pointers
+  for (auto iter = carved_ptrs.begin(); iter != carved_ptrs.end(); iter++) {
+    outfile << iter->addr << ":" << iter->alloc_size << "\n";
+  }
+
+  outfile << "####\n";
+
   for (auto iter = inputs.begin(); iter != inputs.end(); iter++) {
     IVAR * elem = *iter;
     if (elem->type == INPUT_TYPE::CHAR) {
@@ -246,6 +196,12 @@ void Write_carved(char * func_name, int func_id) {
     } else if (elem->type == INPUT_TYPE::DOUBLE) {
       outfile << elem->name << ":SHORT:"
               << ((VAR<double>*) elem)->input << "\n";
+    } else if (elem->type == INPUT_TYPE::NULLPTR) {
+      outfile << elem->name << ":NULL\n";
+    } else if (elem->type == INPUT_TYPE::POINTER) {
+      VAR<int> * input = (VAR<int>*) elem;
+      outfile << elem->name << ":PTR:" << input->input << ":"
+              << input->pointer_offset << "\n";
     }
   }
 
@@ -258,6 +214,7 @@ void Write_carved(char * func_name, int func_id) {
   }
 
   inputs.clear();
+  carved_ptrs.clear();
 
   if ((filesize <= 64) || (filesize > 1048576)) {
     //remove(outfile_name.c_str());
@@ -281,6 +238,40 @@ void Write_carved(char * func_name, int func_id) {
   }  
 
   return;
+}
+
+std::string put_ptr_index(char * name) {
+  std::string res = std::string(name);
+  auto search = res.find("[]");
+  std::string ptr_name;
+  int depth_index = 0;
+  while (search != std::string::npos) {
+    auto prev_search = res.find_last_of(']', search);
+    if (prev_search == std::string::npos) {
+      ptr_name = res.substr(0, search);
+    } else {
+      ptr_name = res.substr(prev_search + 1, search);
+    }
+
+    int ptr_index = 0;
+    if (depth_index == array_index.size()) {
+      array_index.push_back(PTR_NAME(ptr_name));
+    } else if (ptr_name != array_index[depth_index].name) {
+      array_index[depth_index].init(ptr_name);
+    } else {
+      ptr_index = array_index[depth_index].ptr_index;
+    }
+
+    std::string updated_string = "[" + std::to_string(ptr_index) + "]";
+
+    res.replace(search, 2, updated_string.c_str());
+    array_index[depth_index].update();
+
+    search = res.find("[]");
+    depth_index++;
+  }
+
+  return res;
 }
 
 void __argv_modifier(int * argcptr, char *** argvptr) {

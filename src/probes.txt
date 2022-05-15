@@ -1,7 +1,6 @@
 __carv_init
 __mem_allocated_probe
-__CROWN_POINTER_CARVER
-Write_carved
+__write_carved
 __remove_mem_allocated_probe
 __argv_modifier
 __carv_FINI
@@ -12,3 +11,4 @@ Carv_long
 Carv_longlong
 Carv_float
 Carv_double
+Carv_pointer

@@ -48,4 +48,6 @@ cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
 env=os.environ.copy()
 #env["DUMP_IR"] = "1"
 
+print(" ".join(cmd))
+
 sp.run(cmd, env=env)
