@@ -99,8 +99,6 @@ int Carv_pointer(void * ptr, char * name) {
       inputs.push_back((IVAR *) inputv);
 
       array_index.push_back(std::make_pair(ptr, 0));
-      std::cerr << "size : " << array_index.size() << "\n";
-
       return size;
     }
   }
@@ -117,7 +115,6 @@ void __carv_pointer_done(void * ptr) {
   if (array_index.back().first == ptr) {
     array_index.pop_back();
   }
-  std::cerr << "size : " << array_index.size() << "\n";
 }
 
 void __mem_allocated_probe(void * ptr, int size) {
@@ -263,7 +260,6 @@ static std::string put_ptr_index(char * name) {
   std::string ptr_name;
   int depth_index = 0;
 
-  std::cerr << name << "\n";
   while (search != std::string::npos) {
     std::string index_string
       = "[" + std::to_string(array_index[depth_index].second) + "]";

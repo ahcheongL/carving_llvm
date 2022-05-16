@@ -64,22 +64,27 @@ class pass1 : public ModulePass {
   std::map<std::string, std::string> probe_link_names;
   std::string get_link_name(std::string);
 
-  void Insert_alloca_probe(BasicBlock & entry_block, const DataLayout& DL);
+  void Insert_alloca_probe(BasicBlock & entry_block);
   std::vector<AllocaInst *> tracking_allocas;
   void Insert_memfunc_probe(Instruction& IN, std::string callee_name);
   void Insert_main_probe(BasicBlock & entry_block, Function & F
-    , global_range globals, const DataLayout & DL);
+    , global_range globals);
   BasicBlock * insert_carve_probe(Value * val, std::string name
-    , BasicBlock * BB, const DataLayout & DL);
-  BasicBlock * insert_struct_carve_probe(Value * struct_ptr, Type * struct_type
-    , std::string name, BasicBlock * BB, const DataLayout & DL);
+    , BasicBlock * BB);
+  void insert_struct_carve_probe(Value * struct_ptr, Type * struct_type
+    , std::string name);
+  std::set<std::string> struct_carvers;
 
   std::string find_param_name(Value * param, BasicBlock * BB);
 
-    std::map<std::string, Constant *> new_string_globals;
+  std::map<std::string, Constant *> new_string_globals;
   Constant * gen_new_string_constant(std::string name);
   
   DebugInfoFinder DbgFinder;
+  Module * Mod;
+  LLVMContext * Context;
+  const DataLayout * DL;
+
   IRBuilder<> *IRB;
   Type        *VoidTy;
   IntegerType *Int8Ty;
@@ -127,7 +132,7 @@ class pass1 : public ModulePass {
 
 char pass1::ID = 0;
 
-void pass1::Insert_alloca_probe(BasicBlock& entry_block, const DataLayout & DL) {
+void pass1::Insert_alloca_probe(BasicBlock& entry_block) {
   std::vector<AllocaInst * > allocas;
   
   for (auto &IN : entry_block) {
@@ -141,7 +146,7 @@ void pass1::Insert_alloca_probe(BasicBlock& entry_block, const DataLayout & DL) 
         AllocaInst * alloc_instr = *iter;
         Type * allocated_type = alloc_instr->getAllocatedType();
         Type * alloc_instr_type = alloc_instr->getType();
-        unsigned int size = DL.getTypeAllocSize(allocated_type);
+        unsigned int size = DL->getTypeAllocSize(allocated_type);
 
         Value * casted_ptr = alloc_instr;
         if (alloc_instr_type != Int8PtrTy) {
@@ -214,7 +219,7 @@ void pass1::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
 }
 
 void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
-  , global_range globals, const DataLayout & DL) {
+  , global_range globals) {
 
   IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());  
 
@@ -263,7 +268,7 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
     
     Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, &(*global_iter), Int8PtrTy);
     Type * gv_type = (*global_iter).getValueType();
-    unsigned int size = DL.getTypeAllocSize(gv_type);
+    unsigned int size = DL->getTypeAllocSize(gv_type);
     Value * size_const = ConstantInt::get(Int32Ty, size);
     std::vector<Value *> args{casted_ptr, size_const};
     IRB->CreateCall(mem_allocated_probe, args);
@@ -288,7 +293,7 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
 
 
 BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
-  , BasicBlock * BB, const DataLayout & DL) {
+  , BasicBlock * BB) {
   Constant * name_constant = gen_new_string_constant(name);
   Type * val_type = val->getType();
 
@@ -331,7 +336,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     std::vector<Value *> probe_args {ptrval, name_constant};
     Instruction * carv_ptr = IRB->CreateCall(carv_ptr_func, probe_args);
 
-    unsigned pointee_size = DL.getTypeAllocSize(pointee_type);
+    unsigned pointee_size = DL->getTypeAllocSize(pointee_type);
     Instruction * pointer_size = (Instruction *)
       IRB->CreateSDiv(carv_ptr, ConstantInt::get(Int32Ty, pointee_size));
 
@@ -351,10 +356,9 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
 
     if (!pointee_type->isStructTy()) {
       Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
-      loopblock = insert_carve_probe(load_ptr, name + "[]", loopblock, DL);
+      loopblock = insert_carve_probe(load_ptr, name + "[]", loopblock);
     } else {
-      loopblock = insert_struct_carve_probe(getelem_instr, pointee_type
-        , name + "[]", loopblock, DL);
+      insert_struct_carve_probe(getelem_instr, pointee_type, name + "[]");
     }
 
     Value * index_update_instr
@@ -402,51 +406,85 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
   return BB;
 }
 
-BasicBlock * pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
-  , std::string name, BasicBlock * BB, const DataLayout & DL) {
+void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
+  , std::string name) {
 
-  BasicBlock * cur_block = BB;
+  IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
+
   StructType * struct_type = dyn_cast<StructType>(type);
-  const StructLayout * SL = DL.getStructLayout(struct_type);
+  const StructLayout * SL = DL->getStructLayout(struct_type);
 
   llvm::errs() << "Struct type name : " << struct_type->getName().str() << "\n";
   std::string struct_name = struct_type->getName().str();
   struct_name = struct_name.substr(struct_name.find('.') + 1);
 
-  std::vector<std::string> elem_names;
+  std::string struct_carver_name = "__Carv__" + struct_name;
+  auto search = struct_carvers.find(struct_carver_name);
+  FunctionCallee struct_carver
+    = Mod->getOrInsertFunction(struct_carver_name, VoidTy, struct_ptr->getType());
+  if (search == struct_carvers.end()) {
+    struct_carvers.insert(struct_carver_name);
+    //Define struct carver
+    Function * struct_carv_func = dyn_cast<Function>(struct_carver.getCallee());
 
-  for (auto iter : DbgFinder.types()) {
-    if (struct_name == iter->getName().str()) {
-      iter->dump();
-      DICompositeType * struct_DIT = dyn_cast<DICompositeType>(iter);
-      for (auto iter2 : struct_DIT->getElements()) {
-        DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
-        elem_names.push_back(elem_DIT->getName().str());
+    BasicBlock * entry_BB
+      = BasicBlock::Create(*Context, "entry", struct_carv_func);
+
+    IRB->SetInsertPoint(entry_BB);
+    IRB->CreateRetVoid();
+    IRB->SetInsertPoint(entry_BB->getFirstNonPHIOrDbgOrLifetime());
+
+    BasicBlock * cur_block = entry_BB;
+
+    //Get field names
+    std::vector<std::string> elem_names;
+    for (auto iter : DbgFinder.types()) {
+      if (struct_name == iter->getName().str()) {
+        iter->dump();
+        DIType * dit = iter;
+        while (isa<DIDerivedType>(dit)) {
+          DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
+          dit = tmptype->getBaseType();
+        }
+        
+        DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
+        for (auto iter2 : struct_DIT->getElements()) {
+          DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
+          elem_names.push_back(elem_DIT->getName().str());
+        }
+        break;
       }
-      break;
+    }
+
+    Value * carver_param = struct_carv_func->getArg(0);
+
+    int elem_idx = 0;
+    for (auto iter : elem_names) {
+      Value * gep = IRB->CreateStructGEP(struct_type, carver_param, elem_idx);
+      PointerType* gep_type = dyn_cast<PointerType>(gep->getType());
+      Type * gep_pointee_type = gep_type->getPointerElementType();
+      if (gep_pointee_type->isStructTy()) {
+        insert_struct_carve_probe(gep, gep_pointee_type, name + "." + iter);
+      } else {
+        Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
+        cur_block = insert_carve_probe(loadval, name + "." + iter, cur_block);
+      }
+      elem_idx ++;
     }
   }
 
-  int elem_idx = 0;
-  for (auto iter : elem_names) {
-    Value * gep = IRB->CreateStructGEP(struct_type, struct_ptr, elem_idx);
-    PointerType* gep_type = dyn_cast<PointerType>(gep->getType());
-    Type * gep_pointee_type = gep_type->getPointerElementType();
-    if (gep_pointee_type->isStructTy()) {
-      cur_block = insert_struct_carve_probe(gep, gep_pointee_type, name + "." + iter, cur_block, DL);
-    } else {
-      Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
-      cur_block = insert_carve_probe(loadval, name + "." + iter, cur_block, DL);
-    }
-    elem_idx ++;
-  }
-
-  return cur_block;
+  IRB->restoreIP(cur_ip);
+  std::vector<Value *> carver_args {struct_ptr};
+  IRB->CreateCall(struct_carver, carver_args);
+  return;
 }
 
 bool pass1::hookInstrs(Module &M) {
   LLVMContext &              C = M.getContext();
   const DataLayout & dataLayout = M.getDataLayout();
+  Mod = &M;
+  Context = &C;
+  DL = &dataLayout;
   IRB = new IRBuilder<> (C);
   
   DbgFinder.processModule(M);
@@ -518,11 +556,11 @@ bool pass1::hookInstrs(Module &M) {
     DEBUG0("Inserting probe in " << func_name << "\n");
 
     BasicBlock& entry_block = F.getEntryBlock();
-    Insert_alloca_probe(entry_block, dataLayout);
+    Insert_alloca_probe(entry_block);
 
     //Main argc argv handling
     if (func_name == "main") {
-      Insert_main_probe(entry_block, F, M.global_values(), dataLayout);
+      Insert_main_probe(entry_block, F, M.global_values());
     } else {
       int param_idx = 0;
       IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
@@ -539,7 +577,7 @@ bool pass1::hookInstrs(Module &M) {
         }
 
         insert_block
-          = insert_carve_probe(func_arg, param_name, insert_block, dataLayout);
+          = insert_carve_probe(func_arg, param_name, insert_block);
         param_idx ++;
       }
 
