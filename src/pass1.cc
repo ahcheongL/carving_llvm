@@ -117,6 +117,8 @@ class pass1 : public ModulePass {
   FunctionCallee carv_float_func;
   FunctionCallee carv_double_func;
   FunctionCallee carv_ptr_func;
+  FunctionCallee carv_ptr_update;
+  FunctionCallee carv_ptr_done;
 
   int func_id;
 };
@@ -347,10 +349,6 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     index_phi->addIncoming(index_load, BB);
     Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
 
-    llvm::errs() << "BEFORE : \n";
-    BB->getParent()->dump();
-    llvm::errs() << "#######\n";
-
     if (!pointee_type->isStructTy()) {
       Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
       loopblock = insert_carve_probe(load_ptr, name + "[]", loopblock, DL);
@@ -359,13 +357,13 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
         , name + "[]", loopblock, DL);
     }
 
-    llvm::errs() << "AFTER : \n";
-    BB->getParent()->dump();
-    llvm::errs() << "#######\n";
-    
     Value * index_update_instr
       = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
     index_phi->addIncoming(index_update_instr, loopblock);
+
+    std::vector<Value *> probe_args2 {ptrval};
+    IRB->CreateCall(carv_ptr_update, probe_args2);
+
     Instruction * cmp_instr2
       = (Instruction *) IRB->CreateICmpSLT(index_update_instr, pointer_size);
 
@@ -394,6 +392,9 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     ReplaceInstWithInst(old_term, loopblock_term);
 
     IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
+
+    std::vector<Value *> probe_args3 {ptrval};
+    IRB->CreateCall(carv_ptr_done, probe_args3);
 
     return endblock;
   }
@@ -500,6 +501,10 @@ bool pass1::hookInstrs(Module &M) {
     , VoidTy, DoubleTy, Int8PtrTy);
   carv_ptr_func = M.getOrInsertFunction(get_link_name("Carv_pointer")
     , Int32Ty, Int8PtrTy, Int8PtrTy );
+  carv_ptr_update = M.getOrInsertFunction(get_link_name("__carv_pointer_idx_update")
+    , VoidTy, Int8PtrTy);
+  carv_ptr_done = M.getOrInsertFunction(get_link_name("__carv_pointer_done")
+    , VoidTy, Int8PtrTy);
 
   DEBUG0("Iterating functions...\n");
 

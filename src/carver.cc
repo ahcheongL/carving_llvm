@@ -17,7 +17,8 @@ static int callseq_index;
 static std::vector<IVAR *> inputs;
 static std::vector<PTR> carved_ptrs;
 static std::map<void *, int> alloced_ptrs;
-static std::vector<PTR_NAME> array_index;
+static std::vector<std::pair<void *, int>> array_index;
+static std::string put_ptr_index(char * name);
 
 void Carv_char(char input, char * name) {
   std::string updated_name = put_ptr_index(name);
@@ -97,11 +98,26 @@ int Carv_pointer(void * ptr, char * name) {
         index, updated_name, 0, INPUT_TYPE::POINTER);
       inputs.push_back((IVAR *) inputv);
 
+      array_index.push_back(std::make_pair(ptr, 0));
+      std::cerr << "size : " << array_index.size() << "\n";
+
       return size;
     }
   }
-
   return 0;
+}
+
+void __carv_pointer_idx_update(void * ptr) {
+  if (array_index.back().first == ptr) {
+    array_index.back().second++;
+  }
+}
+
+void __carv_pointer_done(void * ptr) {
+  if (array_index.back().first == ptr) {
+    array_index.pop_back();
+  }
+  std::cerr << "size : " << array_index.size() << "\n";
 }
 
 void __mem_allocated_probe(void * ptr, int size) {
@@ -235,37 +251,24 @@ void __write_carved(char * func_name, int func_id) {
     remove(outfile_name.c_str());
   } else {
     func_carved_filesize[func_id][index] += 1;
-  }  
+  } 
 
+  array_index.clear();
   return;
 }
 
-std::string put_ptr_index(char * name) {
+static std::string put_ptr_index(char * name) {
   std::string res = std::string(name);
   auto search = res.find("[]");
   std::string ptr_name;
   int depth_index = 0;
+
+  std::cerr << name << "\n";
   while (search != std::string::npos) {
-    auto prev_search = res.find_last_of(']', search);
-    if (prev_search == std::string::npos) {
-      ptr_name = res.substr(0, search);
-    } else {
-      ptr_name = res.substr(prev_search + 1, search);
-    }
+    std::string index_string
+      = "[" + std::to_string(array_index[depth_index].second) + "]";
 
-    int ptr_index = 0;
-    if (depth_index == array_index.size()) {
-      array_index.push_back(PTR_NAME(ptr_name));
-    } else if (ptr_name != array_index[depth_index].name) {
-      array_index[depth_index].init(ptr_name);
-    } else {
-      ptr_index = array_index[depth_index].ptr_index;
-    }
-
-    std::string updated_string = "[" + std::to_string(ptr_index) + "]";
-
-    res.replace(search, 2, updated_string.c_str());
-    array_index[depth_index].update();
+    res.replace(search, 2, index_string);
 
     search = res.find("[]");
     depth_index++;

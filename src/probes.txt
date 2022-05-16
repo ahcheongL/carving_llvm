@@ -12,3 +12,5 @@ Carv_longlong
 Carv_float
 Carv_double
 Carv_pointer
+__carv_pointer_done
+__carv_pointer_idx_update

@@ -34,21 +34,6 @@ enum INPUT_TYPE {
   FUNCTION,
 };
 
-class PTR_NAME {
-public:
-  PTR_NAME(std::string _name) {
-    name = _name; ptr_index = 0;
-  }
-
-  void update() { ptr_index ++;}
-  void init(std::string _name) {
-    name = _name; ptr_index = 0;
-  }
-
-  std::string name;
-  int ptr_index;
-};
-
 class PTR {
 public:
   PTR(void * _addr, int _size) { addr = _addr; alloc_size = _size; }
@@ -83,11 +68,12 @@ public:
 };
 
 void __carv_init();
-std::string put_ptr_index(char *);
 
 void __mem_allocated_probe(void * ptr, int size);
 void __remove_mem_allocated_probe(void * ptr);
 void __write_carved(char *, int);
+void __carv_pointer_done(void * ptr);
+void __carv_pointer_idx_update(void * ptr);
 
 void __argv_modifier(int * argcptr, char *** argvptr);
 void __carv_FINI();
