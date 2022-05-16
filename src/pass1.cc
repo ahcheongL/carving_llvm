@@ -335,6 +335,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
 
     //Make loop block
     BasicBlock * loopblock = BB->splitBasicBlock(pointer_size->getNextNonDebugInstruction());
+    BasicBlock * const loopblock_start = loopblock;
 
     IRB->SetInsertPoint(pointer_size->getNextNonDebugInstruction());
     
@@ -346,6 +347,10 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     index_phi->addIncoming(index_load, BB);
     Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
 
+    llvm::errs() << "BEFORE : \n";
+    BB->getParent()->dump();
+    llvm::errs() << "#######\n";
+
     if (!pointee_type->isStructTy()) {
       Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
       loopblock = insert_carve_probe(load_ptr, name + "[]", loopblock, DL);
@@ -353,6 +358,10 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
       loopblock = insert_struct_carve_probe(getelem_instr, pointee_type
         , name + "[]", loopblock, DL);
     }
+
+    llvm::errs() << "AFTER : \n";
+    BB->getParent()->dump();
+    llvm::errs() << "#######\n";
     
     Value * index_update_instr
       = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
@@ -366,7 +375,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     IRB->SetInsertPoint(cmp_instr1->getNextNonDebugInstruction());
 
     Instruction * BB_term
-      = IRB->CreateCondBr(cmp_instr1, endblock, loopblock);
+      = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
     BB_term->removeFromParent();
     
     //remove old terminator
@@ -376,7 +385,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     IRB->SetInsertPoint(cmp_instr2->getNextNonDebugInstruction());
 
     Instruction * loopblock_term
-      = IRB->CreateCondBr(cmp_instr2, loopblock, endblock);
+      = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
 
     loopblock_term->removeFromParent();
 
