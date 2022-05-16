@@ -75,7 +75,7 @@ int Carv_pointer(void * ptr, char * name) {
   for (auto iter = carved_ptrs.begin(); iter != carved_ptrs.end(); iter++) {
     char * carved_addr = (char *) iter->addr;
     if ((carved_addr <= ptr) && (ptr < (carved_addr + iter->alloc_size))) {
-      int offset = carved_addr - ((char *) ptr);
+      int offset = ((char *) ptr) - carved_addr;
       VAR<int> * inputv = new VAR<int>(
         index, updated_name, offset, INPUT_TYPE::POINTER);
       inputs.push_back((IVAR *) inputv);
@@ -177,7 +177,7 @@ void __write_carved(char * func_name, int func_id) {
     IVAR * elem = *iter;
     if (elem->type == INPUT_TYPE::CHAR) {
       outfile << elem->name << ":CHAR:"
-              << ((VAR<char>*) elem)->input << "\n";
+              << (int) (((VAR<char>*) elem)->input) << "\n";
     } else if (elem->type == INPUT_TYPE::SHORT) {
       outfile << elem->name << ":SHORT:"
               << ((VAR<short>*) elem)->input << "\n";

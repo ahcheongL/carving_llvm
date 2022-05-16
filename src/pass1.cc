@@ -171,14 +171,23 @@ void pass1::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
     IRB->CreateCall(remove_probe, args);
   } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
     //Get some hint from memory related functions
-    std::vector<Value *> args {IN.getOperand(0), IN.getOperand(2)};
+    Value * size = IN.getOperand(2);
+    if (size->getType() == Int64Ty) {
+      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    }
+    std::vector<Value *> args {IN.getOperand(0), size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "llvm.memmove.p0i8.p0i8.i64") {
-    std::vector<Value *> args {IN.getOperand(0), IN.getOperand(2)};
+    Value * size = IN.getOperand(2);
+    if (size->getType() == Int64Ty) {
+      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    }
+    std::vector<Value *> args {IN.getOperand(0), size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strlen") {
     Value * add_one = IRB->CreateAdd(&IN, ConstantInt::get(Int64Ty, 1));
-    std::vector<Value *> args {IN.getOperand(0), add_one};
+    Value * size = IRB->CreateCast(Instruction::CastOps::Trunc, add_one, Int32Ty);
+    std::vector<Value *> args {IN.getOperand(0), size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strncpy") {
     std::vector<Value *> args {IN.getOperand(0), IN.getOperand(2)};
@@ -448,7 +457,7 @@ bool pass1::hookInstrs(Module &M) {
       for (auto arg_iter = F.arg_begin(); arg_iter != F.arg_end(); arg_iter++) {
         Value * func_arg = &(*arg_iter);
 
-        std::string param_name = find_param_name(func_arg, &entry_block);
+        std::string param_name = find_param_name(func_arg, insert_block);
 
         if (param_name == "") {
           param_name = "parm_" + std::to_string(param_idx);
@@ -582,16 +591,26 @@ std::string pass1::find_param_name(Value * param, BasicBlock * BB) {
 
   Instruction * ptr = NULL;
 
+  llvm::errs() << "finding name of :\n";
+  param->dump();
+  llvm::errs() << "BB : \n";
+  BB->dump();
+
+
   for (auto instr_iter = BB->begin(); instr_iter != BB->end(); instr_iter++) {
     if ((ptr == NULL) && isa<StoreInst>(instr_iter)) {
       StoreInst * store_inst = dyn_cast<StoreInst>(instr_iter);
       if (store_inst->getOperand(0) == param) {
         ptr = (Instruction *) store_inst->getOperand(1);
+        llvm::errs() << "ptr : \n";
         ptr->dump();
       }
     } else if (isa<DbgVariableIntrinsic>(instr_iter)) {
       DbgVariableIntrinsic * intrinsic = dyn_cast<DbgVariableIntrinsic>(instr_iter);
       Value * valloc = intrinsic->getVariableLocationOp(0);
+
+      llvm::errs() << "valloc : \n";
+      valloc->dump();
 
       if (valloc == ptr) {
         DILocalVariable * var = intrinsic->getVariable();

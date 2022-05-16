@@ -31,7 +31,7 @@ src/carver.o: src/carver.cc
 lib/carver.a: src/carver.o
 	$(AR) rsv $@ $^
 
-lib/probe_names.txt: src/carver.o
+lib/probe_names.txt: src/carver.o src/probes.txt
 	python3 bin/get_probe_name.py
 
 clean:
