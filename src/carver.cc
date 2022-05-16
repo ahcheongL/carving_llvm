@@ -106,12 +106,16 @@ int Carv_pointer(void * ptr, char * name) {
 }
 
 void __carv_pointer_idx_update(void * ptr) {
+  if (array_index.size() == 0) return;
+
   if (array_index.back().first == ptr) {
     array_index.back().second++;
   }
 }
 
 void __carv_pointer_done(void * ptr) {
+  if (array_index.size() == 0) return;
+  
   if (array_index.back().first == ptr) {
     array_index.pop_back();
   }
@@ -280,6 +284,13 @@ void __argv_modifier(int * argcptr, char *** argvptr) {
   outdir_name = (*argvptr)[argc];
 
   (*argvptr)[argc] = 0;
+  __mem_allocated_probe(*argvptr, sizeof(char *) * argc);
+  int idx;
+  for (idx = 0; idx < argc; idx++) {
+    char * argv_str = (*argvptr)[idx];
+    __mem_allocated_probe(argv_str, strlen(argv_str) + 1);
+  }
+
   return;
 }
 

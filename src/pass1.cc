@@ -61,8 +61,12 @@ class pass1 : public ModulePass {
   bool hookInstrs(Module &M);
   
   void read_probe_list();
+
   std::map<std::string, std::string> probe_link_names;
   std::string get_link_name(std::string);
+
+  std::map<Function *, std::set<Constant *>> global_var_uses;
+  void find_global_var_uses();
 
   void Insert_alloca_probe(BasicBlock & entry_block);
   std::vector<AllocaInst *> tracking_allocas;
@@ -71,9 +75,12 @@ class pass1 : public ModulePass {
     , global_range globals);
   BasicBlock * insert_carve_probe(Value * val, std::string name
     , BasicBlock * BB);
+
+  std::set<std::string> struct_carvers;
   void insert_struct_carve_probe(Value * struct_ptr, Type * struct_type
     , std::string name);
-  std::set<std::string> struct_carvers;
+  
+  void insert_global_carve_probe(Function * F, BasicBlock * BB);
 
   std::string find_param_name(Value * param, BasicBlock * BB);
 
@@ -131,6 +138,42 @@ class pass1 : public ModulePass {
 }  // namespace
 
 char pass1::ID = 0;
+
+void pass1::find_global_var_uses() {
+  for (auto &F : Mod->functions()) {
+    for (auto &BB : F.getBasicBlockList()) {
+      for (auto &Instr : BB.getInstList()) {
+        for (auto &op : Instr.operands()) {
+          if (isa<Constant>(op)) {
+            Constant * constant = dyn_cast<Constant>(op);
+            if (isa<Function>(constant)) { continue; }
+            if (constant->getName().str().size() == 0) { continue; }
+
+            auto search = global_var_uses.find(&F);
+            if (search == global_var_uses.end()) {
+              global_var_uses.insert(std::make_pair(&F, std::set<Constant *>()));
+            }
+            global_var_uses[&F].insert(constant);
+          }
+        }
+      }
+    }
+  }
+
+  //TODO : track callee's uses
+  
+
+  /*
+  for (auto iter : global_var_uses) {
+    DEBUG0(iter.first->getName().str() << " : \n");
+    for (auto iter2 : iter.second) {
+      DEBUG0(iter2->getName().str() << "\n");
+      iter2->dump();
+    }
+  }
+  */
+  
+}
 
 void pass1::Insert_alloca_probe(BasicBlock& entry_block) {
   std::vector<AllocaInst * > allocas;
@@ -262,10 +305,6 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
 
     if (!isa<GlobalVariable>(*global_iter)) { continue; }
     
-    // if ((*global_iter).getLinkage() == GlobalValue::LinkageTypes::InternalLinkage) {
-    //   (*global_iter).setLinkage(GlobalValue::LinkageTypes::ExternalLinkage);
-    // }
-    
     Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, &(*global_iter), Int8PtrTy);
     Type * gv_type = (*global_iter).getValueType();
     unsigned int size = DL->getTypeAllocSize(gv_type);
@@ -279,7 +318,10 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
     std::vector<Value *> probe_args1 {new_argc, argc_name_const};
     IRB->CreateCall(carv_int_func, probe_args1);
 
-    //TODO : argv
+    BasicBlock * insert_block
+      = insert_carve_probe(new_argv, "argv", IRB->GetInsertBlock());
+
+    insert_global_carve_probe(&F, insert_block);
 
     Constant * func_name_const = gen_new_string_constant("main");
     Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
@@ -287,10 +329,35 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
     std::vector<Value *> probe_args {func_name_const, func_id_const};
     IRB->CreateCall(write_carved, probe_args);
   }
+
+
   return;
 }
 
+void pass1::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
+  BasicBlock * cur_block = BB;
+
+  auto search = global_var_uses.find(F);
+  if (search != global_var_uses.end()) {
+    for (auto glob_iter : search->second) {
+      std::string glob_name = glob_iter->getName().str();
+
+      Type * const_type = glob_iter->getType();
+      assert(const_type->isPointerTy());
+      Type * pointee_type = dyn_cast<PointerType>(const_type)->getPointerElementType();
+
+      if (pointee_type->isStructTy()) {
+        insert_struct_carve_probe((Value *) glob_iter, pointee_type, glob_name);
+      } else {
+        Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
+        cur_block = insert_carve_probe(load_val, glob_name, cur_block);
+      }
+    }
+  }
+
+  return;
+}
 
 BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
   , BasicBlock * BB) {
@@ -315,12 +382,20 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
   } else if (val_type->isFunctionTy()) {
   } else if (val_type->isPointerTy()) {
     PointerType * ptrtype = dyn_cast<PointerType>(val_type);
+    //type that we don't know.
+    if (ptrtype->isOpaque() || ptrtype->isOpaquePointerTy()) { return BB; }
+
     Type * pointee_type = ptrtype->getPointerElementType();
 
     if (pointee_type->isFunctionTy()) {
       //TODO
       return BB;
-    } 
+    }
+
+    if (isa<StructType> (pointee_type)) {
+      StructType * tmptype = dyn_cast<StructType>(pointee_type);
+      if (tmptype->isOpaque()) { return BB; }
+    }
 
     //get 0 initialized index
     Instruction * index_alloc = IRB->CreateAlloca(Int32Ty);
@@ -414,7 +489,6 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
   StructType * struct_type = dyn_cast<StructType>(type);
   const StructLayout * SL = DL->getStructLayout(struct_type);
 
-  llvm::errs() << "Struct type name : " << struct_type->getName().str() << "\n";
   std::string struct_name = struct_type->getName().str();
   struct_name = struct_name.substr(struct_name.find('.') + 1);
 
@@ -440,11 +514,23 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
     std::vector<std::string> elem_names;
     for (auto iter : DbgFinder.types()) {
       if (struct_name == iter->getName().str()) {
-        iter->dump();
         DIType * dit = iter;
-        while (isa<DIDerivedType>(dit)) {
-          DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
-          dit = tmptype->getBaseType();
+        while (isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit)) {
+          if (isa<DIDerivedType>(dit)) {
+            DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
+            dit = tmptype->getBaseType();
+          } else {
+            DISubroutineType * tmptype = dyn_cast<DISubroutineType>(dit);
+            //TODO
+            dit = NULL;
+            break;
+          }          
+        }
+
+        if ((dit == NULL) || (!isa<DICompositeType>(dit))) {
+          DEBUG0("Warn : unknown DIType : \n");
+          iter->dump();
+          break;
         }
         
         DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
@@ -454,6 +540,11 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
         }
         break;
       }
+    }
+
+    if (elem_names.size() == 0) {
+      IRB->restoreIP(cur_ip);
+      return;
     }
 
     Value * carver_param = struct_carv_func->getArg(0);
@@ -544,6 +635,8 @@ bool pass1::hookInstrs(Module &M) {
   carv_ptr_done = M.getOrInsertFunction(get_link_name("__carv_pointer_done")
     , VoidTy, Int8PtrTy);
 
+  find_global_var_uses();
+
   DEBUG0("Iterating functions...\n");
 
   for (auto &F : M) {
@@ -581,6 +674,9 @@ bool pass1::hookInstrs(Module &M) {
         param_idx ++;
       }
 
+      insert_global_carve_probe(&F, insert_block);
+
+      //Call __write_carved
       Constant * func_name_const = gen_new_string_constant(func_name);
       Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
 
