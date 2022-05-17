@@ -14,3 +14,5 @@ Carv_double
 Carv_pointer
 __carv_pointer_done
 __carv_pointer_idx_update
+__record_func_ptr
+__Carv_func_ptr

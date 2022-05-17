@@ -117,6 +117,7 @@ class pass1 : public ModulePass {
   FunctionCallee mem_allocated_probe;
   FunctionCallee remove_probe;
   FunctionCallee __carv_init;
+  FunctionCallee record_func_ptr;
   FunctionCallee argv_modifier;
   FunctionCallee __carv_fini;
   FunctionCallee write_carved;
@@ -131,6 +132,7 @@ class pass1 : public ModulePass {
   FunctionCallee carv_ptr_func;
   FunctionCallee carv_ptr_update;
   FunctionCallee carv_ptr_done;
+  FunctionCallee carv_func_ptr;
 
   int func_id;
 };
@@ -303,11 +305,21 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
   //Global variables memory probing
   for (auto global_iter = globals.begin(); global_iter != globals.end(); global_iter++) {
 
-    if (!isa<GlobalVariable>(*global_iter)) { continue; }
+    if (!isa<GlobalVariable>(*global_iter)
+      && !isa<Function>(*global_iter)) { continue; }
+
+    if (isa<Function>(*global_iter)) {
+      Function * global_f = dyn_cast<Function>(&(*global_iter));
+      llvm::errs() << "Global f : " << global_f->getName().str() << ", size : " << global_f->size() << "\n";
+      if (global_f->size() == 0) { continue; }
+    }
     
     Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, &(*global_iter), Int8PtrTy);
     Type * gv_type = (*global_iter).getValueType();
-    unsigned int size = DL->getTypeAllocSize(gv_type);
+    unsigned int size = 8;
+    if (isa<GlobalVariable>(*global_iter)) {
+      size = DL->getTypeAllocSize(gv_type);
+    }
     Value * size_const = ConstantInt::get(Int32Ty, size);
     std::vector<Value *> args{casted_ptr, size_const};
     IRB->CreateCall(mem_allocated_probe, args);
@@ -330,6 +342,15 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
     IRB->CreateCall(write_carved, probe_args);
   }
 
+  //Record func ptr
+  for (auto &Func:Mod->functions()) {
+    if (Func.size() == 0) { continue; }
+    Constant * func_name_const = gen_new_string_constant(Func.getName().str());
+    Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
+      , (Value *) &Func, Int8PtrTy);
+    std::vector<Value *> probe_args {cast_val, func_name_const};
+    IRB->CreateCall(record_func_ptr, probe_args);
+  }
 
   return;
 }
@@ -380,6 +401,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
   } else if (val_type == DoubleTy) {
     IRB->CreateCall(carv_double_func, probe_args);
   } else if (val_type->isFunctionTy()) {
+    //IRB->CreateCall(carv_func_ptr, probe_args);
   } else if (val_type->isPointerTy()) {
     PointerType * ptrtype = dyn_cast<PointerType>(val_type);
     //type that we don't know.
@@ -388,7 +410,13 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     Type * pointee_type = ptrtype->getPointerElementType();
 
     if (pointee_type->isFunctionTy()) {
-      //TODO
+      Value * ptrval = val;
+      if (val_type != Int8PtrTy) {
+        ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
+      }
+      Constant * name_constant = gen_new_string_constant(name + "[]");
+      std::vector<Value *> probe_args {ptrval, name_constant};
+      IRB->CreateCall(carv_func_ptr, probe_args);
       return BB;
     }
 
@@ -429,11 +457,11 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     index_phi->addIncoming(index_load, BB);
     Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
 
-    if (!pointee_type->isStructTy()) {
+    if (pointee_type->isStructTy()) {
+      insert_struct_carve_probe(getelem_instr, pointee_type, name + "[]");
+    } else {
       Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
       loopblock = insert_carve_probe(load_ptr, name + "[]", loopblock);
-    } else {
-      insert_struct_carve_probe(getelem_instr, pointee_type, name + "[]");
     }
 
     Value * index_update_instr
@@ -607,6 +635,8 @@ bool pass1::hookInstrs(Module &M) {
     , VoidTy, Int8PtrTy);
   __carv_init = M.getOrInsertFunction(get_link_name("__carv_init")
     , VoidTy);
+  record_func_ptr = M.getOrInsertFunction(get_link_name("__record_func_ptr"),
+    VoidTy, Int8PtrTy, Int8PtrTy);
   argv_modifier = M.getOrInsertFunction(get_link_name("__argv_modifier")
     , VoidTy, Int32PtrTy, Int8PtrPtrPtrTy);
   write_carved = M.getOrInsertFunction(get_link_name("__write_carved")
@@ -634,6 +664,8 @@ bool pass1::hookInstrs(Module &M) {
     , VoidTy, Int8PtrTy);
   carv_ptr_done = M.getOrInsertFunction(get_link_name("__carv_pointer_done")
     , VoidTy, Int8PtrTy);
+  carv_func_ptr = M.getOrInsertFunction(get_link_name("__Carv_func_ptr")
+    , VoidTy, Int8PtrTy, Int8PtrTy);
 
   find_global_var_uses();
 

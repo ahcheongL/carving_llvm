@@ -14,6 +14,7 @@ static int * callseq;
 static int callseq_size;
 static int callseq_index;
 
+static std::map<void *, std::string> func_ptrs;
 static std::vector<IVAR *> inputs;
 static std::vector<PTR> carved_ptrs;
 static std::map<void *, int> alloced_ptrs;
@@ -103,6 +104,26 @@ int Carv_pointer(void * ptr, char * name) {
     }
   }
   return 0;
+}
+
+void __record_func_ptr(void * ptr, char * name) {
+  func_ptrs.insert(std::make_pair(ptr, std::string(name)));
+}
+
+void __Carv_func_ptr(void * ptr, char * varname) {
+  std::string updated_name = put_ptr_index(varname);
+  auto search = func_ptrs.find(ptr);
+  if ((ptr == NULL) || (search == func_ptrs.end())) {
+      VAR<void *> * inputv = new VAR<void *>(NULL
+        , updated_name, INPUT_TYPE::NULLPTR);
+      inputs.push_back((IVAR *) inputv);
+      return;
+  }
+
+  VAR<std::string> * inputv = new VAR<std::string> (search->second
+    , updated_name, INPUT_TYPE::FUNCPTR);
+  inputs.push_back(inputv);
+  return;
 }
 
 void __carv_pointer_idx_update(void * ptr) {
@@ -219,6 +240,9 @@ void __write_carved(char * func_name, int func_id) {
       VAR<int> * input = (VAR<int>*) elem;
       outfile << elem->name << ":PTR:" << input->input << ":"
               << input->pointer_offset << "\n";
+    } else if (elem->type == INPUT_TYPE::FUNCPTR) {
+      VAR<std::string> * input = (VAR<std::string>*) elem;
+      outfile << elem->name << ":FUNCPTR:" << input->input << "\n";
     }
   }
 
