@@ -14,6 +14,8 @@ static int * callseq;
 static int callseq_size;
 static int callseq_index;
 
+static int carved_index = 0;
+
 static std::map<void *, std::string> func_ptrs;
 static std::vector<IVAR *> inputs;
 static std::vector<PTR> carved_ptrs;
@@ -89,7 +91,7 @@ int Carv_pointer(void * ptr, char * name) {
 
   //Check whether it is alloced area
   for (auto iter = alloced_ptrs.begin(); iter != alloced_ptrs.end(); iter++) {
-    char * alloced_ptr = (char *) iter->first;
+    char * alloced_ptr = (char *) (iter->first);
     if ((alloced_ptr <= ptr) && (ptr < (alloced_ptr + iter->second))) {
       int size = alloced_ptr + iter->second - ((char *) ptr);
       index = carved_ptrs.size();
@@ -114,10 +116,13 @@ void __Carv_func_ptr(void * ptr, char * varname) {
   std::string updated_name = put_ptr_index(varname);
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == func_ptrs.end())) {
-      VAR<void *> * inputv = new VAR<void *>(NULL
-        , updated_name, INPUT_TYPE::NULLPTR);
-      inputs.push_back((IVAR *) inputv);
-      return;
+    if (ptr != NULL) {
+      std::cerr << "Warn : Unknown func ptr : " << varname << "\n";
+    }
+    VAR<void *> * inputv = new VAR<void *>(NULL
+      , updated_name, INPUT_TYPE::NULLPTR);
+    inputs.push_back((IVAR *) inputv);
+    return;
   }
 
   VAR<std::string> * inputv = new VAR<std::string> (search->second
@@ -149,33 +154,21 @@ void __mem_allocated_probe(void * ptr, int size) {
     search->second = size;
     return;
   }
-
   alloced_ptrs.insert(std::make_pair(ptr, size));
   return;
 }
 
-void __remove_mem_allocated_probe(void * ptr) {
+void __remove_mem_allocated_probe(void * ptr) {  
   auto search = alloced_ptrs.find(ptr);
   if (search != alloced_ptrs.end()) {
     alloced_ptrs.erase(search);
   }
 }
 
-void __carv_init() {
-  num_func_calls_size = 256;
-  num_func_calls = (int *) calloc(num_func_calls_size, sizeof(int));
-  func_carved_filesize = (int **) calloc(num_func_calls_size, sizeof(int *));
-  callseq_size = 16384;
-  callseq = (int *) malloc(callseq_size * sizeof(int));
-  callseq_index = 0;
-  return;
-}
 
-int carved_index = 0;
 
 //Insert at the begining of 
 void __write_carved(char * func_name, int func_id) {
-
   //Write call sequence
   callseq[callseq_index++] = func_id;
   if (callseq_index >= callseq_size) {
@@ -192,7 +185,7 @@ void __write_carved(char * func_name, int func_id) {
     memset(num_func_calls + tmp, 0, tmp * sizeof(int));
     func_carved_filesize = (int **) realloc(func_carved_filesize
       , num_func_calls_size * sizeof(int *));
-    memset(func_carved_filesize + tmp, 0, tmp * sizeof(int));
+    memset(func_carved_filesize + tmp, 0, tmp * sizeof(int *));
   }
 
   num_func_calls[func_id] += 1;
@@ -251,14 +244,21 @@ void __write_carved(char * func_name, int func_id) {
 
   for (auto iter = inputs.begin(); iter != inputs.end(); iter++) {
     IVAR * elem = *iter;
-    delete elem;
+    if (elem->type == INPUT_TYPE::FUNCPTR) {
+      VAR<std::string> * elemv = (VAR<std::string> *) elem;
+      delete elemv;
+    } else {
+      delete elem;
+    }
   }
 
   inputs.clear();
   carved_ptrs.clear();
+  array_index.clear();
 
   if ((filesize <= 64) || (filesize > 1048576)) {
     //remove(outfile_name.c_str());
+    return;
   }
 
   int tmp = 128;
@@ -278,7 +278,6 @@ void __write_carved(char * func_name, int func_id) {
     func_carved_filesize[func_id][index] += 1;
   } 
 
-  array_index.clear();
   return;
 }
 
@@ -289,8 +288,13 @@ static std::string put_ptr_index(char * name) {
   int depth_index = 0;
 
   while (search != std::string::npos) {
+    int carving_index = 0;
+    if (depth_index < array_index.size()) {
+      carving_index = array_index[depth_index].second;
+    }
+
     std::string index_string
-      = "[" + std::to_string(array_index[depth_index].second) + "]";
+      = "[" + std::to_string(carving_index) + "]";
 
     res.replace(search, 2, index_string);
 
@@ -314,6 +318,13 @@ void __argv_modifier(int * argcptr, char *** argvptr) {
     char * argv_str = (*argvptr)[idx];
     __mem_allocated_probe(argv_str, strlen(argv_str) + 1);
   }
+
+  num_func_calls_size = 256;
+  num_func_calls = (int *) calloc(num_func_calls_size, sizeof(int));
+  func_carved_filesize = (int **) calloc(num_func_calls_size, sizeof(int *));
+  callseq_size = 16384;
+  callseq = (int *) malloc(callseq_size * sizeof(int));
+  callseq_index = 0;
 
   return;
 }

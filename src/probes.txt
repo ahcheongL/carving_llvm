@@ -1,4 +1,3 @@
-__carv_init
 __mem_allocated_probe
 __write_carved
 __remove_mem_allocated_probe

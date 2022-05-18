@@ -28,7 +28,7 @@
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/Support/raw_ostream.h"
 
-
+//#define DEBUG0(x)
 #ifndef DEBUG0
 #define DEBUG0(x) (llvm::errs() << x)
 #endif
@@ -65,6 +65,9 @@ class pass1 : public ModulePass {
   std::map<std::string, std::string> probe_link_names;
   std::string get_link_name(std::string);
 
+  std::set<std::string> instrument_func_set;
+  void get_instrument_func_set();
+
   std::map<Function *, std::set<Constant *>> global_var_uses;
   void find_global_var_uses();
 
@@ -80,7 +83,7 @@ class pass1 : public ModulePass {
   void insert_struct_carve_probe(Value * struct_ptr, Type * struct_type
     , std::string name);
   
-  void insert_global_carve_probe(Function * F, BasicBlock * BB);
+  int insert_global_carve_probe(Function * F, BasicBlock * BB);
 
   std::string find_param_name(Value * param, BasicBlock * BB);
 
@@ -116,7 +119,6 @@ class pass1 : public ModulePass {
   
   FunctionCallee mem_allocated_probe;
   FunctionCallee remove_probe;
-  FunctionCallee __carv_init;
   FunctionCallee record_func_ptr;
   FunctionCallee argv_modifier;
   FunctionCallee __carv_fini;
@@ -249,7 +251,11 @@ void pass1::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
     std::vector<Value *> args {IN.getOperand(0), size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strncpy") {
-    std::vector<Value *> args {IN.getOperand(0), IN.getOperand(2)};
+    Value * size = IN.getOperand(2);
+    if (size->getType() == Int64Ty) {
+      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    }
+    std::vector<Value *> args {IN.getOperand(0), size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strcpy") {
     std::vector<Value *> strlen_args;
@@ -258,6 +264,18 @@ void pass1::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
     Value * add_one = IRB->CreateAdd(strlen_result, ConstantInt::get(Int64Ty, 1));
     std::vector<Value *> args {IN.getOperand(0), add_one};
     IRB->CreateCall(mem_allocated_probe, args);
+  } else if (callee_name == "_Znwm") {
+    //new operator
+    Value * size = IN.getOperand(0);
+    if (size->getType() == Int64Ty) {
+      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    }
+    std::vector<Value *> args {&IN, size};
+    IRB->CreateCall(mem_allocated_probe, args);
+  } else if (callee_name == "_ZdlPv") {
+    //delete operator
+    std::vector<Value *> args {IN.getOperand(0)};
+    IRB->CreateCall(remove_probe, args);
   }
 
   return;
@@ -299,9 +317,6 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
     IRB->SetInsertPoint(new_argv_load_instr->getNextNonDebugInstruction());
   }  
 
-  std::vector<Value *> args;
-  IRB->CreateCall(__carv_init, args);
-
   //Global variables memory probing
   for (auto global_iter = globals.begin(); global_iter != globals.end(); global_iter++) {
 
@@ -310,8 +325,10 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
 
     if (isa<Function>(*global_iter)) {
       Function * global_f = dyn_cast<Function>(&(*global_iter));
-      llvm::errs() << "Global f : " << global_f->getName().str() << ", size : " << global_f->size() << "\n";
       if (global_f->size() == 0) { continue; }
+    } else if (isa<GlobalVariable>(*global_iter)) {
+      GlobalVariable * global_v = dyn_cast<GlobalVariable>(&(*global_iter));
+      if (global_v->getName().str().find("llvm.") != std::string::npos) { continue; }
     }
     
     Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, &(*global_iter), Int8PtrTy);
@@ -355,9 +372,10 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
   return;
 }
 
-void pass1::insert_global_carve_probe(Function * F, BasicBlock * BB) {
+int pass1::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
   BasicBlock * cur_block = BB;
+  int num_inserted = 0;
 
   auto search = global_var_uses.find(F);
   if (search != global_var_uses.end()) {
@@ -374,10 +392,11 @@ void pass1::insert_global_carve_probe(Function * F, BasicBlock * BB) {
         Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
         cur_block = insert_carve_probe(load_val, glob_name, cur_block);
       }
+      num_inserted++;
     }
   }
 
-  return;
+  return num_inserted;
 }
 
 BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
@@ -425,6 +444,9 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
       if (tmptype->isOpaque()) { return BB; }
     }
 
+    unsigned pointee_size = DL->getTypeAllocSize(pointee_type);
+    if (pointee_size == 0) { return BB; }
+
     //get 0 initialized index
     Instruction * index_alloc = IRB->CreateAlloca(Int32Ty);
     Value * index_store = IRB->CreateStore(ConstantInt::get(Int32Ty, 0), index_alloc);
@@ -439,7 +461,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
     std::vector<Value *> probe_args {ptrval, name_constant};
     Instruction * carv_ptr = IRB->CreateCall(carv_ptr_func, probe_args);
 
-    unsigned pointee_size = DL->getTypeAllocSize(pointee_type);
+    
     Instruction * pointer_size = (Instruction *)
       IRB->CreateSDiv(carv_ptr, ConstantInt::get(Int32Ty, pointee_size));
 
@@ -524,8 +546,13 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
   auto search = struct_carvers.find(struct_carver_name);
   FunctionCallee struct_carver
     = Mod->getOrInsertFunction(struct_carver_name, VoidTy, struct_ptr->getType());
+
   if (search == struct_carvers.end()) {
     struct_carvers.insert(struct_carver_name);
+
+    llvm::errs() << "Defining struct carver of " << struct_carver_name << " : " <<
+    SL->getMemberOffsets().size() << "\n";
+
     //Define struct carver
     Function * struct_carv_func = dyn_cast<Function>(struct_carver.getCallee());
 
@@ -560,15 +587,45 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
           iter->dump();
           break;
         }
-        
+
         DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
+        int field_idx = 0;
         for (auto iter2 : struct_DIT->getElements()) {
-          DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
-          elem_names.push_back(elem_DIT->getName().str());
+          iter2->dump();
+          if (isa<DIDerivedType>(iter2)) {
+            DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
+            llvm::errs() << "Field name : " << elem_DIT->getName().str() << "\n";
+            dwarf::Tag elem_tag = elem_DIT->getTag();
+            std::string elem_name = "";
+            if (elem_tag == dwarf::Tag::DW_TAG_member) {
+              elem_name = elem_DIT->getName().str();
+            } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
+              elem_name = elem_DIT->getBaseType()->getName().str();
+            }
+
+            if (elem_name == "") {
+              elem_name = "field" + std::to_string(field_idx);
+            }
+            elem_names.push_back(elem_name);
+            field_idx++;
+          } else if (isa<DISubprogram>(iter2)) {
+            //methods of classes, skip
+            continue;
+          }
         }
         break;
       }
     }
+
+    if (elem_names.size() == 0) {
+      //Can't get field names, just put simple name
+      int field_index = 0;
+      for (auto _field : SL->getMemberOffsets()) {
+        elem_names.push_back("field" + std::to_string(field_index++));
+      }
+    }
+    
+    llvm::errs() << "elem_names size : " << elem_names.size() << "\n";
 
     if (elem_names.size() == 0) {
       IRB->restoreIP(cur_ip);
@@ -633,8 +690,6 @@ bool pass1::hookInstrs(Module &M) {
     get_link_name("__mem_allocated_probe"), VoidTy, Int8PtrTy, Int32Ty);
   remove_probe = M.getOrInsertFunction(get_link_name("__remove_mem_allocated_probe")
     , VoidTy, Int8PtrTy);
-  __carv_init = M.getOrInsertFunction(get_link_name("__carv_init")
-    , VoidTy);
   record_func_ptr = M.getOrInsertFunction(get_link_name("__record_func_ptr"),
     VoidTy, Int8PtrTy, Int8PtrTy);
   argv_modifier = M.getOrInsertFunction(get_link_name("__argv_modifier")
@@ -667,6 +722,8 @@ bool pass1::hookInstrs(Module &M) {
   carv_func_ptr = M.getOrInsertFunction(get_link_name("__Carv_func_ptr")
     , VoidTy, Int8PtrTy, Int8PtrTy);
 
+  get_instrument_func_set();
+
   find_global_var_uses();
 
   DEBUG0("Iterating functions...\n");
@@ -675,8 +732,9 @@ bool pass1::hookInstrs(Module &M) {
     if (F.isIntrinsic() || !F.size()) { continue; }
 
     std::string func_name = F.getName().str();
-    if (func_name.find("__CROWN") != std::string::npos) { continue; }
-    if (func_name.find("Carv_") != std::string::npos) { continue; }
+    if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
+      continue;
+    }
 
     DEBUG0("Inserting probe in " << func_name << "\n");
 
@@ -706,14 +764,16 @@ bool pass1::hookInstrs(Module &M) {
         param_idx ++;
       }
 
-      insert_global_carve_probe(&F, insert_block);
+      int num_inserted = insert_global_carve_probe(&F, insert_block);
 
-      //Call __write_carved
-      Constant * func_name_const = gen_new_string_constant(func_name);
-      Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
+      if ((num_inserted > 0) || (param_idx > 0)) {
+        //Call __write_carved
+        Constant * func_name_const = gen_new_string_constant(func_name);
+        Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
 
-      std::vector<Value *> probe_args {func_name_const, func_id_const};
-      IRB->CreateCall(write_carved, probe_args);
+        std::vector<Value *> probe_args {func_name_const, func_id_const};
+        IRB->CreateCall(write_carved, probe_args);
+      }
     }
 
     DEBUG0("Insert memory tracking for " << func_name << "\n");
@@ -826,6 +886,27 @@ Constant * pass1::gen_new_string_constant(std::string name) {
   }
 
   return search->second;
+}
+
+void pass1::get_instrument_func_set() {
+  for (auto &F : Mod->functions()) {
+    if (F.isIntrinsic() || !F.size()) { continue; }
+    std::string func_name = F.getName().str();
+    if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
+    
+    for (auto iter : DbgFinder.subprograms()) {
+      if (iter->getLinkageName().str() == func_name) {
+        std::string filename = iter->getFilename().str();
+        llvm::errs() << func_name << " : " << filename << "\n";
+        if (filename.find("/usr/bin/") == std::string::npos) {
+          instrument_func_set.insert(func_name);
+        }
+        break;
+      }
+    }
+  }
+
+  instrument_func_set.insert("main");
 }
 
 std::string pass1::find_param_name(Value * param, BasicBlock * BB) {

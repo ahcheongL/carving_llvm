@@ -66,13 +66,4 @@ public:
   input_type input;
   int pointer_offset;
 };
-
-// void __carv_init();
-// void __mem_allocated_probe(void * ptr, int size);
-// void __remove_mem_allocated_probe(void * ptr);
-// void __write_carved(char *, int);
-// void __carv_pointer_done(void * ptr);
-// void __carv_pointer_idx_update(void * ptr);
-// void __argv_modifier(int * argcptr, char *** argvptr);
-// void __carv_FINI();
 #endif
