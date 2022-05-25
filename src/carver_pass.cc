@@ -40,11 +40,11 @@ typedef llvm::iterator_range<llvm::Module::global_value_iterator> global_range;
 
 namespace {
 
-class pass1 : public ModulePass {
+class carver_pass : public ModulePass {
 
  public:
   static char ID;
-  pass1() : ModulePass(ID) { func_id = 0;}
+  carver_pass() : ModulePass(ID) { func_id = 0;}
 
   bool runOnModule(Module &M) override;
 
@@ -141,9 +141,9 @@ class pass1 : public ModulePass {
 
 }  // namespace
 
-char pass1::ID = 0;
+char carver_pass::ID = 0;
 
-void pass1::find_global_var_uses() {
+void carver_pass::find_global_var_uses() {
   for (auto &F : Mod->functions()) {
     for (auto &BB : F.getBasicBlockList()) {
       for (auto &Instr : BB.getInstList()) {
@@ -179,7 +179,7 @@ void pass1::find_global_var_uses() {
   
 }
 
-void pass1::Insert_alloca_probe(BasicBlock& entry_block) {
+void carver_pass::Insert_alloca_probe(BasicBlock& entry_block) {
   std::vector<AllocaInst * > allocas;
   
   for (auto &IN : entry_block) {
@@ -211,7 +211,7 @@ void pass1::Insert_alloca_probe(BasicBlock& entry_block) {
   }
 }
 
-void pass1::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
+void carver_pass::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
   IRB->SetInsertPoint(IN.getNextNonDebugInstruction());
   
   if (callee_name == "malloc") {
@@ -281,7 +281,7 @@ void pass1::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
   return;
 }
 
-void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
+void carver_pass::Insert_main_probe(BasicBlock & entry_block, Function & F
   , global_range globals) {
 
   IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());  
@@ -372,7 +372,7 @@ void pass1::Insert_main_probe(BasicBlock & entry_block, Function & F
   return;
 }
 
-int pass1::insert_global_carve_probe(Function * F, BasicBlock * BB) {
+int carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
   BasicBlock * cur_block = BB;
   int num_inserted = 0;
@@ -399,7 +399,7 @@ int pass1::insert_global_carve_probe(Function * F, BasicBlock * BB) {
   return num_inserted;
 }
 
-BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
+BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
   , BasicBlock * BB) {
   Constant * name_constant = gen_new_string_constant(name);
   Type * val_type = val->getType();
@@ -531,7 +531,7 @@ BasicBlock * pass1::insert_carve_probe(Value * val, std::string name
   return BB;
 }
 
-void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
+void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type
   , std::string name) {
 
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
@@ -549,9 +549,6 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
 
   if (search == struct_carvers.end()) {
     struct_carvers.insert(struct_carver_name);
-
-    llvm::errs() << "Defining struct carver of " << struct_carver_name << " : " <<
-    SL->getMemberOffsets().size() << "\n";
 
     //Define struct carver
     Function * struct_carv_func = dyn_cast<Function>(struct_carver.getCallee());
@@ -594,7 +591,6 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
           iter2->dump();
           if (isa<DIDerivedType>(iter2)) {
             DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
-            llvm::errs() << "Field name : " << elem_DIT->getName().str() << "\n";
             dwarf::Tag elem_tag = elem_DIT->getTag();
             std::string elem_name = "";
             if (elem_tag == dwarf::Tag::DW_TAG_member) {
@@ -625,8 +621,6 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
       }
     }
     
-    llvm::errs() << "elem_names size : " << elem_names.size() << "\n";
-
     if (elem_names.size() == 0) {
       IRB->restoreIP(cur_ip);
       return;
@@ -655,7 +649,7 @@ void pass1::insert_struct_carve_probe(Value * struct_ptr, Type * type
   return;
 }
 
-bool pass1::hookInstrs(Module &M) {
+bool carver_pass::hookInstrs(Module &M) {
   LLVMContext &              C = M.getContext();
   const DataLayout & dataLayout = M.getDataLayout();
   Mod = &M;
@@ -692,7 +686,7 @@ bool pass1::hookInstrs(Module &M) {
     , VoidTy, Int8PtrTy);
   record_func_ptr = M.getOrInsertFunction(get_link_name("__record_func_ptr"),
     VoidTy, Int8PtrTy, Int8PtrTy);
-  argv_modifier = M.getOrInsertFunction(get_link_name("__argv_modifier")
+  argv_modifier = M.getOrInsertFunction(get_link_name("__carver_argv_modifier")
     , VoidTy, Int32PtrTy, Int8PtrPtrPtrTy);
   write_carved = M.getOrInsertFunction(get_link_name("__write_carved")
     , VoidTy, Int8PtrTy, Int32Ty);
@@ -821,9 +815,9 @@ bool pass1::hookInstrs(Module &M) {
   return true;
 }
 
-bool pass1::runOnModule(Module &M) {
+bool carver_pass::runOnModule(Module &M) {
 
-  DEBUG0("Running pass1\n");
+  DEBUG0("Running carver_pass\n");
 
   read_probe_list();
   hookInstrs(M);
@@ -844,11 +838,11 @@ bool pass1::runOnModule(Module &M) {
   return true;
 }
 
-void pass1::read_probe_list() {
+void carver_pass::read_probe_list() {
   std::string file_path = __FILE__;
   file_path = file_path.substr(0, file_path.rfind("/"));
   std::string probe_file_path
-    = file_path.substr(0, file_path.rfind("/")) + "/lib/probe_names.txt";
+    = file_path.substr(0, file_path.rfind("/")) + "/lib/carver_probe_names.txt";
   
   std::ifstream list_file(probe_file_path);
 
@@ -860,12 +854,12 @@ void pass1::read_probe_list() {
   }
 
   if (probe_link_names.size() == 0) {
-    DEBUG0("Can't find lib/probe_names.txt file!\n");
+    DEBUG0("Can't find lib/carver_probe_names.txt file!\n");
     std::abort();
   }
 }
 
-std::string pass1::get_link_name(std::string base_name) {
+std::string carver_pass::get_link_name(std::string base_name) {
   auto search = probe_link_names.find(base_name);
   if (search == probe_link_names.end()) {
     DEBUG0("Can't find probe name : " << base_name << "! Abort.\n");
@@ -875,7 +869,7 @@ std::string pass1::get_link_name(std::string base_name) {
   return search->second;
 }
 
-Constant * pass1::gen_new_string_constant(std::string name) {
+Constant * carver_pass::gen_new_string_constant(std::string name) {
 
   auto search = new_string_globals.find(name);
 
@@ -888,17 +882,21 @@ Constant * pass1::gen_new_string_constant(std::string name) {
   return search->second;
 }
 
-void pass1::get_instrument_func_set() {
+void carver_pass::get_instrument_func_set() {
+  std::ofstream outfile("funcs.txt");
+
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();
     if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
+    if (func_name == "__cxx_global_var_init") { continue; }
     
     for (auto iter : DbgFinder.subprograms()) {
-      if (iter->getLinkageName().str() == func_name) {
+      if ((iter->getLinkageName().str() == func_name) || (iter->getName().str() == func_name)) {
         std::string filename = iter->getFilename().str();
-        llvm::errs() << func_name << " : " << filename << "\n";
+        llvm::errs() << "filename : " << filename << "\n";
         if (filename.find("/usr/bin/") == std::string::npos) {
+          outfile << func_name << "\n";
           instrument_func_set.insert(func_name);
         }
         break;
@@ -906,10 +904,15 @@ void pass1::get_instrument_func_set() {
     }
   }
 
-  instrument_func_set.insert("main");
+  if (instrument_func_set.find("main") == instrument_func_set.end()) {
+    instrument_func_set.insert("main");
+    outfile << "main\n";
+  }
+
+  outfile.close();
 }
 
-std::string pass1::find_param_name(Value * param, BasicBlock * BB) {
+std::string carver_pass::find_param_name(Value * param, BasicBlock * BB) {
 
   Instruction * ptr = NULL;
 
@@ -933,21 +936,21 @@ std::string pass1::find_param_name(Value * param, BasicBlock * BB) {
   return "";
 }
 
-static void registerpass1Pass(const PassManagerBuilder &,
+static void registercarver_passPass(const PassManagerBuilder &,
                                            legacy::PassManagerBase &PM) {
 
-  auto p = new pass1();
+  auto p = new carver_pass();
   PM.add(p);
 
 }
 
-static RegisterStandardPasses Registerpass1Pass(
-    PassManagerBuilder::EP_OptimizerLast, registerpass1Pass);
+static RegisterStandardPasses Registercarver_passPass(
+    PassManagerBuilder::EP_OptimizerLast, registercarver_passPass);
 
-static RegisterStandardPasses Registerpass1Pass0(
-    PassManagerBuilder::EP_EnabledOnOptLevel0, registerpass1Pass);
+static RegisterStandardPasses Registercarver_passPass0(
+    PassManagerBuilder::EP_EnabledOnOptLevel0, registercarver_passPass);
 
-static RegisterStandardPasses Registerpass1PassLTO(
+static RegisterStandardPasses Registercarver_passPassLTO(
     PassManagerBuilder::EP_FullLinkTimeOptimizationLast,
-    registerpass1Pass);
+    registercarver_passPass);
 

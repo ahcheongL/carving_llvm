@@ -1,7 +1,7 @@
 __mem_allocated_probe
 __write_carved
 __remove_mem_allocated_probe
-__argv_modifier
+__carver_argv_modifier
 __carv_FINI
 Carv_char
 Carv_short

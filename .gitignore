@@ -16,7 +16,10 @@ a.out
 *.carv
 *.ll
 
-lib/probe_names.txt
+lib/carver_probe_names.txt
+lib/driver_probe_names.txt
 
 **/tmp
 **/tmp*
+
+funcs.txt

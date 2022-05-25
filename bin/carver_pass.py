@@ -33,10 +33,10 @@ if b"command not found" in out.stderr:
 
 ld_path = out.stdout.decode()[:-1] + "/ld.lld"
 
-#get pass1.so filepath
+#get carver_pass.so filepath
 source_path = Path(__file__).resolve()
 source_dir = str(source_path.parent.parent)
-so_path = source_dir + "/lib/pass1.so"
+so_path = source_dir + "/lib/carver_pass.so"
 
 outname = ".".join(inputbc.split(".")[:-1]) + ".carv"
 

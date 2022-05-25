@@ -9,7 +9,7 @@ if not os.path.isfile("src/carver.o"):
 
 probe_lists = []
 
-with open("src/probes.txt", "r") as f:
+with open("src/carver_probes.txt", "r") as f:
   for line in f:
     probe_lists.append(line.strip())
 
@@ -22,6 +22,6 @@ for line in res.decode().split("\n"):
     if p in line:
       linking_names[p] = line.split(" ")[-1]
 
-with open("lib/probe_names.txt", "w") as f:
+with open("lib/carver_probe_names.txt", "w") as f:
   for probe in linking_names:
     f.write(probe + " " + linking_names[probe] + "\n")

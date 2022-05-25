@@ -1,4 +1,3 @@
-#include<iostream>
 #include<cstdlib>
 
 class Shape {
@@ -28,7 +27,7 @@ int foo (Rectangle * rect) {
 int main(int argc, char * argv[]) {
   Rectangle Rect;
 
-  Rect.setWidth(40);
+  //Rect.setWidth(40);
 
   int width1 = foo (&Rect);
   Rectangle * rect2 = new Rectangle();
