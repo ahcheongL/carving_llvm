@@ -1,1 +1,8 @@
 __driver_inputf_reader
+Replay_char
+Replay_short
+Replay_int
+Replay_long
+Replay_longlong
+Replay_float
+Replay_double

@@ -63,7 +63,7 @@ class driver_pass : public ModulePass {
   std::string target_name;
   Function * target_func;
   Function * main_func;
-  void get_target_func();
+  bool get_target_func();
 
   std::map<std::string, std::string> probe_link_names;
   void read_probe_list();
@@ -73,6 +73,8 @@ class driver_pass : public ModulePass {
 
   std::map<std::string, Constant *> new_string_globals;
   Constant * gen_new_string_constant(std::string name);
+
+  std::pair<BasicBlock *, Value *> insert_replay_probe(Type *, BasicBlock *);
   
   DebugInfoFinder DbgFinder;
   Module * Mod;
@@ -102,6 +104,18 @@ class driver_pass : public ModulePass {
   PointerType *DoublePtrTy;
   
   FunctionCallee __inputf_reader;
+
+  FunctionCallee replay_char_func;
+  FunctionCallee replay_short_func;
+  FunctionCallee replay_int_func;
+  FunctionCallee replay_long_func;
+  FunctionCallee replay_longlong_func;
+  FunctionCallee replay_float_func;
+  FunctionCallee replay_double_func;
+  FunctionCallee replay_ptr_func;
+  FunctionCallee replay_ptr_update;
+  FunctionCallee replay_ptr_done;
+  FunctionCallee replay_func_ptr;
 
 
   int func_id;
@@ -145,7 +159,26 @@ bool driver_pass::hookInstrs(Module &M) {
   __inputf_reader = M.getOrInsertFunction(get_link_name("__driver_inputf_reader"),
     VoidTy, Int8PtrPtrTy);
 
-  get_target_func();
+  replay_char_func = M.getOrInsertFunction(get_link_name("Replay_char")
+    , VoidTy);
+  replay_short_func = M.getOrInsertFunction(get_link_name("Replay_short")
+    , VoidTy);
+  replay_int_func = M.getOrInsertFunction(get_link_name("Replay_int")
+    , Int32Ty);
+  replay_long_func = M.getOrInsertFunction(get_link_name("Replay_long")
+    , VoidTy);
+  replay_longlong_func = M.getOrInsertFunction(get_link_name("Replay_longlong")
+    , VoidTy);
+  replay_float_func = M.getOrInsertFunction(get_link_name("Replay_float")
+    , VoidTy);
+  replay_double_func = M.getOrInsertFunction(get_link_name("Replay_double")
+    , VoidTy);
+
+  bool res = get_target_func();
+
+  if (res == false) {
+    return true;
+  }
 
   DEBUG0("Iterating functions...\n");
 
@@ -160,11 +193,12 @@ bool driver_pass::hookInstrs(Module &M) {
       F.deleteBody();
       //TODO : make stub
     }
-
-    DEBUG0("done in " << func_name << "\n");
   }
 
-  IRB->SetInsertPoint(main_func->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
+  //TODO
+  BasicBlock * cur_block = &(main_func->getEntryBlock());
+
+  IRB->SetInsertPoint(cur_block->getFirstNonPHIOrDbgOrLifetime());
   Value * argv = main_func->getArg(1);
   std::vector<Value *> reader_args {argv};
   IRB->CreateCall(__inputf_reader, reader_args);
@@ -174,7 +208,39 @@ bool driver_pass::hookInstrs(Module &M) {
     
   } else {
     std::vector<Value *> target_args;
-    IRB->CreateCall(target_func->getFunctionType(), target_func, target_args);
+    for (auto &arg : target_func->args()) {
+      Type * arg_type = arg.getType();
+      auto replay_res = insert_replay_probe(arg_type, cur_block);
+      cur_block = replay_res.first;
+      target_args.push_back(replay_res.second);
+    }
+
+    target_func->dump();
+    Instruction * target_call = IRB->CreateCall(
+      target_func->getFunctionType(), target_func, target_args);
+    target_call->setDebugLoc(DebugLoc());
+    target_call->dump();
+
+    //Return
+    cur_block->splitBasicBlock(target_call->getNextNonDebugInstruction());
+    IRB->SetInsertPoint(target_call->getNextNonDebugInstruction());
+
+    Instruction * new_main_term = IRB->CreateRet(ConstantInt::get(Int32Ty, 0));
+    new_main_term->removeFromParent();
+    Instruction * old_term = cur_block->getTerminator();
+    ReplaceInstWithInst(old_term, new_main_term);
+
+    //remove other BB
+    std::vector<BasicBlock *> BBs;
+    for (auto &BB: main_func->getBasicBlockList()) {
+      if (&BB != cur_block) {
+        BBs.push_back(&BB);
+      }
+    }
+
+    for (auto BB: BBs) {
+      BB->eraseFromParent();
+    }
   }
 
   char * tmp = getenv("DUMP_IR");
@@ -184,6 +250,23 @@ bool driver_pass::hookInstrs(Module &M) {
 
   delete IRB;
   return true;
+}
+
+std::pair<BasicBlock *, Value *>
+  driver_pass::insert_replay_probe (Type * typeptr, BasicBlock * BB) {
+  std::vector<Value *> probe_args;
+  BasicBlock * cur_block = BB;
+  Value * result = NULL;
+
+  if (typeptr == Int8Ty) {
+    result = IRB->CreateCall(replay_char_func, probe_args);
+  } else if (typeptr == Int16Ty) {
+    result = IRB->CreateCall(replay_short_func, probe_args);
+  } else if (typeptr == Int32Ty) {
+    result = IRB->CreateCall(replay_int_func, probe_args);
+  }
+
+  return std::make_pair(cur_block , result);
 }
 
 bool driver_pass::runOnModule(Module &M) {
@@ -277,7 +360,7 @@ std::string driver_pass::find_param_name(Value * param, BasicBlock * BB) {
   return "";
 }
 
-void driver_pass::get_target_func() {
+bool driver_pass::get_target_func() {
   std::ifstream funcnames("funcs.txt");
   int func_idx = 0;
   char * func_idx_env = getenv("FUNCIDX");
@@ -290,6 +373,7 @@ void driver_pass::get_target_func() {
   while(std::getline(funcnames, line)) {
     if (line_idx == func_idx) {
       target_name = line;
+      llvm::outs() << "Target name : " << target_name << "\n";
       break;
     }
     line_idx ++;
@@ -305,6 +389,14 @@ void driver_pass::get_target_func() {
   }
 
   funcnames.close();
+
+  if (target_func == NULL) {
+    llvm::errs() << "Can't find target\n";
+    llvm::errs() << "func_idx_env : " << func_idx_env << "\n";
+    return false;
+  }
+
+  return true;
 }
 
 static void registerdriver_passPass(const PassManagerBuilder &,

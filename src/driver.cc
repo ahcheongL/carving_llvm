@@ -75,3 +75,90 @@ void __driver_inputf_reader(char ** argv) {
   
   return;
 }
+
+static int cur_input_idx = 0;
+
+char Replay_char() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::CHAR) { return 0; }
+  VAR<char> * cur_input = (VAR<char> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+short Replay_short() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::SHORT) { return 0; }
+  VAR<short> * cur_input = (VAR<short> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+int Replay_int() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::INT) { return 0; }
+  VAR<int> * cur_input = (VAR<int> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+long Replay_long() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::LONG) { return 0; }
+  VAR<long> * cur_input = (VAR<long> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+long long Replay_longlong() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::LONGLONG) { return 0; }
+  VAR<long long> * cur_input = (VAR<long long> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+float Replay_float() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::FLOAT) { return 0; }
+  VAR<float> * cur_input = (VAR<float> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+double Replay_double() {
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::DOUBLE) { return 0; }
+  VAR<double> * cur_input = (VAR<double> *) cur_input_tmp;
+  return cur_input->input;
+}
+

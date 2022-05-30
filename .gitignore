@@ -23,3 +23,5 @@ lib/driver_probe_names.txt
 **/tmp*
 
 funcs.txt
+
+*.driver

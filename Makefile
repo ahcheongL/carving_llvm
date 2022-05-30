@@ -13,7 +13,7 @@ endif
 
 CC=clang
 CXX=clang++
-CFLAGS=`llvm-config --cflags` -fPIC
+CFLAGS=`llvm-config --cflags` -fPIC -ggdb -O0
 CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0
 AR=ar
 
@@ -52,4 +52,7 @@ clean:
 	rm lib/carver.a
 	rm src/carver.o
 	rm lib/carver_probe_names.txt
+	rm lib/driver_pass.so
+	rm lib/driver.a
+	rm src/driver.o
 	rm lib/driver_probe_names.txt
