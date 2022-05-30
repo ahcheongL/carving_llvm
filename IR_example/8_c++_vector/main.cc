@@ -3,11 +3,20 @@
 #include<cstdlib>
 
 int foo(std::vector<int> intvec) {
-  return intvec.size();
+  return intvec.capacity();
 }
 
 int main(int argc, char * argv[]) {
 
-  std::vector<int> vec1 {0, 2, 3, 4, 5};  
-  return foo(vec1);
+  //std::vector<int> vec1 {0, 2, 3, 4, 5};  
+  std::vector<int> vec1;
+  vec1.push_back(12);
+  vec1.push_back(13);
+  foo(vec1);
+
+  vec1.erase(vec1.begin());
+
+  foo(vec1);
+
+  return 0;
 }

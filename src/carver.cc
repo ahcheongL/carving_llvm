@@ -81,7 +81,7 @@ int Carv_pointer(void * ptr, char * name) {
     PTR * carved_ptr = carved_ptrs[index];
     char * carved_addr = (char *) carved_ptr->addr;
     int carved_ptr_size = carved_ptr->alloc_size;
-    if ((carved_addr <= ptr) && (ptr < (carved_addr + carved_ptr_size))) {
+    if ((carved_addr <= ptr) && (ptr <= (carved_addr + carved_ptr_size))) {
       int offset = ((char *) ptr) - carved_addr;
       VAR<int> * inputv = new VAR<int>(
         index, updated_name, offset, INPUT_TYPE::POINTER);
@@ -99,7 +99,7 @@ int Carv_pointer(void * ptr, char * name) {
     auto alloced_ptr = alloced_ptrs[index];
     char * alloced_addr = (char *) alloced_ptr->key;
     int alloced_size = alloced_ptr->elem;
-    if ((alloced_addr <= ptr) && (ptr < (alloced_addr + alloced_size))) {
+    if ((alloced_addr <= ptr) && (ptr <= (alloced_addr + alloced_size))) {
       int size = alloced_addr + alloced_size - ((char *) ptr);
       int new_carved_ptr_index = carved_ptrs.size();
       carved_ptrs.push_back(PTR(ptr, size));

@@ -727,6 +727,18 @@ bool carver_pass::hookInstrs(Module &M) {
 
     std::string func_name = F.getName().str();
     if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
+      //Just perform memory tracking
+      for (auto &BB : F) {
+        for (auto &IN : BB) {
+          CallInst * call_instr;
+          if ((call_instr = dyn_cast<CallInst>(&IN))) {
+            Function * callee = call_instr->getCalledFunction();
+            if (callee == NULL) { continue; }
+            std::string callee_name = callee->getName().str();
+            Insert_memfunc_probe(IN, callee_name);
+          }
+        }
+      }
       continue;
     }
 
@@ -738,7 +750,11 @@ bool carver_pass::hookInstrs(Module &M) {
     //Main argc argv handling
     if (func_name == "main") {
       Insert_main_probe(entry_block, F, M.global_values());
+    } else if (F.isVarArg()) {
+      //TODO
     } else {
+
+      //Insert input carving probes
       int param_idx = 0;
       IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
 
@@ -890,8 +906,12 @@ void carver_pass::get_instrument_func_set() {
     std::string func_name = F.getName().str();
     if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
     if (func_name == "__cxx_global_var_init") { continue; }
+
+    //TODO
+    if (F.isVarArg()) { continue; }
     
     for (auto iter : DbgFinder.subprograms()) {
+
       if ((iter->getLinkageName().str() == func_name) || (iter->getName().str() == func_name)) {
         std::string filename = iter->getFilename().str();
         llvm::errs() << "filename : " << filename << "\n";

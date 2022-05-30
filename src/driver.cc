@@ -19,6 +19,7 @@ void __driver_inputf_reader(char ** argv) {
         is_carved_ptr = true;
       } else {
         char * num_bytes_str = strchr(line, ':') + 1;
+        num_bytes_str = strchr(num_bytes_str, ':') + 1;
         int num_bytes = atoi(num_bytes_str);
         carved_ptrs.push_back(PTR(malloc(num_bytes), num_bytes));
       }
@@ -162,3 +163,31 @@ double Replay_double() {
   return cur_input->input;
 }
 
+static int cur_ptr_alloc_size = 0;
+
+void * Replay_pointer() {
+  cur_ptr_alloc_size = 0;
+
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::POINTER) { return 0; }
+  VAR<int> * cur_input = (VAR<int> *) cur_input_tmp;
+  
+  int carved_index = cur_input->input;
+  
+  if (carved_index >= carved_ptrs.size()) { return 0; }
+
+  char * ret_ptr = ((char *) carved_ptrs[carved_index]->addr)
+    + cur_input->pointer_offset;
+  cur_ptr_alloc_size
+    = carved_ptrs[carved_index]->alloc_size - cur_input->pointer_offset;
+
+  return ret_ptr;
+}
+
+int Replay_ptr_alloc_size() {
+  return cur_ptr_alloc_size;
+}

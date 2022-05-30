@@ -6,3 +6,5 @@ Replay_long
 Replay_longlong
 Replay_float
 Replay_double
+Replay_pointer
+Replay_ptr_alloc_size

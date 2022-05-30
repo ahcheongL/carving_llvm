@@ -1,4 +1,5 @@
 #include<cstdlib>
+#include<stdio.h>
 
 class Shape {
    public:
@@ -16,12 +17,16 @@ class Shape {
 class Rectangle: public Shape {
 public:
    Rectangle() {area = 423;}
+   void dump() {
+      fprintf(stderr, "Rectangle: Shape.width : %d, area : %d\n", width, area);
+   }
 protected:
    int area;
 };
 
 int foo (Rectangle * rect) {
-  return rect->getWidth();
+   rect->dump();
+   return 0;
 }
 
 int main(int argc, char * argv[]) {
