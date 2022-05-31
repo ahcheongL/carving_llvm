@@ -122,6 +122,8 @@ class driver_pass : public ModulePass {
   FunctionCallee replay_ptr_done;
   FunctionCallee replay_func_ptr;
 
+  FunctionCallee record_func_ptr;
+
 
   int func_id;
 };
@@ -183,6 +185,12 @@ bool driver_pass::hookInstrs(Module &M) {
   replay_ptr_alloc_size = M.getOrInsertFunction(get_link_name("Replay_ptr_alloc_size")
     , Int32Ty);
 
+  replay_func_ptr = M.getOrInsertFunction(get_link_name("Replay_func_ptr")
+    , Int8PtrTy);
+
+  record_func_ptr = M.getOrInsertFunction(get_link_name("__record_func_ptr"),
+    VoidTy, Int8PtrTy, Int8PtrTy);
+
   bool res = get_target_func();
 
   if (res == false) {
@@ -204,11 +212,21 @@ bool driver_pass::hookInstrs(Module &M) {
     }
   }
 
-  //TODO
   BasicBlock * cur_block = &(main_func->getEntryBlock());
   replay_BBs.insert(cur_block);
 
   IRB->SetInsertPoint(cur_block->getFirstNonPHIOrDbgOrLifetime());
+
+  //Record func ptr
+  for (auto &Func : M.functions()) {
+    if (Func.size() == 0) { continue; }
+    Constant * func_name_const = gen_new_string_constant(Func.getName().str());
+    Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
+      , (Value *) &Func, Int8PtrTy);
+    std::vector<Value *> probe_args {cast_val, func_name_const};
+    IRB->CreateCall(record_func_ptr, probe_args);
+  }
+
   Value * argv = main_func->getArg(1);
   std::vector<Value *> reader_args {argv};
   IRB->CreateCall(__inputf_reader, reader_args);
@@ -282,13 +300,6 @@ std::pair<BasicBlock *, Value *>
   } else if (typeptr == DoubleTy) {
     result = IRB->CreateCall(replay_double_func, probe_args);
   } else if (typeptr->isPointerTy()) {
-
-    result = IRB->CreateCall(replay_ptr_func, probe_args);
-
-    if (typeptr != Int8PtrTy) {
-      result = IRB->CreatePointerCast(result, typeptr);
-    }
-
     PointerType * ptrtype = dyn_cast<PointerType>(typeptr);
 
     if (ptrtype->isOpaque() || ptrtype->isOpaquePointerTy()) {
@@ -298,7 +309,8 @@ std::pair<BasicBlock *, Value *>
     Type * pointee_type = ptrtype->getPointerElementType();
 
     if (pointee_type->isFunctionTy()) {
-      //tODO
+      result = IRB->CreateCall(replay_func_ptr, probe_args);
+      result = IRB->CreateCast(Instruction::CastOps::BitCast, result, typeptr);
       return std::make_pair(cur_block , result);
     }
 
@@ -309,6 +321,12 @@ std::pair<BasicBlock *, Value *>
 
     unsigned pointee_size = DL->getTypeAllocSize(pointee_type);
     if (pointee_size == 0) { return std::make_pair(cur_block , result); }
+
+    result = IRB->CreateCall(replay_ptr_func, probe_args);
+
+    if (typeptr != Int8PtrTy) {
+      result = IRB->CreatePointerCast(result, typeptr);
+    }
 
     //get 0 initialized index
     Instruction * index_alloc = IRB->CreateAlloca(Int32Ty);

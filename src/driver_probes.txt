@@ -8,3 +8,5 @@ Replay_float
 Replay_double
 Replay_pointer
 Replay_ptr_alloc_size
+__record_func_ptr
+Replay_func_ptr

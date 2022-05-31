@@ -3,6 +3,9 @@
 static vector<IVAR *> inputs;
 static vector<PTR> carved_ptrs;
 
+static vector<void *> func_ptrs;
+static vector<char *> funcnames;
+
 void __driver_inputf_reader(char ** argv) {
   char * inputfilename = argv[1];
   FILE * fp = fopen(inputfilename, "r");
@@ -62,9 +65,22 @@ void __driver_inputf_reader(char ** argv) {
         VAR<void *> * inputv = new VAR<void *> (NULL, line, INPUT_TYPE::NULLPTR);
         inputs.push_back((IVAR *) inputv);
       } else if (!strcmp(type, "FUNCPTR")) {
-        //TODO
-        VAR<char *> * inputv = new VAR<char *> (NULL, line, INPUT_TYPE::FUNCPTR);
-        inputs.push_back((IVAR *) inputv);
+        int num_func = func_ptrs.size();
+        int idx;
+        size_t value_len = strlen(value);
+        
+        for (idx = 0; idx < num_func; idx++) {
+          if (strncmp(value, *(funcnames[idx]), value_len) == 0) {
+            VAR<void *> * inputv = new VAR<void *> (*(func_ptrs[idx]), line, INPUT_TYPE::FUNCPTR);
+            inputs.push_back((IVAR *) inputv);
+            break;
+          }
+        }
+
+        if (idx == num_func) {
+          VAR<void *> * inputv = new VAR<void *> (NULL, line, INPUT_TYPE::FUNCPTR);
+          inputs.push_back((IVAR *) inputv);
+        }        
       } else if (!strcmp(type, "PTR")) {
         VAR<int> * inputv = new VAR<int> (atoi(value), line, atoi(offset)
           , INPUT_TYPE::POINTER);
@@ -152,7 +168,6 @@ float Replay_float() {
 }
 
 double Replay_double() {
-
   if (cur_input_idx >= inputs.size()) {
     return 0;
   }
@@ -190,4 +205,20 @@ void * Replay_pointer() {
 
 int Replay_ptr_alloc_size() {
   return cur_ptr_alloc_size;
+}
+
+void * Replay_func_ptr() {
+  if (cur_input_idx >= inputs.size()) {
+    return 0;
+  }
+
+  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
+  if (cur_input_tmp->type != INPUT_TYPE::FUNCPTR) { return 0; }
+  VAR<void *> * cur_input = (VAR<void *> *) cur_input_tmp;
+  return cur_input->input;
+}
+
+void __record_func_ptr(void * ptr, char * name) {
+  func_ptrs.push_back(ptr);
+  funcnames.push_back(name);
 }
