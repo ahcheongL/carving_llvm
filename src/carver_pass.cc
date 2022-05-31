@@ -224,46 +224,48 @@ void carver_pass::Insert_memfunc_probe(Instruction& IN, std::string callee_name)
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "realloc") {
     //Track realloc
-    std::vector<Value *> args {&IN, IN.getOperand(1)};
-    IRB->CreateCall(mem_allocated_probe, args);
+    std::vector<Value *> args0 {IN.getOperand(0)};
+    IRB->CreateCall(remove_probe, args0);
+    std::vector<Value *> args1 {&IN, IN.getOperand(1)};
+    IRB->CreateCall(mem_allocated_probe, args1);
   } else if (callee_name == "free") {
     //Track free
     std::vector<Value *> args {IN.getOperand(0)};
     IRB->CreateCall(remove_probe, args);
   } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
     //Get some hint from memory related functions
-    Value * size = IN.getOperand(2);
-    if (size->getType() == Int64Ty) {
-      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    }
-    std::vector<Value *> args {IN.getOperand(0), size};
-    IRB->CreateCall(mem_allocated_probe, args);
+    // Value * size = IN.getOperand(2);
+    // if (size->getType() == Int64Ty) {
+    //   size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    // }
+    // std::vector<Value *> args {IN.getOperand(0), size};
+    // IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "llvm.memmove.p0i8.p0i8.i64") {
-    Value * size = IN.getOperand(2);
-    if (size->getType() == Int64Ty) {
-      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    }
-    std::vector<Value *> args {IN.getOperand(0), size};
-    IRB->CreateCall(mem_allocated_probe, args);
+    // Value * size = IN.getOperand(2);
+    // if (size->getType() == Int64Ty) {
+    //   size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    // }
+    // std::vector<Value *> args {IN.getOperand(0), size};
+    // IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strlen") {
-    Value * add_one = IRB->CreateAdd(&IN, ConstantInt::get(Int64Ty, 1));
-    Value * size = IRB->CreateCast(Instruction::CastOps::Trunc, add_one, Int32Ty);
-    std::vector<Value *> args {IN.getOperand(0), size};
-    IRB->CreateCall(mem_allocated_probe, args);
+    // Value * add_one = IRB->CreateAdd(&IN, ConstantInt::get(Int64Ty, 1));
+    // Value * size = IRB->CreateCast(Instruction::CastOps::Trunc, add_one, Int32Ty);
+    // std::vector<Value *> args {IN.getOperand(0), size};
+    // IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strncpy") {
-    Value * size = IN.getOperand(2);
-    if (size->getType() == Int64Ty) {
-      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    }
-    std::vector<Value *> args {IN.getOperand(0), size};
-    IRB->CreateCall(mem_allocated_probe, args);
+    // Value * size = IN.getOperand(2);
+    // if (size->getType() == Int64Ty) {
+    //   size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    // }
+    // std::vector<Value *> args {IN.getOperand(0), size};
+    // IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "strcpy") {
-    std::vector<Value *> strlen_args;
-    strlen_args.push_back(IN.getOperand(0));
-    Value * strlen_result = IRB->CreateCall(strlen_callee, strlen_args);
-    Value * add_one = IRB->CreateAdd(strlen_result, ConstantInt::get(Int64Ty, 1));
-    std::vector<Value *> args {IN.getOperand(0), add_one};
-    IRB->CreateCall(mem_allocated_probe, args);
+    // std::vector<Value *> strlen_args;
+    // strlen_args.push_back(IN.getOperand(0));
+    // Value * strlen_result = IRB->CreateCall(strlen_callee, strlen_args);
+    // Value * add_one = IRB->CreateAdd(strlen_result, ConstantInt::get(Int64Ty, 1));
+    // std::vector<Value *> args {IN.getOperand(0), add_one};
+    // IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "_Znwm") {
     //new operator
     Value * size = IN.getOperand(0);

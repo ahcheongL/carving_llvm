@@ -1,0 +1,166 @@
+allocated : 0x7fffffffd7a8:8
+allocated : 0x7fffffffdadf:12
+allocated : 0x305d50:8
+allocated : 0x3046c0:8
+allocated : 0x304770:8
+allocated : 0x305d90:8
+allocated : 0x305db0:8
+allocated : 0x305df0:8
+allocated : 0x305f50:8
+allocated : 0x306040:8
+allocated : 0x3060b0:8
+allocated : 0x306120:8
+allocated : 0x306150:8
+allocated : 0x306190:8
+allocated : 0x3061b0:8
+allocated : 0x3061e0:8
+allocated : 0x306200:8
+allocated : 0x306230:8
+allocated : 0x306240:8
+allocated : 0x306270:8
+allocated : 0x306280:8
+allocated : 0x3062e0:8
+allocated : 0x3062f0:8
+allocated : 0x306320:8
+allocated : 0x306330:8
+allocated : 0x306370:8
+allocated : 0x306390:8
+allocated : 0x3063c0:8
+allocated : 0x3063f0:8
+allocated : 0x306400:8
+allocated : 0x3064a0:8
+allocated : 0x3064b0:8
+allocated : 0x306500:8
+allocated : 0x306510:8
+allocated : 0x3066c0:8
+allocated : 0x3066f0:8
+allocated : 0x306740:8
+allocated : 0x306830:8
+allocated : 0x306870:8
+allocated : 0x3068c0:8
+allocated : 0x306900:8
+allocated : 0x306910:8
+allocated : 0x306940:8
+allocated : 0x306960:8
+allocated : 0x3069a0:8
+allocated : 0x306a00:8
+allocated : 0x306a10:8
+allocated : 0x306a30:8
+allocated : 0x306a70:8
+allocated : 0x306a90:8
+allocated : 0x306ac0:8
+allocated : 0x306b30:8
+allocated : 0x306b70:8
+allocated : 0x306bd0:8
+allocated : 0x306c50:8
+allocated : 0x306c60:8
+allocated : 0x306cc0:8
+allocated : 0x306cd0:8
+allocated : 0x306d00:8
+allocated : 0x306d10:8
+allocated : 0x306d30:8
+allocated : 0x306d60:8
+allocated : 0x306dc0:8
+allocated : 0x306de0:8
+allocated : 0x306e40:8
+allocated : 0x306e70:8
+allocated : 0x306ea0:8
+allocated : 0x306ed0:8
+allocated : 0x306f00:8
+allocated : 0x306f10:8
+allocated : 0x306f40:8
+allocated : 0x306f90:8
+allocated : 0x306ff0:8
+allocated : 0x3070e0:8
+allocated : 0x307130:8
+allocated : 0x307180:8
+allocated : 0x3071a0:8
+allocated : 0x3071c0:8
+allocated : 0x3071d0:8
+allocated : 0x3071e0:8
+allocated : 0x307200:8
+allocated : 0x3072e0:8
+allocated : 0x307320:8
+allocated : 0x307360:8
+allocated : 0x307390:8
+allocated : 0x3073e0:8
+allocated : 0x307470:8
+allocated : 0x307530:8
+allocated : 0x307560:8
+allocated : 0x3075c0:8
+allocated : 0x3075f0:8
+allocated : 0x307610:8
+allocated : 0x305d80:8
+allocated : 0x305af0:8
+allocated : 0x305b00:8
+allocated : 0x305b10:8
+allocated : 0x305b20:8
+allocated : 0x305d20:8
+allocated : 0xc45bc0:1
+allocated : 0x30d0d8:1
+allocated : 0x22fc00:26
+allocated : 0x22fc40:7
+allocated : 0x22fc60:37
+allocated : 0x22fcc0:45
+allocated : 0x22fd20:44
+allocated : 0x22fd80:37
+allocated : 0x22fde0:37
+allocated : 0x22fe40:31
+new ptr input : argv:0x7fffffffd7a8 : 8
+new ptr input : argv[0]:0x7fffffffdadf : 12
+allocated : 0x7fffffffd590:4
+allocated : 0x7fffffffd580:4
+allocated : 0x7fffffffd570:8
+allocated : 0x7fffffffd550:24
+allocated : 0x7fffffffd540:8
+allocated : 0x7fffffffd530:8
+allocated : 0x7fffffffd520:4
+allocated : 0x7fffffffd510:8
+allocated : 0x7fffffffd4f0:24
+allocated : 0x7fffffffd4e0:8
+allocated : 0x7fffffffd4d0:8
+allocated : 0x7fffffffd4c0:8
+allocated : 0x7fffffffd4a0:24
+new ptr input : this:0x7fffffffd540 : 8
+allocated : 0x7fffffffd420:8
+allocated : 0x7fffffffd410:4
+allocated : 0x7fffffffd400:1
+allocated : 0x602000000370:8
+allocate update : 0x602000000370:8
+new ptr input : this:0x7fffffffd510 : 8
+allocated : 0x7fffffffd420:8
+allocated : 0x7fffffffd410:4
+allocated : 0x7fffffffd400:1
+allocated : 0x6020000003d0:16
+allocated : 0x6020000003d8:8
+allocate update : 0x6020000003d0:8
+allocated : 0x6020000003f0:16
+allocated : 0x7fffffffd3f8:8
+allocated : 0x7fffffffd3f0:8
+allocated : 0x7fffffffd3b8:8
+allocated : 0x7fffffffd3b0:8
+allocate update : 0x6020000003f0:8
+allocated : 0x6020000003f8:8
+new ptr input : parm_0:0x7fffffffd4f0 : 24
+new ptr input : parm_0[0].field0.field0.field0.field0:0x6020000003f0 : 8
+allocated : 0x7fffffffd400:8
+allocate update : 0x7fffffffd3b0:8
+allocated : 0x7fffffffd378:8
+allocated : 0x7fffffffd3a0:8
+allocate update : 0x7fffffffd378:8
+allocated : 0x7fffffffd398:8
+allocated : 0x7fffffffd358:8
+allocated : 0x7fffffffd350:8
+allocated : 0x7fffffffd348:8
+allocated : 0x7fffffffd340:8
+allocate update : 0x6020000003d0:8
+allocated : 0x7fffffffd300:8
+allocated : 0x7fffffffd438:8
+allocated : 0x602000000450:8
+allocate update : 0x7fffffffd3f8:8
+allocate update : 0x7fffffffd3f0:8
+allocate update : 0x7fffffffd3b8:8
+allocate update : 0x7fffffffd3b0:8
+allocate update : 0x602000000450:8
+new ptr input : parm_0:0x7fffffffd4a0 : 24
+new ptr input : parm_0[0].field0.field0.field0.field0:0x602000000450 : 8

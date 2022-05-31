@@ -76,20 +76,32 @@ int Carv_pointer(void * ptr, char * name) {
 
   //Find already carved ptr
   int index = 0;
+  int end_point_idx = -1;
   int num_carved_ptrs = carved_ptrs.size();
   while (index < num_carved_ptrs) {
     PTR * carved_ptr = carved_ptrs[index];
     char * carved_addr = (char *) carved_ptr->addr;
     int carved_ptr_size = carved_ptr->alloc_size;
-    if ((carved_addr <= ptr) && (ptr <= (carved_addr + carved_ptr_size))) {
+    char * carved_addr_end = carved_addr + carved_ptr_size;
+    if ((carved_addr <= ptr) && (ptr < carved_addr_end)) {
       int offset = ((char *) ptr) - carved_addr;
       VAR<int> * inputv = new VAR<int>(
         index, updated_name, offset, INPUT_TYPE::POINTER);
       inputs.push_back((IVAR *) inputv);
       //Won't carve again.
       return 0;
+    } else if (ptr == carved_addr_end) {
+      end_point_idx = index;
     }
     index ++;
+  }
+
+  if (end_point_idx != -1) {
+    VAR<int> * inputv = new VAR<int>(
+        end_point_idx, updated_name
+        , carved_ptrs[end_point_idx]->alloc_size, INPUT_TYPE::POINTER);
+    inputs.push_back((IVAR *) inputv);
+    return 0;
   }
 
   //Check whether it is alloced area
@@ -99,12 +111,12 @@ int Carv_pointer(void * ptr, char * name) {
     auto alloced_ptr = alloced_ptrs[index];
     char * alloced_addr = (char *) alloced_ptr->key;
     int alloced_size = alloced_ptr->elem;
-    if ((alloced_addr <= ptr) && (ptr <= (alloced_addr + alloced_size))) {
-      int size = alloced_addr + alloced_size - ((char *) ptr);
+    char * alloced_addr_end = alloced_addr + alloced_size;
+    if ((alloced_addr <= ptr) && (ptr < alloced_addr_end)) {
+      int size = alloced_addr_end - ((char *) ptr);
       int new_carved_ptr_index = carved_ptrs.size();
       carved_ptrs.push_back(PTR(ptr, size));
 
-      std::cerr << "new ptr input : " << ptr << " : " << size << "\n";
       VAR<int> * inputv = new VAR<int>(
         new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
       inputs.push_back((IVAR *) inputv);
@@ -112,8 +124,21 @@ int Carv_pointer(void * ptr, char * name) {
       array_index.push_back(PTR_IDX(ptr, 0));
     
       return size;
+    } else if (ptr == alloced_addr_end) {
+      end_point_idx = index;
     }
     index ++;
+  }
+  
+  if (end_point_idx != -1) {
+    int new_carved_ptr_index = carved_ptrs.size();
+    carved_ptrs.push_back(PTR(ptr, 0));
+
+    VAR<int> * inputv = new VAR<int>(
+      new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
+    inputs.push_back((IVAR *) inputv);
+  
+    return 0;
   }
 
   VAR<void *> * inputv = new VAR<void *>(

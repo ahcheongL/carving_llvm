@@ -378,8 +378,12 @@ std::pair<BasicBlock *, Value *>
     IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
 
     cur_block = endblock;
+  } else if(typeptr->isArrayTy()) {
+
+    
   } else {
-    assert(false && "Unsupported type");
+    typeptr->dump();
+    DEBUG0("Unknown type\n");
   }
 
   return std::make_pair(cur_block , result);
@@ -428,7 +432,9 @@ void driver_pass::insert_struct_replay_probe(Value * ptr, Type * typeptr) {
         auto ptr_result = insert_replay_probe(field_type, cur_block);
         cur_block = ptr_result.first;
         Value * ptr_replay_res = ptr_result.second;
-        auto tmp = IRB->CreateStore(ptr_replay_res, gep);
+        if (ptr_replay_res != NULL) {
+          IRB->CreateStore(ptr_replay_res, gep);
+        }
       }
     }
   }
