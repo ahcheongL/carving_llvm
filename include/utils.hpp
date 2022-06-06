@@ -306,4 +306,31 @@ private:
   int num_nodes;
 };
 
+class FUNC_CONTEXT {
+public:
+
+  FUNC_CONTEXT(int _carved_idx, int _func_call_idx) {
+    inputs = vector<IVAR *> ();
+    carved_ptrs = vector<PTR *> ();
+    carved_ptr_begin_idx = 0;
+    carving_index = _carved_idx;
+    func_call_idx = _func_call_idx;
+  }
+  
+  ~FUNC_CONTEXT() {
+    inputs.~vector();
+    carved_ptrs.~vector();
+  }
+
+  void update_carved_ptr_begin_idx() {
+    carved_ptr_begin_idx = carved_ptrs.size();
+  }
+
+  vector<IVAR *> inputs;
+  vector<PTR *> carved_ptrs;
+  int carved_ptr_begin_idx;
+  int carving_index;
+  int func_call_idx;
+};
+
 #endif

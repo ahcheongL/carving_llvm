@@ -2,6 +2,7 @@
 
 static vector<IVAR *> inputs;
 static vector<PTR> carved_ptrs;
+static vector<int> replayed_index;
 
 //assert(func_ptr.size() == funcnames.size())
 static vector<void *> func_ptrs;
@@ -200,10 +201,18 @@ void * Replay_pointer() {
     + cur_input->pointer_offset;
 
   if (cur_input->pointer_offset == 0) {
+    int num_already_replayed = replayed_index.size();
+    int replay_index = 0;
+    while (replay_index < num_already_replayed) {
+      if ((*(replayed_index[replay_index])) ==  carved_index) {
+        return ret_ptr;
+      }
+      replay_index++;
+    }
+
     cur_ptr_alloc_size
       = carved_ptrs[carved_index]->alloc_size;
-  } else {
-    cur_ptr_alloc_size = 0;
+    replayed_index.push_back(carved_index);
   }
 
   return ret_ptr;

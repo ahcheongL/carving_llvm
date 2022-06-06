@@ -414,7 +414,8 @@ void driver_pass::insert_struct_replay_probe(Value * ptr, Type * typeptr) {
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
 
   std::string struct_name = struct_type->getName().str();
-  struct_name = struct_name.substr(struct_name.find('.') + 1);
+  struct_name = struct_name.substr(0, struct_name.find('.'))
+    + "_" + struct_name.substr(struct_name.find('.') + 1);
 
   std::string struct_replay_name = "__Replay__" + struct_name;
   auto search = struct_replayes.find(struct_replay_name);
