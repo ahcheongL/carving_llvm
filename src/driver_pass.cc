@@ -562,6 +562,8 @@ bool driver_pass::get_target_func() {
     func_idx = atoi(func_idx_env);
   }
 
+  llvm::errs() << "func_idx_env : " << func_idx_env << "\n";
+
   std::string line;
   int line_idx = 0;
   while(std::getline(funcnames, line)) {

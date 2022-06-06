@@ -3,6 +3,7 @@
 static vector<IVAR *> inputs;
 static vector<PTR> carved_ptrs;
 
+//assert(func_ptr.size() == funcnames.size())
 static vector<void *> func_ptrs;
 static vector<char *> funcnames;
 

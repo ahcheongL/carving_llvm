@@ -119,13 +119,6 @@ private:
   int num_elem;
 };
 
-class PTR_IDX {
-public:
-  PTR_IDX(void * _addr, int _index) { addr = _addr; index = _index; }
-  void * addr;
-  int index;
-};
-
 template<class Key, class Elem>
 class map {
 public:

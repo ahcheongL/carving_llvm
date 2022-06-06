@@ -132,8 +132,10 @@ class carver_pass : public ModulePass {
   FunctionCallee carv_float_func;
   FunctionCallee carv_double_func;
   FunctionCallee carv_ptr_func;
-  FunctionCallee carv_ptr_update;
-  FunctionCallee carv_ptr_done;
+  FunctionCallee carv_ptr_name_update;
+  FunctionCallee struct_name_func;
+  FunctionCallee carv_name_push;
+  FunctionCallee carv_name_pop;
   FunctionCallee carv_func_ptr;
 
   int func_id;
@@ -344,23 +346,6 @@ void carver_pass::Insert_main_probe(BasicBlock & entry_block, Function & F
     IRB->CreateCall(mem_allocated_probe, args);
   }
 
-  if (F.arg_size() == 2) {
-    Constant * argc_name_const = gen_new_string_constant("argc");
-    std::vector<Value *> probe_args1 {new_argc, argc_name_const};
-    IRB->CreateCall(carv_int_func, probe_args1);
-
-    BasicBlock * insert_block
-      = insert_carve_probe(new_argv, "argv", IRB->GetInsertBlock());
-
-    insert_global_carve_probe(&F, insert_block);
-
-    Constant * func_name_const = gen_new_string_constant("main");
-    Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
-
-    std::vector<Value *> probe_args {func_name_const, func_id_const};
-    IRB->CreateCall(write_carved, probe_args);
-  }
-
   //Record func ptr
   for (auto &Func:Mod->functions()) {
     if (Func.size() == 0) { continue; }
@@ -370,6 +355,8 @@ void carver_pass::Insert_main_probe(BasicBlock & entry_block, Function & F
     std::vector<Value *> probe_args {cast_val, func_name_const};
     IRB->CreateCall(record_func_ptr, probe_args);
   }
+
+  func_id++;
 
   return;
 }
@@ -403,10 +390,9 @@ int carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
 BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
   , BasicBlock * BB) {
-  Constant * name_constant = gen_new_string_constant(name);
   Type * val_type = val->getType();
 
-  std::vector<Value *> probe_args {val, name_constant};
+  std::vector<Value *> probe_args {val};
   if (val_type == Int8Ty) {
     IRB->CreateCall(carv_char_func, probe_args);
   } else if (val_type == Int16Ty) {
@@ -435,7 +421,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
       if (val_type != Int8PtrTy) {
         ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
       }
-      Constant * name_constant = gen_new_string_constant(name + "[]");
+      Constant * name_constant = gen_new_string_constant(name);
       std::vector<Value *> probe_args {ptrval, name_constant};
       IRB->CreateCall(carv_func_ptr, probe_args);
       return BB;
@@ -460,7 +446,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
     }
 
     //Call Carv_pointer
-    std::vector<Value *> probe_args {ptrval, name_constant};
+    std::vector<Value *> probe_args {ptrval};
     Instruction * carv_ptr = IRB->CreateCall(carv_ptr_func, probe_args);
 
     
@@ -481,19 +467,22 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
     index_phi->addIncoming(index_load, BB);
     Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
 
+    std::vector<Value *> probe_args2 {index_phi};
+    IRB->CreateCall(carv_ptr_name_update, probe_args2);
+
     if (pointee_type->isStructTy()) {
       insert_struct_carve_probe(getelem_instr, pointee_type, name + "[]");
     } else {
       Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
-      loopblock = insert_carve_probe(load_ptr, name + "[]", loopblock);
+      loopblock = insert_carve_probe(load_ptr, name, loopblock);
     }
 
     Value * index_update_instr
       = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
     index_phi->addIncoming(index_update_instr, loopblock);
 
-    std::vector<Value *> probe_args2 {ptrval};
-    IRB->CreateCall(carv_ptr_update, probe_args2);
+    std::vector<Value *> probe_args3 {};
+    IRB->CreateCall(carv_name_pop, probe_args3);
 
     Instruction * cmp_instr2
       = (Instruction *) IRB->CreateICmpSLT(index_update_instr, pointer_size);
@@ -523,9 +512,6 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
     ReplaceInstWithInst(old_term, loopblock_term);
 
     IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
-
-    std::vector<Value *> probe_args3 {ptrval};
-    IRB->CreateCall(carv_ptr_done, probe_args3);
 
     return endblock;
   }
@@ -632,6 +618,11 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type
 
     int elem_idx = 0;
     for (auto iter : elem_names) {
+      Constant * field_name_const = gen_new_string_constant(iter);
+      std::vector<Value *> struct_name_probe_args {field_name_const};
+      IRB->CreateCall(struct_name_func
+        , struct_name_probe_args);
+
       Value * gep = IRB->CreateStructGEP(struct_type, carver_param, elem_idx);
       PointerType* gep_type = dyn_cast<PointerType>(gep->getType());
       Type * gep_pointee_type = gep_type->getPointerElementType();
@@ -641,6 +632,9 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type
         Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
         cur_block = insert_carve_probe(loadval, name + "." + iter, cur_block);
       }
+
+      std::vector<Value *> empty_args;
+      IRB->CreateCall(carv_name_pop, empty_args);
       elem_idx ++;
     }
   }
@@ -696,25 +690,29 @@ bool carver_pass::hookInstrs(Module &M) {
     , VoidTy);
   strlen_callee = M.getOrInsertFunction("strlen", Int64Ty, Int8PtrTy);
   carv_char_func = M.getOrInsertFunction(get_link_name("Carv_char")
-    , VoidTy, Int8Ty, Int8PtrTy);
+    , VoidTy, Int8Ty);
   carv_short_func = M.getOrInsertFunction(get_link_name("Carv_short")
-    , VoidTy, Int16Ty, Int8PtrTy);
+    , VoidTy, Int16Ty);
   carv_int_func = M.getOrInsertFunction(get_link_name("Carv_int")
-    , VoidTy, Int32Ty, Int8PtrTy);
+    , VoidTy, Int32Ty);
   carv_long_func = M.getOrInsertFunction(get_link_name("Carv_long")
-    , VoidTy, Int64Ty, Int8PtrTy);
+    , VoidTy, Int64Ty);
   carv_longlong_func = M.getOrInsertFunction(get_link_name("Carv_longlong")
-    , VoidTy, Int128Ty, Int8PtrTy);
+    , VoidTy, Int128Ty);
   carv_float_func = M.getOrInsertFunction(get_link_name("Carv_float")
-    , VoidTy, FloatTy, Int8PtrTy);
+    , VoidTy, FloatTy);
   carv_double_func = M.getOrInsertFunction(get_link_name("Carv_double")
-    , VoidTy, DoubleTy, Int8PtrTy);
+    , VoidTy, DoubleTy);
   carv_ptr_func = M.getOrInsertFunction(get_link_name("Carv_pointer")
-    , Int32Ty, Int8PtrTy, Int8PtrTy );
-  carv_ptr_update = M.getOrInsertFunction(get_link_name("__carv_pointer_idx_update")
-    , VoidTy, Int8PtrTy);
-  carv_ptr_done = M.getOrInsertFunction(get_link_name("__carv_pointer_done")
-    , VoidTy, Int8PtrTy);
+    , Int32Ty, Int8PtrTy);
+  carv_ptr_name_update = M.getOrInsertFunction(
+    get_link_name("__carv_ptr_name_update"), VoidTy, Int32Ty);
+  struct_name_func = M.getOrInsertFunction(
+    get_link_name("__carv_struct_name_update"), VoidTy, Int8PtrTy);
+  carv_name_push = M.getOrInsertFunction(
+    get_link_name("__carv_name_push"), VoidTy, Int8PtrTy);
+  carv_name_pop = M.getOrInsertFunction(
+    get_link_name("__carv_name_pop"), VoidTy);
   carv_func_ptr = M.getOrInsertFunction(get_link_name("__Carv_func_ptr")
     , VoidTy, Int8PtrTy, Int8PtrTy);
 
@@ -771,8 +769,15 @@ bool carver_pass::hookInstrs(Module &M) {
           param_name = "parm_" + std::to_string(param_idx);
         }
 
+        Constant * param_name_const = gen_new_string_constant(param_name);
+        std::vector<Value *> push_args {param_name_const};
+        IRB->CreateCall(carv_name_push, push_args);
+
         insert_block
           = insert_carve_probe(func_arg, param_name, insert_block);
+        
+        std::vector<Value *> pop_args;
+        IRB->CreateCall(carv_name_pop, pop_args);
         param_idx ++;
       }
 

@@ -11,7 +11,9 @@ Carv_longlong
 Carv_float
 Carv_double
 Carv_pointer
-__carv_pointer_done
-__carv_pointer_idx_update
+__carv_ptr_name_update
+__carv_name_pop
 __record_func_ptr
 __Carv_func_ptr
+__carv_struct_name_update
+__carv_name_push

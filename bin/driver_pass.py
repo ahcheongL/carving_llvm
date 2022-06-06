@@ -63,9 +63,12 @@ for func_name in funcs:
     , "-I", source_dir + "/include", "-o", outname, "-fsanitize=address"
     , "-L", source_dir + "/lib", inputbc, "-l:driver.a" ] + compile_args
 
-  env["FUNC_IDX"] = str(func_idx)
+  env["FUNCIDX"] = str(func_idx)
   #env["DUMP_IR"] = "1"
-  sp.run(cmd, env=env)
+  try:
+    sp.run(cmd, env=env)
+  except:
+    pass
   func_idx += 1
 
 print("Finished, generated {} files".format(len(funcs)))
