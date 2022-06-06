@@ -96,6 +96,11 @@ public:
     return &(data[idx]);
   }
 
+  elem_type * get(int idx) {
+    if (idx >= num_elem) { return 0; }
+    return &(data[idx]);
+  }
+
   int size() {
     return num_elem;
   }

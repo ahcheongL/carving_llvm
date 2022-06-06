@@ -73,17 +73,15 @@ class carver_pass : public ModulePass {
 
   void Insert_alloca_probe(BasicBlock & entry_block);
   std::vector<AllocaInst *> tracking_allocas;
-  void Insert_memfunc_probe(Instruction& IN, std::string callee_name);
+  void Insert_callinst_probe(Instruction *, std::string, bool);
   void Insert_main_probe(BasicBlock & entry_block, Function & F
     , global_range globals);
-  BasicBlock * insert_carve_probe(Value * val, std::string name
-    , BasicBlock * BB);
+  BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB);
 
   std::set<std::string> struct_carvers;
-  void insert_struct_carve_probe(Value * struct_ptr, Type * struct_type
-    , std::string name);
+  void insert_struct_carve_probe(Value * struct_ptr, Type * struct_type);
   
-  int insert_global_carve_probe(Function * F, BasicBlock * BB);
+  void insert_global_carve_probe(Function * F, BasicBlock * BB);
 
   std::string find_param_name(Value * param, BasicBlock * BB);
 
@@ -122,7 +120,6 @@ class carver_pass : public ModulePass {
   FunctionCallee record_func_ptr;
   FunctionCallee argv_modifier;
   FunctionCallee __carv_fini;
-  FunctionCallee write_carved;
   FunctionCallee strlen_callee;
   FunctionCallee carv_char_func;
   FunctionCallee carv_short_func;
@@ -137,6 +134,9 @@ class carver_pass : public ModulePass {
   FunctionCallee carv_name_push;
   FunctionCallee carv_name_pop;
   FunctionCallee carv_func_ptr;
+  FunctionCallee carv_func_call;
+  FunctionCallee carv_func_ret;
+  FunctionCallee update_carved_ptr_idx;
 
   int func_id;
 };
@@ -213,26 +213,27 @@ void carver_pass::Insert_alloca_probe(BasicBlock& entry_block) {
   }
 }
 
-void carver_pass::Insert_memfunc_probe(Instruction& IN, std::string callee_name) {
-  IRB->SetInsertPoint(IN.getNextNonDebugInstruction());
+void carver_pass::Insert_callinst_probe(Instruction * IN
+  , std::string callee_name, bool insert_ret_probe) {
+  IRB->SetInsertPoint(IN->getNextNonDebugInstruction());
   
   if (callee_name == "malloc") {
     //Track malloc
-    Value * size = IN.getOperand(0);
+    Value * size = IN->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
-    std::vector<Value *> args {&IN, size};
+    std::vector<Value *> args {IN, size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "realloc") {
     //Track realloc
-    std::vector<Value *> args0 {IN.getOperand(0)};
+    std::vector<Value *> args0 {IN->getOperand(0)};
     IRB->CreateCall(remove_probe, args0);
-    std::vector<Value *> args1 {&IN, IN.getOperand(1)};
+    std::vector<Value *> args1 {IN, IN->getOperand(1)};
     IRB->CreateCall(mem_allocated_probe, args1);
   } else if (callee_name == "free") {
     //Track free
-    std::vector<Value *> args {IN.getOperand(0)};
+    std::vector<Value *> args {IN->getOperand(0)};
     IRB->CreateCall(remove_probe, args);
   } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
     //Get some hint from memory related functions
@@ -270,16 +271,26 @@ void carver_pass::Insert_memfunc_probe(Instruction& IN, std::string callee_name)
     // IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "_Znwm") {
     //new operator
-    Value * size = IN.getOperand(0);
+    Value * size = IN->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
-    std::vector<Value *> args {&IN, size};
+    std::vector<Value *> args {IN, size};
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "_ZdlPv") {
     //delete operator
-    std::vector<Value *> args {IN.getOperand(0)};
+    std::vector<Value *> args {IN->getOperand(0)};
     IRB->CreateCall(remove_probe, args);
+  } else if (insert_ret_probe) {
+
+    Constant * name_const = gen_new_string_constant(callee_name + "_ret");
+    std::vector<Value *> push_args {name_const};
+    IRB->CreateCall(carv_name_push, push_args);
+
+    insert_carve_probe(IN, IN->getParent());
+
+    std::vector<Value *> pop_args;
+    IRB->CreateCall(carv_name_pop, pop_args);
   }
 
   return;
@@ -356,15 +367,12 @@ void carver_pass::Insert_main_probe(BasicBlock & entry_block, Function & F
     IRB->CreateCall(record_func_ptr, probe_args);
   }
 
-  func_id++;
-
   return;
 }
 
-int carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
+void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
   BasicBlock * cur_block = BB;
-  int num_inserted = 0;
 
   auto search = global_var_uses.find(F);
   if (search != global_var_uses.end()) {
@@ -380,23 +388,21 @@ int carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
       IRB->CreateCall(carv_name_push, push_args);
 
       if (pointee_type->isStructTy()) {
-        insert_struct_carve_probe((Value *) glob_iter, pointee_type, glob_name);
+        insert_struct_carve_probe((Value *) glob_iter, pointee_type);
       } else {
         Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
-        cur_block = insert_carve_probe(load_val, glob_name, cur_block);
+        cur_block = insert_carve_probe(load_val, cur_block);
       }
 
       std::vector<Value *> pop_args;
       IRB->CreateCall(carv_name_pop, pop_args);
-      num_inserted++;
     }
   }
 
-  return num_inserted;
+  return;
 }
 
-BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
-  , BasicBlock * BB) {
+BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
   Type * val_type = val->getType();
 
   std::vector<Value *> probe_args {val};
@@ -428,8 +434,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
       if (val_type != Int8PtrTy) {
         ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
       }
-      Constant * name_constant = gen_new_string_constant(name);
-      std::vector<Value *> probe_args {ptrval, name_constant};
+      std::vector<Value *> probe_args {ptrval};
       IRB->CreateCall(carv_func_ptr, probe_args);
       return BB;
     }
@@ -478,10 +483,10 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
     IRB->CreateCall(carv_ptr_name_update, probe_args2);
 
     if (pointee_type->isStructTy()) {
-      insert_struct_carve_probe(getelem_instr, pointee_type, name + "[]");
+      insert_struct_carve_probe(getelem_instr, pointee_type);
     } else {
       Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
-      loopblock = insert_carve_probe(load_ptr, name, loopblock);
+      loopblock = insert_carve_probe(load_ptr, loopblock);
     }
 
     Value * index_update_instr
@@ -526,8 +531,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, std::string name
   return BB;
 }
 
-void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type
-  , std::string name) {
+void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type) {
 
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
 
@@ -583,7 +587,6 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type
         DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
         int field_idx = 0;
         for (auto iter2 : struct_DIT->getElements()) {
-          iter2->dump();
           if (isa<DIDerivedType>(iter2)) {
             DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
             dwarf::Tag elem_tag = elem_DIT->getTag();
@@ -634,10 +637,10 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type
       PointerType* gep_type = dyn_cast<PointerType>(gep->getType());
       Type * gep_pointee_type = gep_type->getPointerElementType();
       if (gep_pointee_type->isStructTy()) {
-        insert_struct_carve_probe(gep, gep_pointee_type, name + "." + iter);
+        insert_struct_carve_probe(gep, gep_pointee_type);
       } else {
         Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
-        cur_block = insert_carve_probe(loadval, name + "." + iter, cur_block);
+        cur_block = insert_carve_probe(loadval, cur_block);
       }
 
       std::vector<Value *> empty_args;
@@ -691,8 +694,6 @@ bool carver_pass::hookInstrs(Module &M) {
     VoidTy, Int8PtrTy, Int8PtrTy);
   argv_modifier = M.getOrInsertFunction(get_link_name("__carver_argv_modifier")
     , VoidTy, Int32PtrTy, Int8PtrPtrPtrTy);
-  write_carved = M.getOrInsertFunction(get_link_name("__write_carved")
-    , VoidTy, Int8PtrTy, Int32Ty);
   __carv_fini = M.getOrInsertFunction(get_link_name("__carv_FINI")
     , VoidTy);
   strlen_callee = M.getOrInsertFunction("strlen", Int64Ty, Int8PtrTy);
@@ -721,7 +722,13 @@ bool carver_pass::hookInstrs(Module &M) {
   carv_name_pop = M.getOrInsertFunction(
     get_link_name("__carv_name_pop"), VoidTy);
   carv_func_ptr = M.getOrInsertFunction(get_link_name("__Carv_func_ptr")
-    , VoidTy, Int8PtrTy, Int8PtrTy);
+    , VoidTy, Int8PtrTy);
+  carv_func_call = M.getOrInsertFunction(
+    get_link_name("__carv_func_call_probe"), VoidTy, Int32Ty);
+  carv_func_ret = M.getOrInsertFunction(
+    get_link_name("__carv_func_ret_probe"), VoidTy, Int8PtrTy, Int32Ty);
+  update_carved_ptr_idx = M.getOrInsertFunction(
+    get_link_name("__update_carved_ptr_idx"), VoidTy); 
 
   get_instrument_func_set();
 
@@ -742,7 +749,7 @@ bool carver_pass::hookInstrs(Module &M) {
             Function * callee = call_instr->getCalledFunction();
             if (callee == NULL) { continue; }
             std::string callee_name = callee->getName().str();
-            Insert_memfunc_probe(IN, callee_name);
+            Insert_callinst_probe(&IN, callee_name, false);
           }
         }
       }
@@ -751,20 +758,41 @@ bool carver_pass::hookInstrs(Module &M) {
 
     DEBUG0("Inserting probe in " << func_name << "\n");
 
+    std::vector<Instruction *> cast_instrs;
+    std::vector<CallInst *> call_instrs;
+    std::vector<Instruction *> ret_instrs;
+    for (auto &BB : F) {
+      for (auto &IN : BB) {
+        if (isa<CastInst>(&IN)) {
+          cast_instrs.push_back(&IN);
+        } else if (isa<CallInst>(&IN)) {
+          call_instrs.push_back(dyn_cast<CallInst>(&IN));
+        } else if (isa<ReturnInst>(&IN)) {
+          ret_instrs.push_back(&IN);
+        }
+      }
+    }
+
     BasicBlock& entry_block = F.getEntryBlock();
     Insert_alloca_probe(entry_block);
+
+    IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
+    Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
+    std::vector<Value *> func_call_args {func_id_const};
+    Instruction * init_probe
+      = IRB->CreateCall(carv_func_call, func_call_args);
 
     //Main argc argv handling
     if (func_name == "main") {
       Insert_main_probe(entry_block, F, M.global_values());
+      IRB->SetInsertPoint(init_probe->getNextNonDebugInstruction());
     } else if (F.isVarArg()) {
       //TODO
     } else {
 
       //Insert input carving probes
       int param_idx = 0;
-      IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
-
+  
       BasicBlock * insert_block = &entry_block;
 
       for (auto arg_iter = F.arg_begin(); arg_iter != F.arg_end(); arg_iter++) {
@@ -781,53 +809,68 @@ bool carver_pass::hookInstrs(Module &M) {
         IRB->CreateCall(carv_name_push, push_args);
 
         insert_block
-          = insert_carve_probe(func_arg, param_name, insert_block);
+          = insert_carve_probe(func_arg, insert_block);
         
         std::vector<Value *> pop_args;
         IRB->CreateCall(carv_name_pop, pop_args);
         param_idx ++;
       }
 
-      int num_inserted = insert_global_carve_probe(&F, insert_block);
+      insert_global_carve_probe(&F, insert_block);
+    }
 
-      if ((num_inserted > 0) || (param_idx > 0)) {
-        //Call __write_carved
-        Constant * func_name_const = gen_new_string_constant(func_name);
-        Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
+    std::vector<Value *> empty_args;
+    IRB->CreateCall(update_carved_ptr_idx, empty_args);
 
-        std::vector<Value *> probe_args {func_name_const, func_id_const};
-        IRB->CreateCall(write_carved, probe_args);
-      }
+    //Carv casted values
+    int cast_idx = 0;
+    for (auto cast_instr : cast_instrs) {
+      IRB->SetInsertPoint(cast_instr->getNextNonDebugInstruction());
+      std::string cast_name = "cast_" + std::to_string(cast_idx++);
+      Constant * cast_name_const = gen_new_string_constant(cast_name);
+      std::vector<Value *> push_args {cast_name_const};
+      IRB->CreateCall(carv_name_push, push_args);
+
+      insert_carve_probe(cast_instr, cast_instr->getParent());
+
+      std::vector<Value *> pop_args;
+      IRB->CreateCall(carv_name_pop, pop_args);
     }
 
     DEBUG0("Insert memory tracking for " << func_name << "\n");
 
-    //Memory tracking probes
-    for (auto &BB : F) {
-      for (auto &IN : BB) {
-        CallInst * call_instr;
-        if ((call_instr = dyn_cast<CallInst>(&IN)) != NULL) {
-          Function * callee = call_instr->getCalledFunction();
-          if (callee == NULL) { continue; }
-          std::string callee_name = callee->getName().str();
-          Insert_memfunc_probe(IN, callee_name);
-        } else if (isa<ReturnInst>(&IN)) {
-          
-          //Remove alloca (local variable) memory tracking info.
-          IRB->SetInsertPoint(&IN);
-          for (auto iter = tracking_allocas.begin(); iter != tracking_allocas.end(); iter++) {
-            AllocaInst * alloc_instr = *iter;
+    //Call instr probing
+    for (auto call_instr : call_instrs) {
+      //insert new/free probe
+      Function * callee = call_instr->getCalledFunction();
+      if (callee == NULL) { continue; }
+      std::string callee_name = callee->getName().str();
+      Insert_callinst_probe(call_instr, callee_name, true);
+    }
 
-            Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
-            std::vector<Value *> args {casted_ptr};
-            IRB->CreateCall(remove_probe, args);
-          }
+    //Probing at return
+    for (auto ret_instr : ret_instrs) {
+      IRB->SetInsertPoint(ret_instr);
 
-          //Insert fini
-          if (func_name == "main") {
-            IRB->CreateCall(__carv_fini, std::vector<Value *>());
-          }
-        }
+      //Write carved result
+      Constant * func_name_const = gen_new_string_constant(func_name);
+
+      std::vector<Value *> probe_args {func_name_const, func_id_const};
+      IRB->CreateCall(carv_func_ret, probe_args);
+
+      //Remove alloca (local variable) memory tracking info.
+      for (auto iter = tracking_allocas.begin();
+        iter != tracking_allocas.end(); iter++) {
+        AllocaInst * alloc_instr = *iter;
+
+        Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
+        std::vector<Value *> args {casted_ptr};
+        IRB->CreateCall(remove_probe, args);
+      }
+
+      //Insert fini
+      if (func_name == "main") {
+        IRB->CreateCall(__carv_fini, std::vector<Value *>());
       }
     }
 
@@ -928,7 +971,6 @@ void carver_pass::get_instrument_func_set() {
 
       if ((iter->getLinkageName().str() == func_name) || (iter->getName().str() == func_name)) {
         std::string filename = iter->getFilename().str();
-        llvm::errs() << "filename : " << filename << "\n";
         if (filename.find("/usr/bin/") == std::string::npos) {
           outfile << func_name << "\n";
           instrument_func_set.insert(func_name);

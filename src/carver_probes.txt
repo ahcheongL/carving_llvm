@@ -1,5 +1,4 @@
 __mem_allocated_probe
-__write_carved
 __remove_mem_allocated_probe
 __carver_argv_modifier
 __carv_FINI
@@ -17,3 +16,6 @@ __record_func_ptr
 __Carv_func_ptr
 __carv_struct_name_update
 __carv_name_push
+__carv_func_call_probe
+__carv_func_ret_probe
+__update_carved_ptr_idx

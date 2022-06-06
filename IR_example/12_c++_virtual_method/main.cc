@@ -26,12 +26,13 @@ public:
    int getWidth() {
       return width * 10;
    }
-protected:
    int area;
 };
 
 int foo (Shape * shape1, Shape * shape2) {
-  return shape1->getWidth() + shape2->getWidth();
+  int a =  shape1->getWidth() + shape2->getWidth();
+  a = a + ((Rectangle * ) shape2)->area;
+  return a;
 }
 
 int main(int argc, char * argv[]) {
