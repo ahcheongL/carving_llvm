@@ -375,12 +375,19 @@ int carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
       assert(const_type->isPointerTy());
       Type * pointee_type = dyn_cast<PointerType>(const_type)->getPointerElementType();
 
+      Constant * glob_name_const = gen_new_string_constant(glob_name);
+      std::vector<Value *> push_args {glob_name_const};
+      IRB->CreateCall(carv_name_push, push_args);
+
       if (pointee_type->isStructTy()) {
         insert_struct_carve_probe((Value *) glob_iter, pointee_type, glob_name);
       } else {
         Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
         cur_block = insert_carve_probe(load_val, glob_name, cur_block);
       }
+
+      std::vector<Value *> pop_args;
+      IRB->CreateCall(carv_name_pop, pop_args);
       num_inserted++;
     }
   }
