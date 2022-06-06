@@ -59,6 +59,7 @@ for func_name in funcs:
   outname = ".".join(inputbc.split(".")[:-1]) + "." + func_name + ".driver"
 
   cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
+    , "-D_GLIBCXX_DEBUG"
     , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-ggdb", "-O0"
     , "-I", source_dir + "/include", "-o", outname, "-fsanitize=address"
     , "-L", source_dir + "/lib", inputbc, "-l:driver.a" ] + compile_args

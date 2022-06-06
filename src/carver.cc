@@ -45,7 +45,7 @@ void Carv_int(int input) {
   (*inputs.back())->push_back((IVAR *) inputv);
 }
 
-void Carv_long(long input) {
+void Carv_longtype(long input) {
   VAR<long> * inputv = new VAR<long>(input
     , *__carv_base_names.back(), INPUT_TYPE::LONG);
   (*inputs.back())->push_back((IVAR *) inputv);
@@ -286,7 +286,25 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       VAR<char *> * input = (VAR<char *>*) elem;
       outfile << elem->name << ":FUNCPTR:" << input->input << "\n";
     } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
-      outfile << elem->name << ":UNKNOWN_PTR:" << ((VAR<void *>*) elem)->input << "\n";
+      void * addr = ((VAR<void *>*) elem)->input;
+      int carved_idx = 0;
+      int offset;
+      while (carved_idx < num_carved_ptrs) {
+        PTR * carved_ptr = cur_carved_ptrs->get(carved_idx);
+        char * end_addr = (char *) carved_ptr->addr + carved_ptr->alloc_size;
+        if (end_addr == addr) {
+          offset = carved_ptr->alloc_size;
+          break;
+        } 
+        carved_idx++;
+      }
+      if (carved_idx == num_carved_ptrs) {
+        outfile << elem->name << ":UNKNOWN_PTR:"
+          << ((VAR<void *>*) elem)->input << "\n";
+      } else {
+        outfile << elem->name << ":PTR:" << carved_idx << ":"
+          << offset << "\n";
+      }
     }
 
     delete elem;
@@ -344,7 +362,7 @@ void __carver_argv_modifier(int * argcptr, char *** argvptr) {
   callseq_index = 0;
 
   //Write argc, argv values
-  
+
 
   return;
 }

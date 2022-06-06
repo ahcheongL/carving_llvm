@@ -566,7 +566,8 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type) {
     for (auto iter : DbgFinder.types()) {
       if (struct_name == iter->getName().str()) {
         DIType * dit = iter;
-        while (isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit)) {
+        while ((dit != NULL) && (
+          isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit))) {
           if (isa<DIDerivedType>(dit)) {
             DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
             dit = tmptype->getBaseType();
@@ -703,7 +704,7 @@ bool carver_pass::hookInstrs(Module &M) {
     , VoidTy, Int16Ty);
   carv_int_func = M.getOrInsertFunction(get_link_name("Carv_int")
     , VoidTy, Int32Ty);
-  carv_long_func = M.getOrInsertFunction(get_link_name("Carv_long")
+  carv_long_func = M.getOrInsertFunction(get_link_name("Carv_longtype")
     , VoidTy, Int64Ty);
   carv_longlong_func = M.getOrInsertFunction(get_link_name("Carv_longlong")
     , VoidTy, Int128Ty);

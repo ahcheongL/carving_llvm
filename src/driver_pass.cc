@@ -172,7 +172,7 @@ bool driver_pass::hookInstrs(Module &M) {
     , Int16Ty);
   replay_int_func = M.getOrInsertFunction(get_link_name("Replay_int")
     , Int32Ty);
-  replay_long_func = M.getOrInsertFunction(get_link_name("Replay_long")
+  replay_long_func = M.getOrInsertFunction(get_link_name("Replay_longtype")
     , Int64Ty);
   replay_longlong_func = M.getOrInsertFunction(get_link_name("Replay_longlong")
     , Int128Ty);

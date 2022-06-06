@@ -132,7 +132,7 @@ int Replay_int() {
   return cur_input->input;
 }
 
-long Replay_long() {
+long Replay_longtype() {
 
   if (cur_input_idx >= inputs.size()) {
     return 0;
@@ -198,8 +198,13 @@ void * Replay_pointer() {
 
   char * ret_ptr = ((char *) carved_ptrs[carved_index]->addr)
     + cur_input->pointer_offset;
-  cur_ptr_alloc_size
-    = carved_ptrs[carved_index]->alloc_size - cur_input->pointer_offset;
+
+  if (cur_input->pointer_offset == 0) {
+    cur_ptr_alloc_size
+      = carved_ptrs[carved_index]->alloc_size;
+  } else {
+    cur_ptr_alloc_size = 0;
+  }
 
   return ret_ptr;
 }

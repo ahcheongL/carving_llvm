@@ -5,7 +5,7 @@ __carv_FINI
 Carv_char
 Carv_short
 Carv_int
-Carv_long
+Carv_longtype
 Carv_longlong
 Carv_float
 Carv_double
