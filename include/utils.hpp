@@ -77,7 +77,7 @@ public:
   }
 
   void push_back(elem_type && elem) {
-    data[num_elem] = elem;
+    data[num_elem] = std::move(elem);
     num_elem++;
     if (num_elem >= capacity) {
       capacity *= 2;
@@ -103,6 +103,17 @@ public:
 
   int size() {
     return num_elem;
+  }
+
+  void remove(int idx) {
+    if (idx >= num_elem) { return ;}
+
+    while (idx < num_elem - 1) {
+      data[idx] = data[idx + 1];
+      idx ++;
+    }
+    
+    num_elem --;
   }
 
   elem_type * back() {

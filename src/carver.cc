@@ -232,20 +232,118 @@ void __update_carved_ptr_idx() {
   inputs.back()->update_carved_ptr_begin_idx();
 }
 
+static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
+  int idx1, idx2, idx3, idx4, idx5;
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    idx1 = begin_idx;
+    while (idx1 < end_idx) {
+      int idx2 = idx1 + 1;
+      PTR * cur_carved_ptr = cur_carved_ptrs->get(idx1);
+      char * addr1 = (char*) cur_carved_ptr->addr;
+      int size1 = cur_carved_ptr->alloc_size;
+      if (size1 == 0) { idx1++; continue; }
+      char * end_addr1 = addr1 + size1;
+
+      while (idx2 < end_idx) {
+        PTR * cur_carved_ptr2 = cur_carved_ptrs->get(idx2);
+        char * addr2 = (char*) cur_carved_ptr2->addr;
+        int size2 = cur_carved_ptr2->alloc_size;
+        if (size2 == 0) { idx2++; continue; }
+        char * end_addr2 = addr2 + size2;
+        int offset = -1;
+        int remove_ptr_idx;
+        int replacing_ptr_idx;
+        PTR * remove_ptr;
+        if ((addr1 <= addr2) && (addr2 < end_addr1)) {
+          offset = addr2 - addr1;
+          remove_ptr_idx = idx2;
+          replacing_ptr_idx = idx1;
+          remove_ptr = cur_carved_ptr2;
+        } else if ((addr2 <= addr1) && (addr1 < end_addr2)) {
+          offset = addr1 - addr2;
+          remove_ptr_idx = idx1;
+          replacing_ptr_idx = idx2;
+          remove_ptr = cur_carved_ptr;
+        }
+
+        if (offset != -1) {
+          //remove remove_ptr in inputs;
+          int idx3 = 0;
+          int num_inputs = cur_inputs->size();
+          while (idx3 < num_inputs) {
+            IVAR * tmp_input = *(cur_inputs->get(idx3));
+            if (tmp_input->type == INPUT_TYPE::POINTER) {
+              VAR<int> * tmp_inputt = (VAR<int> *) tmp_input;
+              if (tmp_inputt->input == remove_ptr_idx) {
+                int old_offset = tmp_inputt->pointer_offset;
+                tmp_inputt->input = replacing_ptr_idx;
+                tmp_inputt->pointer_offset = offset + old_offset;
+                if (old_offset == 0) {
+                  //remove element carved results
+                  char * var_name = tmp_input->name;
+                  size_t var_name_len = strlen(var_name);
+                  char * check_name = (char *) malloc(var_name_len + 2);
+                  memcpy(check_name, var_name, var_name_len);
+                  check_name[var_name_len] = '[';
+                  check_name[var_name_len + 1] = 0;
+                  int idx4 = idx3 + 1;
+                  while (idx4 < num_inputs) {
+                    IVAR * next_input = *(cur_inputs->get(idx4));
+                    if (strncmp(check_name, next_input->name, var_name_len + 1) != 0) {
+                      break;
+                    }
+                    idx4++;
+                  }
+                  free(check_name);
+                  int idx5 = idx3 + 1;
+                  while (idx5 < idx4) {
+                    delete *(cur_inputs->get(idx3 + 1));
+                    cur_inputs->remove(idx3 + 1);
+                    idx5++;
+                  }
+                  num_inputs = cur_inputs->size();
+                }
+              }
+            }
+            idx3++;
+          }
+          remove_ptr->alloc_size = 0;
+          changed = true;
+          break;
+        }
+        idx2++;
+      }
+
+      if (changed) break;
+      idx1++;
+    }
+  }
+  return ;
+}
+
 void __carv_func_ret_probe(char * func_name, int func_id) {
   class FUNC_CONTEXT * cur_context = inputs.back();
   inputs.pop_back();
-  int cur_carving_index = cur_context->carving_index;
-  int cur_func_call_idx = cur_context->func_call_idx;
+  int idx = 0;
+  const int cur_carving_index = cur_context->carving_index;
+  const int cur_func_call_idx = cur_context->func_call_idx;  
+  const int num_carved_ptrs = cur_carved_ptrs->size();
+  const int carved_ptrs_init_idx = cur_context->carved_ptr_begin_idx;
 
+  //check memory overlap
+  carved_ptr_postprocessing(0, carved_ptrs_init_idx);
+  carved_ptr_postprocessing(carved_ptrs_init_idx, num_carved_ptrs);
+  const int num_inputs = cur_inputs->size();
+  
   char outfile_name[256];
   snprintf(outfile_name, 256, "%s/%s_%d_%d", outdir_name, func_name
     , cur_carving_index, cur_func_call_idx);
   
   std::ofstream outfile(outfile_name);
   //Write carved pointers
-  int idx = 0;
-  int num_carved_ptrs = cur_carved_ptrs->size();
+  idx = 0;  
   while (idx < num_carved_ptrs) {
     PTR * carved_ptr = cur_carved_ptrs->get(idx);
     outfile << idx << ":" << carved_ptr->addr << ":" << carved_ptr->alloc_size << "\n";
@@ -255,7 +353,6 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   outfile << "####\n";
 
   idx = 0;
-  int num_inputs = cur_inputs->size();
   while (idx < num_inputs) {
     IVAR * elem = *(cur_inputs->get(idx));
     if (elem->type == INPUT_TYPE::CHAR) {
@@ -303,7 +400,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
         } 
         carved_idx++;
       }
-      
+
       if (carved_idx == num_carved_ptrs) {
         outfile << elem->name << ":UNKNOWN_PTR:"
           << ((VAR<void *>*) elem)->input << "\n";
