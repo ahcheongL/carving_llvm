@@ -19,9 +19,9 @@ static int carved_index = 0;
 static map<void *, char *> func_ptrs;
 
 //inputs, work as similar as function call stack
-static vector<class FUNC_CONTEXT *> inputs;
+static vector<FUNC_CONTEXT> inputs;
 static vector<IVAR *> * cur_inputs = NULL;
-static vector<PTR *> * cur_carved_ptrs = NULL;
+static vector<PTR> * cur_carved_ptrs = NULL;
 
 //memory info
 static map<void *, int> alloced_ptrs;
@@ -81,10 +81,10 @@ int Carv_pointer(void * ptr) {
   }
 
   //Find already carved ptr
-  int index = (*inputs.back())->carved_ptr_begin_idx;
+  int index = inputs.back()->carved_ptr_begin_idx;
   int num_carved_ptrs = cur_carved_ptrs->size();
   while (index < num_carved_ptrs) {
-    PTR * carved_ptr = *(cur_carved_ptrs->get(index));
+    PTR * carved_ptr = cur_carved_ptrs->get(index);
     char * carved_addr = (char *) carved_ptr->addr;
     int carved_ptr_size = carved_ptr->alloc_size;
     char * carved_addr_end = carved_addr + carved_ptr_size;
@@ -110,7 +110,7 @@ int Carv_pointer(void * ptr) {
     if ((alloced_addr <= ptr) && (ptr < alloced_addr_end)) {
       int size = alloced_addr_end - ((char *) ptr);
       int new_carved_ptr_index = cur_carved_ptrs->size();
-      cur_carved_ptrs->push_back(new PTR(ptr, size));
+      cur_carved_ptrs->push_back(PTR(ptr, size));
 
       VAR<int> * inputv = new VAR<int>(
         new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
@@ -154,7 +154,7 @@ void __carv_ptr_name_update(int idx) {
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s[%d]",base_name, idx);
-  __carv_base_names.push_back(update_name);
+  __carv_base_names.push_back(std::move(update_name));
   return;
 }
 
@@ -172,7 +172,7 @@ void __carv_struct_name_update(char * field_name) {
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s.%s",base_name, field_name);
-  __carv_base_names.push_back(update_name);
+  __carv_base_names.push_back(std::move(update_name));
   return;
 }
 
@@ -216,22 +216,24 @@ void __carv_func_call_probe(int func_id) {
     memset(func_carved_filesize + tmp, 0, tmp * sizeof(int *));
   }
 
-  class FUNC_CONTEXT * new_ctx
-    = new FUNC_CONTEXT(carved_index++, num_func_calls[func_id]);
+  FUNC_CONTEXT new_ctx
+    = FUNC_CONTEXT(carved_index++, num_func_calls[func_id]);
   num_func_calls[func_id] += 1;
 
-  inputs.push_back(new_ctx);
-  cur_inputs = &(new_ctx->inputs);
-  cur_carved_ptrs = &(new_ctx->carved_ptrs);
+  
+  inputs.push_back(std::move(new_ctx));
+  cur_inputs = &(inputs.back()->inputs);
+  cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+
   return;
 }
 
 void __update_carved_ptr_idx() {
-  (*inputs.back())->update_carved_ptr_begin_idx();
+  inputs.back()->update_carved_ptr_begin_idx();
 }
 
 void __carv_func_ret_probe(char * func_name, int func_id) {
-  class FUNC_CONTEXT * cur_context = (*inputs.back());
+  class FUNC_CONTEXT * cur_context = inputs.back();
   inputs.pop_back();
   int cur_carving_index = cur_context->carving_index;
   int cur_func_call_idx = cur_context->func_call_idx;
@@ -245,7 +247,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   int idx = 0;
   int num_carved_ptrs = cur_carved_ptrs->size();
   while (idx < num_carved_ptrs) {
-    PTR * carved_ptr = *(cur_carved_ptrs->get(idx));
+    PTR * carved_ptr = cur_carved_ptrs->get(idx);
     outfile << idx << ":" << carved_ptr->addr << ":" << carved_ptr->alloc_size << "\n";
     idx++;
   }
@@ -288,10 +290,12 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       outfile << elem->name << ":FUNCPTR:" << input->input << "\n";
     } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
       void * addr = ((VAR<void *>*) elem)->input;
+      
+      //address might be the end point of carved pointers
       int carved_idx = 0;
       int offset;
       while (carved_idx < num_carved_ptrs) {
-        PTR * carved_ptr = *(cur_carved_ptrs->get(carved_idx));
+        PTR * carved_ptr = cur_carved_ptrs->get(carved_idx);
         char * end_addr = (char *) carved_ptr->addr + carved_ptr->alloc_size;
         if (end_addr == addr) {
           offset = carved_ptr->alloc_size;
@@ -299,6 +303,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
         } 
         carved_idx++;
       }
+      
       if (carved_idx == num_carved_ptrs) {
         outfile << elem->name << ":UNKNOWN_PTR:"
           << ((VAR<void *>*) elem)->input << "\n";
@@ -312,47 +317,38 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     idx++;
   }
 
-  idx = 0;
-  while (idx < num_carved_ptrs) {
-    PTR * carved_ptr = *(cur_carved_ptrs->get(idx));
-    delete carved_ptr;
-    idx++;
-  }
-
-
   int filesize = (int) outfile.tellp();
   outfile.close();
 
   if ((filesize <= 64) || (filesize > 1048576)) {
     //remove(outfile_name);
-    return;
-  }
-
-  int tmp = 128;
-  int index = 0;
-  while (filesize > tmp) {
-    tmp *= 2;
-    index += 1;
-  }
-
-  if (func_carved_filesize[func_id] == 0) {
-    func_carved_filesize[func_id] = (int *) calloc(20, sizeof(int));
-  }
-
-  if (func_carved_filesize[func_id][index] >= 8) {
-    remove(outfile_name);
   } else {
-    func_carved_filesize[func_id][index] += 1;
+    int tmp = 128;
+    int index = 0;
+    while (filesize > tmp) {
+      tmp *= 2;
+      index += 1;
+    }
+
+    if (func_carved_filesize[func_id] == 0) {
+      func_carved_filesize[func_id] = (int *) calloc(20, sizeof(int));
+    }
+
+    if (func_carved_filesize[func_id][index] >= 8) {
+      remove(outfile_name);
+    } else {
+      func_carved_filesize[func_id][index] += 1;
+    }
   }
 
   //delete cur_context;
-  class FUNC_CONTEXT ** next_ctx = inputs.back();
+  class FUNC_CONTEXT * next_ctx = inputs.back();
   if (next_ctx == NULL) {
     cur_inputs = NULL;
     cur_carved_ptrs = NULL;
   } else {
-    cur_inputs = &((*next_ctx)->inputs);
-    cur_carved_ptrs = &((*next_ctx)->carved_ptrs);
+    cur_inputs = &(next_ctx->inputs);
+    cur_carved_ptrs = &(next_ctx->carved_ptrs);
   }
   
   return;

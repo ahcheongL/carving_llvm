@@ -212,7 +212,7 @@ void * Replay_pointer() {
 
     cur_ptr_alloc_size
       = carved_ptrs[carved_index]->alloc_size;
-    replayed_index.push_back(carved_index);
+    replayed_index.push_back(std::move(carved_index));
   }
 
   return ret_ptr;
@@ -234,6 +234,6 @@ void * Replay_func_ptr() {
 }
 
 void __record_func_ptr(void * ptr, char * name) {
-  func_ptrs.push_back(ptr);
-  funcnames.push_back(name);
+  func_ptrs.push_back(std::move(ptr));
+  funcnames.push_back(std::move(name));
 }

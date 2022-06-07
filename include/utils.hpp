@@ -76,7 +76,7 @@ public:
     data = (elem_type *) malloc(sizeof(elem_type) * 128);
   }
 
-  void push_back(elem_type elem) {
+  void push_back(elem_type && elem) {
     data[num_elem] = elem;
     num_elem++;
     if (num_elem >= capacity) {
@@ -309,17 +309,10 @@ private:
 class FUNC_CONTEXT {
 public:
 
-  FUNC_CONTEXT(int _carved_idx, int _func_call_idx) {
-    inputs = vector<IVAR *> ();
-    carved_ptrs = vector<PTR *> ();
+  FUNC_CONTEXT(int _carved_idx, int _func_call_idx)
+    : carving_index(_carved_idx), func_call_idx(_func_call_idx)
+      , inputs(), carved_ptrs() {
     carved_ptr_begin_idx = 0;
-    carving_index = _carved_idx;
-    func_call_idx = _func_call_idx;
-  }
-  
-  ~FUNC_CONTEXT() {
-    inputs.~vector();
-    carved_ptrs.~vector();
   }
 
   void update_carved_ptr_begin_idx() {
@@ -327,7 +320,7 @@ public:
   }
 
   vector<IVAR *> inputs;
-  vector<PTR *> carved_ptrs;
+  vector<PTR> carved_ptrs;
   int carved_ptr_begin_idx;
   int carving_index;
   int func_call_idx;

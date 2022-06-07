@@ -87,6 +87,9 @@ class carver_pass : public ModulePass {
 
   std::map<std::string, Constant *> new_string_globals;
   Constant * gen_new_string_constant(std::string name);
+
+  std::map<Type *, std::set<Type *>> derived_class_types;
+  void get_class_relation();
   
   DebugInfoFinder DbgFinder;
   Module * Mod;
@@ -145,6 +148,54 @@ class carver_pass : public ModulePass {
 }  // namespace
 
 char carver_pass::ID = 0;
+
+void carver_pass::get_class_relation() {
+  auto structs = Mod->getIdentifiedStructTypes();
+
+  llvm::errs() << "struct types : \n";
+  for (auto iter : structs) {
+    if (iter->getName().contains("class")) {
+      for (auto iter2 : iter->elements()) {
+        if ((iter2->isStructTy()) && (iter2->getStructName().contains("class"))) {
+          auto search = derived_class_types.find(iter2);
+          if (search == derived_class_types.end()) {
+            derived_class_types.insert(std::make_pair(iter2, std::set<Type*>()));
+          }
+          derived_class_types[iter2].insert(iter);
+        }
+      }
+    }
+  }
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (auto iter1 : derived_class_types) {
+      for (auto iter2 : iter1.second) {
+        auto search = derived_class_types.find(iter2);
+        if (search != derived_class_types.end()) {
+          for (auto iter3 : search->second) {
+            if (iter1.second.insert(iter3).second) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (changed) break;
+      }
+      if (changed) break;
+    }
+  }
+
+  for (auto iter : derived_class_types) {
+    iter.first->dump();
+    llvm::errs() << " children : \n";
+    for (auto iter2 : iter.second) {
+      iter2->dump();
+    }
+    llvm::errs() << "########\n";
+  }
+}
 
 void carver_pass::find_global_var_uses() {
   for (auto &F : Mod->functions()) {
@@ -303,15 +354,16 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
     std::vector<Value *> args {IN->getOperand(0)};
     IRB->CreateCall(remove_probe, args);
   } else if (insert_ret_probe) {
+    if (IN->getType() != VoidTy) {
+      Constant * name_const = gen_new_string_constant(callee_name + "_ret");
+      std::vector<Value *> push_args {name_const};
+      IRB->CreateCall(carv_name_push, push_args);
 
-    Constant * name_const = gen_new_string_constant(callee_name + "_ret");
-    std::vector<Value *> push_args {name_const};
-    IRB->CreateCall(carv_name_push, push_args);
+      insert_carve_probe(IN, IN->getParent());
 
-    insert_carve_probe(IN, IN->getParent());
-
-    std::vector<Value *> pop_args;
-    IRB->CreateCall(carv_name_pop, pop_args);
+      std::vector<Value *> pop_args;
+      IRB->CreateCall(carv_name_pop, pop_args);
+    }
   }
 
   return;
@@ -755,6 +807,8 @@ bool carver_pass::hookInstrs(Module &M) {
   mem_alloc_type = M.getOrInsertFunction(
     get_link_name("__mem_alloc_type"), VoidTy, Int8PtrTy, Int8PtrTy);
 
+  get_class_relation();
+
   get_instrument_func_set();
 
   find_global_var_uses();
@@ -821,8 +875,8 @@ bool carver_pass::hookInstrs(Module &M) {
   
       BasicBlock * insert_block = &entry_block;
 
-      for (auto arg_iter = F.arg_begin(); arg_iter != F.arg_end(); arg_iter++) {
-        Value * func_arg = &(*arg_iter);
+      for (auto &arg_iter : F.args()) {
+        Value * func_arg = &arg_iter;
 
         std::string param_name = find_param_name(func_arg, insert_block);
 

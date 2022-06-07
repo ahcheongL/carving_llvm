@@ -41,9 +41,11 @@ int foo (Person * p) {
 
 int main(int argc, char * argv[]) {
    Person * person_ptr;
+   Ma mom;
    Child child;
-   person_ptr = &child;
+   person_ptr = &mom;
    person_ptr->setWidth(40);
+   child.getHeight();
    int width1 = foo (person_ptr);
    return width1;
 }
