@@ -684,6 +684,49 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
   return BB;
 }
 
+static void get_elem_names(DIType * dit, std::vector<std::string> * elem_names) {
+  while ((dit != NULL) && (
+    isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit))) {
+    if (isa<DIDerivedType>(dit)) {
+      DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
+      dit = tmptype->getBaseType();
+    } else {
+      DISubroutineType * tmptype = dyn_cast<DISubroutineType>(dit);
+      //TODO
+      dit = NULL;
+      break;
+    }
+  }
+
+  if ((dit == NULL) || (!isa<DICompositeType>(dit))) {
+    return;
+  }
+
+  DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
+  int field_idx = 0;
+  for (auto iter2 : struct_DIT->getElements()) {
+    if (isa<DIDerivedType>(iter2)) {
+      DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
+      dwarf::Tag elem_tag = elem_DIT->getTag();
+      std::string elem_name = "";
+      if (elem_tag == dwarf::Tag::DW_TAG_member) {
+        elem_name = elem_DIT->getName().str();
+      } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
+        elem_name = elem_DIT->getBaseType()->getName().str();
+      }
+
+      if (elem_name == "") {
+        elem_name = "field" + std::to_string(field_idx);
+      }
+      elem_names->push_back(elem_name);
+      field_idx++;
+    } else if (isa<DISubprogram>(iter2)) {
+      //methods of classes, skip
+      continue;
+    }
+  }
+}
+
 void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
   StructType * struct_type = dyn_cast<StructType>(type);
@@ -718,59 +761,47 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
     llvm::errs() << "Getting names of " << struct_name << "\n";
 
     //Get field names
+    bool found_DIType = false;
     std::vector<std::string> elem_names;
     for (auto iter : DbgFinder.types()) {
       if (struct_name == iter->getName().str()) {
-        llvm::errs() << "Found DIType \n";
-        iter->dump();
+        found_DIType = true;
         DIType * dit = iter;
-        while ((dit != NULL) && (
-          isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit))) {
-          if (isa<DIDerivedType>(dit)) {
-            DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
-            dit = tmptype->getBaseType();
-          } else {
-            DISubroutineType * tmptype = dyn_cast<DISubroutineType>(dit);
-            //TODO
-            dit = NULL;
-            break;
-          }
-        }
-
-        if ((dit == NULL) || (!isa<DICompositeType>(dit))) {
-          DEBUG0("Warn : unknown DIType : \n");
-          iter->dump();
-          break;
-        }
-
-        DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
-        int field_idx = 0;
-        for (auto iter2 : struct_DIT->getElements()) {
-          if (isa<DIDerivedType>(iter2)) {
-            DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
-            dwarf::Tag elem_tag = elem_DIT->getTag();
-            std::string elem_name = "";
-            if (elem_tag == dwarf::Tag::DW_TAG_member) {
-              elem_name = elem_DIT->getName().str();
-            } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
-              elem_name = elem_DIT->getBaseType()->getName().str();
-            }
-
-            if (elem_name == "") {
-              elem_name = "field" + std::to_string(field_idx);
-            }
-            elem_names.push_back(elem_name);
-            field_idx++;
-          } else if (isa<DISubprogram>(iter2)) {
-            //methods of classes, skip
-            continue;
-          }
-        }
+        get_elem_names(dit, &elem_names);
         break;
       }
     }
 
+    if (!found_DIType) {
+      //Infer DIType from using DISubprogram
+      for (auto DIsubprog : DbgFinder.subprograms()) {
+        if (struct_name == DIsubprog->getName().str()) {
+          DISubroutineType * DISubroutType = DIsubprog->getType();
+          for (auto subtype : DISubroutType->getTypeArray()) {
+            if (subtype == NULL) { continue; }
+
+            if (isa<DIDerivedType>(subtype)) {
+              DIDerivedType * DIderived_type = dyn_cast<DIDerivedType>(subtype);
+              if (DIderived_type->getTag() == dwarf::Tag::DW_TAG_pointer_type) {
+                DIType * DItype = DIderived_type->getBaseType();
+                if ((DItype != NULL) && isa<DICompositeType>(DItype)) {
+                  llvm::errs() << "Using dit taken from chaos .... \n";
+                  DItype->dump();
+                  get_elem_names(DItype, &elem_names);
+                }
+              }
+            }
+          }
+          break;
+        }
+      }
+    }
+
     auto memberoffsets = SL->getMemberOffsets();
+    if (elem_names.size() > memberoffsets.size()) {
+      DEBUG0("Wrong # of elem names....\n");
+      elem_names.clear();
+    }
 
     while (elem_names.size() < memberoffsets.size()) {
       //Can't get field names, just put simple name
