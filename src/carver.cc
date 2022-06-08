@@ -137,7 +137,7 @@ void __Carv_func_ptr(void * ptr) {
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
     if (ptr != NULL) {
-      std::cerr << "Warn : Unknown func ptr : " << updated_name << "\n";
+      //std::cerr << "Warn : Unknown func ptr : " << updated_name << "\n";
     }
     VAR<void *> * inputv = new VAR<void *>(NULL
       , updated_name, INPUT_TYPE::NULLPTR);
@@ -155,7 +155,7 @@ void __carv_ptr_name_update(int idx) {
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s[%d]",base_name, idx);
-  __carv_base_names.push_back(std::move(update_name));
+  __carv_base_names.push_back_copy(update_name);
   return;
 }
 
