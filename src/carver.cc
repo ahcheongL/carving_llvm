@@ -26,6 +26,7 @@ static vector<PTR> * cur_carved_ptrs = NULL;
 //memory info
 static map<void *, int> alloced_ptrs;
 static map<void *, char *> alloced_type;
+static vector<char *> class_names;
 
 //naming
 static vector<char * > __carv_base_names;
@@ -132,7 +133,7 @@ void __record_func_ptr(void * ptr, char * name) {
 }
 
 void __Carv_func_ptr(void * ptr) {
-  char * updated_name = *__carv_base_names.back();
+  char * updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
     if (ptr != NULL) {
@@ -158,8 +159,24 @@ void __carv_ptr_name_update(int idx) {
   return;
 }
 
+void __keep_class_name(char * name) {
+  class_names.push_back_copy(name);
+}
+
+int __get_class_name_idx(void * obj_ptr) {
+  char ** name_ptr = alloced_type.find(obj_ptr);
+  if (name_ptr == NULL) return -1;
+  return class_names.get_idx(*name_ptr);
+}
+
 void __carv_name_push(char * name) {
   __carv_base_names.push_back(strdup(name));
+  return;
+}
+
+void __carv_name_free_pop() {
+  free(*__carv_base_names.back());
+  __carv_base_names.pop_back();
   return;
 }
 

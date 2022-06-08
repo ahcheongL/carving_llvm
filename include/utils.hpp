@@ -76,8 +76,17 @@ public:
     data = (elem_type *) malloc(sizeof(elem_type) * 128);
   }
 
+  void push_back_copy(elem_type elem) {
+    data[num_elem] = elem;
+    num_elem++;
+    if (num_elem >= capacity) {
+      capacity *= 2;
+      data = (elem_type *) realloc(data, sizeof(elem_type) * capacity);
+    }
+  }
+
   void push_back(elem_type && elem) {
-    data[num_elem] = std::move(elem);
+    data[num_elem] = elem;
     num_elem++;
     if (num_elem >= capacity) {
       capacity *= 2;
@@ -99,6 +108,16 @@ public:
   elem_type * get(int idx) {
     if (idx >= num_elem) { return 0; }
     return &(data[idx]);
+  }
+
+  int get_idx(elem_type elem) {
+    int idx = 0;
+    for (idx = 0 ; idx < num_elem; idx++) {
+      if (elem == data[idx]) {
+        return idx;
+      }
+    }
+    return -1;
   }
 
   int size() {

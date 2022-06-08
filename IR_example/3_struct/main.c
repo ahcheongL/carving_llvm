@@ -15,6 +15,8 @@ int main(int argc, char * argv[]) {
   structa * ptr = malloc(sizeof(structa) * 2);
   ptr[0].f1 = 4; ptr[0].f2 = 5;
   ptr[1].f1 = 6; ptr[1].f2 = 7;
+  foo(ptr);
+  free(ptr);
 
-  return foo(ptr);
+  return 0;
 }
