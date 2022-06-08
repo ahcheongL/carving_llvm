@@ -150,6 +150,7 @@ class carver_pass : public ModulePass {
   FunctionCallee name_free_pop;
   FunctionCallee keep_class_name;
   FunctionCallee get_class_name_idx;
+  FunctionCallee pop_carving_obj;
 
   int func_id;
 };
@@ -689,8 +690,10 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
   const StructLayout * SL = DL->getStructLayout(struct_type);
 
   std::string struct_name = struct_type->getName().str();
-  struct_name = struct_name.substr(0, struct_name.find('.'))
-    + "_" + struct_name.substr(struct_name.find('.') + 1);
+  struct_name = struct_name.substr(struct_name.find('.') + 1);
+  if (struct_name.find("::") != std::string::npos) {
+    struct_name = struct_name.substr(struct_name.find("::") + 2);
+  }
 
   std::string struct_carver_name = "__Carv_inner_" + struct_name;
   auto search = struct_carvers.find(struct_carver_name);
@@ -712,10 +715,14 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
 
     BasicBlock * cur_block = entry_BB;
 
+    llvm::errs() << "Getting names of " << struct_name << "\n";
+
     //Get field names
     std::vector<std::string> elem_names;
     for (auto iter : DbgFinder.types()) {
       if (struct_name == iter->getName().str()) {
+        llvm::errs() << "Found DIType \n";
+        iter->dump();
         DIType * dit = iter;
         while ((dit != NULL) && (
           isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit))) {
@@ -727,7 +734,7 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
             //TODO
             dit = NULL;
             break;
-          }          
+          }
         }
 
         if ((dit == NULL) || (!isa<DICompositeType>(dit))) {
@@ -763,12 +770,12 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
       }
     }
 
-    if (elem_names.size() == 0) {
+    auto memberoffsets = SL->getMemberOffsets();
+
+    while (elem_names.size() < memberoffsets.size()) {
       //Can't get field names, just put simple name
-      int field_index = 0;
-      for (auto _field : SL->getMemberOffsets()) {
-        elem_names.push_back("field" + std::to_string(field_index++));
-      }
+      int field_idx = elem_names.size();
+      elem_names.push_back("field" + std::to_string(field_idx));
     }
     
     if (elem_names.size() == 0) {
@@ -790,13 +797,13 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
       Type * gep_pointee_type = gep_type->getPointerElementType();
 
       if (gep_pointee_type->isStructTy()) {
-        insert_struct_carve_probe_inner(gep, gep_pointee_type);
+        insert_struct_carve_probe(gep, gep_pointee_type);
         std::vector<Value *> empty_args;
         IRB->CreateCall(name_free_pop, empty_args);
       } else if (gep_pointee_type->isArrayTy()) {
         cur_block = insert_carve_probe(gep, cur_block);
         std::vector<Value *> empty_args {};
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(name_free_pop, empty_args);
       } else if (is_func_ptr_type(gep_pointee_type)) {
         Value * ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, gep, Int8PtrTy);
         std::vector<Value *> probe_args {ptrval};
@@ -859,16 +866,21 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type) {
       std::vector<Value *> idx_args {casted_var};
       Instruction * name_idx = IRB->CreateCall(get_class_name_idx, idx_args);
 
-      BasicBlock * end_block = entry_BB->splitBasicBlock(name_idx->getNextNonDebugInstruction());
-      IRB->SetInsertPoint(end_block->getFirstNonPHIOrDbgOrLifetime());
-      Instruction * end_old_term = end_block->getTerminator();
-      Instruction * end_new_term = IRB->CreateRetVoid();
-      end_new_term->removeFromParent();
-      ReplaceInstWithInst(end_old_term, end_new_term);
+      BasicBlock * orig_block = entry_BB->splitBasicBlock(name_idx->getNextNonDebugInstruction());
+      int orig_case_id = class_name_map[type].first;
+      IRB->SetInsertPoint(orig_block->getFirstNonPHIOrDbgOrLifetime());
+      insert_struct_carve_probe_inner(carver_param, type);
+      std::vector<Value *> empty_args {};
+      IRB->CreateCall(pop_carving_obj, empty_args);
+      IRB->CreateRetVoid();
+      Instruction * old_term = orig_block->getTerminator();
+      old_term->eraseFromParent();
 
       IRB->SetInsertPoint(name_idx->getNextNonDebugInstruction());
       SwitchInst * switch_inst
-        = IRB->CreateSwitch(name_idx, end_block, search2->second.size() + 1);
+        = IRB->CreateSwitch(name_idx, orig_block, search2->second.size() + 1);
+
+      switch_inst->addCase(ConstantInt::get(Int32Ty, orig_case_id), orig_block);
 
       for (auto derived_type : search2->second) {
         BasicBlock * derived_block = entry_BB->splitBasicBlock(switch_inst->getNextNonDebugInstruction());
@@ -880,27 +892,15 @@ void carver_pass::insert_struct_carve_probe(Value * struct_ptr, Type * type) {
           , carver_param, PointerType::get(derived_type, 0));
 
         insert_struct_carve_probe_inner(casted_var, derived_type);
+        std::vector<Value *> empty_args {};
+        IRB->CreateCall(pop_carving_obj, empty_args);
+        IRB->CreateRetVoid();
         Instruction * old_term = derived_block->getTerminator();
-        Instruction * new_term = IRB->CreateBr(end_block);
-        new_term->removeFromParent();
-        ReplaceInstWithInst(old_term, new_term);
+        old_term->eraseFromParent();
       }
-
-      BasicBlock * orig_block = entry_BB->splitBasicBlock(switch_inst->getNextNonDebugInstruction());
-      int orig_case_id = class_name_map[type].first;
-
-      switch_inst->addCase(ConstantInt::get(Int32Ty, orig_case_id), orig_block);
-      IRB->SetInsertPoint(orig_block->getFirstNonPHIOrDbgOrLifetime());
-      insert_struct_carve_probe_inner(carver_param, type);
-      Instruction * old_term = orig_block->getTerminator();
-      Instruction * new_term = IRB->CreateBr(end_block);
-      new_term->removeFromParent();
-      ReplaceInstWithInst(old_term, new_term);
 
       Instruction * entry_old_term = entry_BB->getTerminator();
       entry_old_term->eraseFromParent();
-
-      struct_carv_func->dump();
     }
   }
 
@@ -993,6 +993,8 @@ bool carver_pass::hookInstrs(Module &M) {
     get_link_name("__keep_class_name"), VoidTy, Int8PtrTy);
   get_class_name_idx = M.getOrInsertFunction(
     get_link_name("__get_class_name_idx"), Int32Ty, Int8PtrTy);
+  pop_carving_obj = M.getOrInsertFunction(
+    get_link_name("__pop_carving_obj"), VoidTy);
 
   get_class_type_info();
 

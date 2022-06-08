@@ -23,3 +23,4 @@ __carv_name_free_pop
 __mem_alloc_type
 __keep_class_name
 __get_class_name_idx
+__pop_carving_obj

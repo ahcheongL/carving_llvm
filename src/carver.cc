@@ -16,6 +16,7 @@ static int callseq_index;
 
 static int carved_index = 0;
 
+//Function pointer names
 static map<void *, char *> func_ptrs;
 
 //inputs, work as similar as function call stack
@@ -28,8 +29,11 @@ static map<void *, int> alloced_ptrs;
 static map<void *, char *> alloced_type;
 static vector<char *> class_names;
 
-//naming
+//variable naming
 static vector<char * > __carv_base_names;
+
+//
+static vector<void *> carving_obj_addrs;
 
 void Carv_char(char input) {
   VAR<char> * inputv = new VAR<char>(input
@@ -133,7 +137,7 @@ void __record_func_ptr(void * ptr, char * name) {
 }
 
 void __Carv_func_ptr(void * ptr) {
-  char * updated_name = strdup(*__carv_base_names.back());
+  char * updated_name = *__carv_base_names.back();
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
     if (ptr != NULL) {
@@ -165,8 +169,20 @@ void __keep_class_name(char * name) {
 
 int __get_class_name_idx(void * obj_ptr) {
   char ** name_ptr = alloced_type.find(obj_ptr);
-  if (name_ptr == NULL) return -1;
-  return class_names.get_idx(*name_ptr);
+  if (name_ptr == NULL) {
+    return -1;
+  }
+  int carved_idx = carving_obj_addrs.get_idx(obj_ptr);
+  if (carved_idx == -1) {
+    carving_obj_addrs.push_back_copy(obj_ptr);
+    return class_names.get_idx(*name_ptr);
+  }
+  return -1;
+}
+
+void __pop_carving_obj() {
+  carving_obj_addrs.pop_back();
+  return;  
 }
 
 void __carv_name_push(char * name) {
