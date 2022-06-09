@@ -167,17 +167,19 @@ void __keep_class_name(char * name) {
   class_names.push_back_copy(name);
 }
 
-int __get_class_name_idx(void * obj_ptr) {
+int __get_class_name_idx(void * obj_ptr, int default_idx) {
   char ** name_ptr = alloced_type.find(obj_ptr);
   if (name_ptr == NULL) {
-    return -1;
+    std::cerr << "Could not found name of " << obj_ptr  << "\n";
+    return default_idx;
   }
+  std::cerr << "Found class name of " << obj_ptr << " : " << *name_ptr << "\n";
   int carved_idx = carving_obj_addrs.get_idx(obj_ptr);
   if (carved_idx == -1) {
     carving_obj_addrs.push_back_copy(obj_ptr);
     return class_names.get_idx(*name_ptr);
   }
-  return -1;
+  return default_idx;
 }
 
 void __pop_carving_obj() {
@@ -222,6 +224,7 @@ void __mem_allocated_probe(void * ptr, int size) {
 }
 
 void __mem_alloc_type(void * ptr, char * type_name) {
+  std::cerr << "obj " << ptr << " has type : " << type_name << "\n";
   alloced_type.insert(ptr, type_name);
 }
 
