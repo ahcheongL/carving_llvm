@@ -389,14 +389,19 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
     std::vector<Value *> args {IN->getOperand(0)};
     IRB->CreateCall(remove_probe, args);
   } else if (insert_ret_probe) {
-    if (IN->getType() != VoidTy) {
+    Type * ret_type = IN->getType();
+    if (ret_type != VoidTy) {
       Constant * name_const = gen_new_string_constant("\"" + callee_name + "\"_ret");
       std::vector<Value *> push_args {name_const};
       IRB->CreateCall(carv_name_push, push_args);
 
       insert_carve_probe(IN, IN->getParent());
 
-      IRB->CreateCall(carv_name_pop, empty_args);
+      if (ret_type->isStructTy()) {
+        IRB->CreateCall(name_free_pop, empty_args);
+      } else {
+        IRB->CreateCall(carv_name_pop, empty_args);
+      }
     }
   }
 
