@@ -20,20 +20,22 @@ static int carved_index = 0;
 static map<void *, char *> func_ptrs;
 
 //inputs, work as similar as function call stack
-static vector<FUNC_CONTEXT> inputs;
+static vector<FUNC_CONTEXT *> inputs;
 static vector<IVAR *> * cur_inputs = NULL;
-static vector<PTR> * cur_carved_ptrs = NULL;
+static vector<PTR *> * cur_carved_ptrs = NULL;
 
 //memory info
 static map<void *, int> alloced_ptrs;
 static map<void *, char *> alloced_type;
 static vector<char *> class_names;
+static map<char *, int> class_size;
 
 //variable naming
 static vector<char * > __carv_base_names;
 
-//
-static vector<void *> carving_obj_addrs;
+static int cur_class_index = -1;
+static int cur_class_size = -1;
+
 
 void Carv_char(char input) {
   VAR<char> * inputv = new VAR<char>(input
@@ -77,7 +79,7 @@ void Carv_double(double input) {
   cur_inputs->push_back((IVAR *) inputv);
 }
 
-int Carv_pointer(void * ptr) {
+int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size) {
   char * updated_name = *(__carv_base_names.back());
   if (ptr == NULL) {
     VAR<void *> * inputv = new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
@@ -86,10 +88,10 @@ int Carv_pointer(void * ptr) {
   }
 
   //Find already carved ptr
-  int index = inputs.back()->carved_ptr_begin_idx;
+  int index = (*inputs.back())->carved_ptr_begin_idx;
   int num_carved_ptrs = cur_carved_ptrs->size();
   while (index < num_carved_ptrs) {
-    PTR * carved_ptr = cur_carved_ptrs->get(index);
+    PTR * carved_ptr = (*cur_carved_ptrs->get(index));
     char * carved_addr = (char *) carved_ptr->addr;
     int carved_ptr_size = carved_ptr->alloc_size;
     char * carved_addr_end = carved_addr + carved_ptr_size;
@@ -115,7 +117,18 @@ int Carv_pointer(void * ptr) {
     if ((alloced_addr <= ptr) && (ptr < alloced_addr_end)) {
       int size = alloced_addr_end - ((char *) ptr);
       int new_carved_ptr_index = cur_carved_ptrs->size();
-      cur_carved_ptrs->push_back(PTR(ptr, size));
+      
+      char ** name_ptr = alloced_type.find(ptr);
+      if (name_ptr != NULL) {
+        cur_class_index = class_names.get_idx(*name_ptr);
+        cur_class_size = *class_size.find(*name_ptr);
+        type_name = *name_ptr;
+      } else {
+        cur_class_index = default_idx;
+        cur_class_size = default_size;
+      }
+
+      cur_carved_ptrs->push_back(new PTR(ptr, type_name, size));
 
       VAR<int> * inputv = new VAR<int>(
         new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
@@ -159,32 +172,25 @@ void __carv_ptr_name_update(int idx) {
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s[%d]",base_name, idx);
-  __carv_base_names.push_back_copy(update_name);
+  __carv_base_names.push_back(update_name);
   return;
 }
 
-void __keep_class_name(char * name) {
-  class_names.push_back_copy(name);
+void __keep_class_name(char * name, int size) {
+  class_names.push_back(name);
+  class_size.insert(name, size);
 }
 
-int __get_class_name_idx(void * obj_ptr, int default_idx) {
-  char ** name_ptr = alloced_type.find(obj_ptr);
-  if (name_ptr == NULL) {
-    std::cerr << "Could not found name of " << obj_ptr  << "\n";
-    return default_idx;
-  }
-  std::cerr << "Found class name of " << obj_ptr << " : " << *name_ptr << "\n";
-  int carved_idx = carving_obj_addrs.get_idx(obj_ptr);
-  if (carved_idx == -1) {
-    carving_obj_addrs.push_back_copy(obj_ptr);
-    return class_names.get_idx(*name_ptr);
-  }
-  return default_idx;
+char * __update_class_ptr(char * ptr, int idx, int size) {
+  return ptr + (idx * size);
 }
 
-void __pop_carving_obj() {
-  carving_obj_addrs.pop_back();
-  return;  
+int __get_class_idx() {
+  return cur_class_index;
+}
+
+int __get_class_size() {
+  return cur_class_size;
 }
 
 void __carv_name_push(char * name) {
@@ -207,7 +213,7 @@ void __carv_struct_name_update(char * field_name) {
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s.%s",base_name, field_name);
-  __carv_base_names.push_back(std::move(update_name));
+  __carv_base_names.push_back(update_name);
   return;
 }
 
@@ -252,20 +258,20 @@ void __carv_func_call_probe(int func_id) {
     memset(func_carved_filesize + tmp, 0, tmp * sizeof(int *));
   }
 
-  FUNC_CONTEXT new_ctx
-    = FUNC_CONTEXT(carved_index++, num_func_calls[func_id]);
+  FUNC_CONTEXT * new_ctx
+    = new FUNC_CONTEXT(carved_index++, num_func_calls[func_id]);
   num_func_calls[func_id] += 1;
 
   
-  inputs.push_back(std::move(new_ctx));
-  cur_inputs = &(inputs.back()->inputs);
-  cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+  inputs.push_back(new_ctx);
+  cur_inputs = &(new_ctx->inputs);
+  cur_carved_ptrs = &(new_ctx->carved_ptrs);
 
   return;
 }
 
 void __update_carved_ptr_idx() {
-  inputs.back()->update_carved_ptr_begin_idx();
+  (*inputs.back())->update_carved_ptr_begin_idx();
 }
 
 static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
@@ -276,18 +282,21 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
     idx1 = begin_idx;
     while (idx1 < end_idx) {
       int idx2 = idx1 + 1;
-      PTR * cur_carved_ptr = cur_carved_ptrs->get(idx1);
+      PTR * cur_carved_ptr = (*cur_carved_ptrs->get(idx1));
       char * addr1 = (char*) cur_carved_ptr->addr;
       int size1 = cur_carved_ptr->alloc_size;
       if (size1 == 0) { idx1++; continue; }
       char * end_addr1 = addr1 + size1;
+      char * type1 = cur_carved_ptr->pointee_type;
 
       while (idx2 < end_idx) {
-        PTR * cur_carved_ptr2 = cur_carved_ptrs->get(idx2);
+        PTR * cur_carved_ptr2 = (*cur_carved_ptrs->get(idx2));
         char * addr2 = (char*) cur_carved_ptr2->addr;
         int size2 = cur_carved_ptr2->alloc_size;
         if (size2 == 0) { idx2++; continue; }
         char * end_addr2 = addr2 + size2;
+        char * type2 = cur_carved_ptr2->pointee_type;
+        if (type1 != type2) { idx2++; continue; }
         int offset = -1;
         int remove_ptr_idx;
         int replacing_ptr_idx;
@@ -360,7 +369,7 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
 }
 
 void __carv_func_ret_probe(char * func_name, int func_id) {
-  class FUNC_CONTEXT * cur_context = inputs.back();
+  class FUNC_CONTEXT * cur_context = (*inputs.back());
   inputs.pop_back();
   int idx = 0;
   const int cur_carving_index = cur_context->carving_index;
@@ -381,8 +390,9 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   //Write carved pointers
   idx = 0;  
   while (idx < num_carved_ptrs) {
-    PTR * carved_ptr = cur_carved_ptrs->get(idx);
-    outfile << idx << ":" << carved_ptr->addr << ":" << carved_ptr->alloc_size << "\n";
+    PTR * carved_ptr = (*cur_carved_ptrs->get(idx));
+    outfile << idx << ":" << carved_ptr->addr << ":" << carved_ptr->alloc_size
+      << ":" << carved_ptr->pointee_type << "\n";
     idx++;
   }
 
@@ -428,7 +438,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       int carved_idx = 0;
       int offset;
       while (carved_idx < num_carved_ptrs) {
-        PTR * carved_ptr = cur_carved_ptrs->get(carved_idx);
+        PTR * carved_ptr = (*cur_carved_ptrs->get(carved_idx));
         char * end_addr = (char *) carved_ptr->addr + carved_ptr->alloc_size;
         if (end_addr == addr) {
           offset = carved_ptr->alloc_size;
@@ -474,14 +484,21 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
   }
 
-  //delete cur_context;
-  class FUNC_CONTEXT * next_ctx = inputs.back();
+  int carved_idx = 0;
+  while (carved_idx < num_carved_ptrs) {
+    PTR * carved_ptr = (*cur_carved_ptrs->get(carved_idx));
+    delete carved_ptr;
+    carved_idx++;
+  }
+
+  delete cur_context;
+  class FUNC_CONTEXT ** next_ctx = inputs.back();
   if (next_ctx == NULL) {
     cur_inputs = NULL;
     cur_carved_ptrs = NULL;
   } else {
-    cur_inputs = &(next_ctx->inputs);
-    cur_carved_ptrs = &(next_ctx->carved_ptrs);
+    cur_inputs = &((*next_ctx)->inputs);
+    cur_carved_ptrs = &((*next_ctx)->carved_ptrs);
   }
   
   return;

@@ -22,5 +22,6 @@ __update_carved_ptr_idx
 __carv_name_free_pop
 __mem_alloc_type
 __keep_class_name
-__get_class_name_idx
-__pop_carving_obj
+__get_class_idx
+__get_class_size
+__update_class_ptr

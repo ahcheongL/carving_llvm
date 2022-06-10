@@ -35,14 +35,20 @@ enum INPUT_TYPE {
 
 class PTR {
 public:
-  PTR(void * _addr, int _size) { addr = _addr; alloc_size = _size; }
-  enum INPUT_TYPE pointee_type; //TODO
+  PTR(void * _addr, int _size)
+    : addr(_addr), pointee_type(0), alloc_size(_size)  {}
+
+  PTR(void * _addr, char * pointee_type, int _size)
+    : addr(_addr), pointee_type(pointee_type), alloc_size(_size)  {}
+  
   void * addr;
+  char * pointee_type;
   int alloc_size;
 };
 
 class IVAR {
 public:
+  IVAR(char * name, enum INPUT_TYPE type) : name(name), type(type) {}
   ~IVAR() { free(name); }
   enum INPUT_TYPE type;
   char * name;
@@ -53,15 +59,12 @@ class VAR : public IVAR {
 public:
 
   VAR(input_type _input, char * _name, enum INPUT_TYPE _type)
-    : input(_input) { name = _name; type = _type; }
+    : input(_input), IVAR(_name, _type) {}
 
   VAR(input_type pointer_index, char * _name
     , int _pointer_offset, enum INPUT_TYPE _type)
-    : input(pointer_index) {
-    name = _name;
-    type = _type;
-    pointer_offset = _pointer_offset;
-  }
+    : input(pointer_index), IVAR(_name, _type), pointer_offset(_pointer_offset)
+    {}
 
   input_type input;
   int pointer_offset;
@@ -73,23 +76,15 @@ public:
   vector() {
     capacity = 128;
     num_elem = 0;
-    data = (elem_type *) malloc(sizeof(elem_type) * 128);
+    data = (elem_type *) malloc(sizeof(elem_type) * capacity);
   }
 
-  void push_back_copy(elem_type elem) {
+  void push_back(elem_type elem) {
     data[num_elem] = elem;
     num_elem++;
     if (num_elem >= capacity) {
       capacity *= 2;
-      data = (elem_type *) realloc(data, sizeof(elem_type) * capacity);
-    }
-  }
-
-  void push_back(elem_type && elem) {
-    data[num_elem] = elem;
-    num_elem++;
-    if (num_elem >= capacity) {
-      capacity *= 2;
+      
       data = (elem_type *) realloc(data, sizeof(elem_type) * capacity);
     }
   }
@@ -149,7 +144,7 @@ public:
   }
 
 private:
-  elem_type* data;
+  elem_type * data;
   int capacity;
   int num_elem;
 };
@@ -350,7 +345,7 @@ public:
   }
 
   vector<IVAR *> inputs;
-  vector<PTR> carved_ptrs;
+  vector<PTR *> carved_ptrs;
   int carved_ptr_begin_idx;
   int carving_index;
   int func_call_idx;
