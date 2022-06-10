@@ -1,6 +1,10 @@
 #include<iostream>
 #include<cstdlib>
 
+struct small {
+   int a;
+};
+
 class Shape {
    public:   
       Shape() {width = 42; age = 3;}
@@ -29,7 +33,7 @@ public:
    int area;
 };
 
-int foo (Shape * shape1, Rectangle * shape2) {
+int foo (Shape * shape1, Rectangle * shape2, struct small shape3[1]) {
    std::cerr << "sha_arr[2].area : " << ((Rectangle *) shape1 + 2)->area << "\n";
   return 0;
 }
@@ -46,6 +50,8 @@ int main(int argc, char * argv[]) {
    //Compile error!
    //rect_arr[2] = sha_arr[3];
 
-   int width1 = foo (sha_arr,rect_arr);
+   struct small small_arr[1];
+
+   int width1 = foo (sha_arr,rect_arr, small_arr);
    return width1;
 }

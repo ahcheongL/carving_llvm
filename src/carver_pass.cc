@@ -1,45 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-#include <iostream>
-#include <set>
-#include <string>
-#include <map>
-#include <fstream>
-#include <vector>
-#include <sys/time.h>
-
-#include "llvm/Config/llvm-config.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Constant.h"
-#include "llvm/IR/Instruction.h"
-#include "llvm/IR/GlobalValue.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Pass.h"
-#include "llvm/Analysis/ValueTracking.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/IR/DebugInfo.h"
-#include "llvm/Support/raw_ostream.h"
-
-//#define DEBUG0(x)
-#ifndef DEBUG0
-#define DEBUG0(x) (llvm::errs() << x)
-#define DEBUGDUMP(x) (x->dump())
-#else
-#define DEBUGDUMP(x)
-#endif
-
-using namespace llvm;
-
-typedef llvm::iterator_range<llvm::Module::global_value_iterator> global_range;
-std::vector<Value *> empty_args;
+#include"pass.hpp"
 
 namespace {
 
@@ -62,11 +21,8 @@ class carver_pass : public ModulePass {
 
  private:
   bool hookInstrs(Module &M);
-  
-  void read_probe_list();
 
   std::map<std::string, std::string> probe_link_names;
-  std::string get_link_name(std::string);
 
   std::set<std::string> instrument_func_set;
   void get_instrument_func_set();
@@ -87,11 +43,6 @@ class carver_pass : public ModulePass {
   
   void insert_global_carve_probe(Function * F, BasicBlock * BB);
 
-  std::string find_param_name(Value * param, BasicBlock * BB);
-
-  std::map<std::string, Constant *> new_string_globals;
-  Constant * gen_new_string_constant(std::string name);
-
   int num_class_name_const = 0;
   std::vector<std::pair<Constant *, int>> class_name_consts;
   std::map<StructType *, std::pair<int, Constant *>> class_name_map;
@@ -103,8 +54,8 @@ class carver_pass : public ModulePass {
   Module * Mod;
   LLVMContext * Context;
   const DataLayout * DL;
-
   IRBuilder<> *IRB;
+
   Type        *VoidTy;
   IntegerType *Int1Ty;
   IntegerType *Int8Ty;
@@ -164,22 +115,6 @@ class carver_pass : public ModulePass {
 
 char carver_pass::ID = 0;
 
-static std::string get_type_str(Type * type) {
-  std::string typestr;
-  raw_string_ostream typestr_stream(typestr);
-  type->print(typestr_stream);
-  return typestr;
-}
-
-static bool is_func_ptr_type(Type * type) {
-  if (type->isPointerTy()) {
-    PointerType * ptrtype = dyn_cast<PointerType>(type);
-    Type * elem_type = ptrtype->getPointerElementType();
-    return elem_type->isFunctionTy();
-  }
-  return false;
-}
-
 void carver_pass::get_class_type_info() {
 
   //Set dummy location...
@@ -193,7 +128,7 @@ void carver_pass::get_class_type_info() {
 
   for (auto struct_type : Mod->getIdentifiedStructTypes()) {
     std::string name = get_type_str(struct_type);
-    Constant * name_const = gen_new_string_constant(name);
+    Constant * name_const = gen_new_string_constant(name, IRB);
     if (struct_type->isOpaque()) { continue; }
     class_name_consts.push_back(std::make_pair(name_const, DL->getTypeAllocSize(struct_type)));
     class_name_map.insert(std::make_pair(struct_type
@@ -290,7 +225,7 @@ void carver_pass::Insert_alloca_probe(BasicBlock& entry_block) {
 
         if (allocated_type->isStructTy()) {
           std::string typestr = get_type_str(allocated_type);         
-          Constant * typename_const = gen_new_string_constant(typestr);
+          Constant * typename_const = gen_new_string_constant(typestr, IRB);
           std::vector<Value *> args1 {casted_ptr, typename_const};
           IRB->CreateCall(mem_alloc_type, args1);
         }
@@ -371,7 +306,7 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
         Type * pointee_type = cast_ptr_type->getPointerElementType();
         if (pointee_type->isStructTy()) {
           std::string typestr = get_type_str(pointee_type);
-          Constant * typename_const = gen_new_string_constant(typestr);
+          Constant * typename_const = gen_new_string_constant(typestr, IRB);
           std::vector<Value *> args1 {IN, typename_const};
           IRB->CreateCall(mem_alloc_type, args1);
         }
@@ -391,7 +326,7 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
   } else if (insert_ret_probe) {
     Type * ret_type = IN->getType();
     if (ret_type != VoidTy) {
-      Constant * name_const = gen_new_string_constant("\"" + callee_name + "\"_ret");
+      Constant * name_const = gen_new_string_constant("\"" + callee_name + "\"_ret", IRB);
       std::vector<Value *> push_args {name_const};
       IRB->CreateCall(carv_name_push, push_args);
 
@@ -476,7 +411,7 @@ void carver_pass::Insert_main_probe(BasicBlock & entry_block, Function & F
   //Record func ptr
   for (auto &Func : Mod->functions()) {
     if (Func.size() == 0) { continue; }
-    Constant * func_name_const = gen_new_string_constant(Func.getName().str());
+    Constant * func_name_const = gen_new_string_constant(Func.getName().str(), IRB);
     Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
       , (Value *) &Func, Int8PtrTy);
     std::vector<Value *> probe_args {cast_val, func_name_const};
@@ -505,7 +440,7 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
       assert(const_type->isPointerTy());
       Type * pointee_type = dyn_cast<PointerType>(const_type)->getPointerElementType();
 
-      Constant * glob_name_const = gen_new_string_constant(glob_name);
+      Constant * glob_name_const = gen_new_string_constant(glob_name, IRB);
       std::vector<Value *> push_args {glob_name_const};
       IRB->CreateCall(carv_name_push, push_args);
 
@@ -561,7 +496,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
     for (auto _iter : memberoffsets) {
       std::string field_name = "field" + std::to_string(idx);
       Value * extracted_val = IRB->CreateExtractValue(val, idx);
-      IRB->CreateCall(struct_name_func, gen_new_string_constant(field_name));
+      IRB->CreateCall(struct_name_func, gen_new_string_constant(field_name, IRB));
       cur_block = insert_carve_probe(extracted_val, cur_block);
       IRB->CreateCall(carv_name_pop, empty_args);
       idx++;
@@ -677,7 +612,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
       Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
 
       std::string typestr = get_type_str(pointee_type);
-      Constant * typestr_const = gen_new_string_constant(typestr);
+      Constant * typestr_const = gen_new_string_constant(typestr, IRB);
       //Call Carv_pointer
       std::vector<Value *> probe_args {ptrval, typestr_const, default_class_idx, pointee_size_val};
       Value * end_size = IRB->CreateCall(carv_ptr_func, probe_args);
@@ -775,48 +710,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
   return BB;
 }
 
-static void get_elem_names(DIType * dit, std::vector<std::string> * elem_names) {
-  while ((dit != NULL) && (
-    isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit))) {
-    if (isa<DIDerivedType>(dit)) {
-      DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
-      dit = tmptype->getBaseType();
-    } else {
-      DISubroutineType * tmptype = dyn_cast<DISubroutineType>(dit);
-      //TODO
-      dit = NULL;
-      break;
-    }
-  }
 
-  if ((dit == NULL) || (!isa<DICompositeType>(dit))) {
-    return;
-  }
-
-  DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
-  int field_idx = 0;
-  for (auto iter2 : struct_DIT->getElements()) {
-    if (isa<DIDerivedType>(iter2)) {
-      DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
-      dwarf::Tag elem_tag = elem_DIT->getTag();
-      std::string elem_name = "";
-      if (elem_tag == dwarf::Tag::DW_TAG_member) {
-        elem_name = elem_DIT->getName().str();
-      } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
-        elem_name = elem_DIT->getBaseType()->getName().str();
-      }
-
-      if (elem_name == "") {
-        elem_name = "field" + std::to_string(field_idx);
-      }
-      elem_names->push_back(elem_name);
-      field_idx++;
-    } else if (isa<DISubprogram>(iter2)) {
-      //methods of classes, skip
-      continue;
-    }
-  }
-}
 
 void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
@@ -856,7 +750,7 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
       if (struct_name == iter->getName().str()) {
         found_DIType = true;
         DIType * dit = iter;
-        get_elem_names(dit, &elem_names);
+        get_struct_field_names_from_DIT(dit, &elem_names);
         break;
       }
     }
@@ -875,7 +769,7 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
                 DIType * DItype = DIderived_type->getBaseType();
                 if ((DItype != NULL) && isa<DICompositeType>(DItype)) {
                   DEBUGDUMP(DItype);
-                  get_elem_names(DItype, &elem_names);
+                  get_struct_field_names_from_DIT(DItype, &elem_names);
                 }
               }
             }
@@ -907,7 +801,7 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * typ
 
     int elem_idx = 0;
     for (auto iter : elem_names) {
-      Constant * field_name_const = gen_new_string_constant(iter);
+      Constant * field_name_const = gen_new_string_constant(iter, IRB);
       std::vector<Value *> struct_name_probe_args {field_name_const};
       IRB->CreateCall(struct_name_func, struct_name_probe_args);
 
@@ -1153,7 +1047,7 @@ bool carver_pass::hookInstrs(Module &M) {
           param_name = "parm_" + std::to_string(param_idx);
         }
 
-        Constant * param_name_const = gen_new_string_constant(param_name);
+        Constant * param_name_const = gen_new_string_constant(param_name, IRB);
         std::vector<Value *> push_args {param_name_const};
         IRB->CreateCall(carv_name_push, push_args);
 
@@ -1187,7 +1081,7 @@ bool carver_pass::hookInstrs(Module &M) {
       IRB->SetInsertPoint(ret_instr);
 
       //Write carved result
-      Constant * func_name_const = gen_new_string_constant(func_name);
+      Constant * func_name_const = gen_new_string_constant(func_name, IRB);
 
       std::vector<Value *> probe_args {func_name_const, func_id_const};
       IRB->CreateCall(carv_func_ret, probe_args);
@@ -1226,7 +1120,7 @@ bool carver_pass::runOnModule(Module &M) {
 
   DEBUG0("Running carver_pass\n");
 
-  read_probe_list();
+  read_probe_list("carver_probe_names.txt");
   hookInstrs(M);
 
   DEBUG0("Verifying module...\n");
@@ -1243,50 +1137,6 @@ bool carver_pass::runOnModule(Module &M) {
   DEBUG0("Verifying done without errors\n");
 
   return true;
-}
-
-void carver_pass::read_probe_list() {
-  std::string file_path = __FILE__;
-  file_path = file_path.substr(0, file_path.rfind("/"));
-  std::string probe_file_path
-    = file_path.substr(0, file_path.rfind("/")) + "/lib/carver_probe_names.txt";
-  
-  std::ifstream list_file(probe_file_path);
-
-  std::string line;
-  while(std::getline(list_file, line)) {
-    size_t space_loc = line.find(' ');
-    probe_link_names.insert(std::make_pair(line.substr(0, space_loc)
-      , line.substr(space_loc + 1)));
-  }
-
-  if (probe_link_names.size() == 0) {
-    DEBUG0("Can't find lib/carver_probe_names.txt file!\n");
-    std::abort();
-  }
-}
-
-std::string carver_pass::get_link_name(std::string base_name) {
-  auto search = probe_link_names.find(base_name);
-  if (search == probe_link_names.end()) {
-    DEBUG0("Can't find probe name : " << base_name << "! Abort.\n");
-    std::abort();
-  }
-
-  return search->second;
-}
-
-Constant * carver_pass::gen_new_string_constant(std::string name) {
-
-  auto search = new_string_globals.find(name);
-
-  if (search == new_string_globals.end()) {
-    Constant * new_global = IRB->CreateGlobalStringPtr(name);
-    new_string_globals.insert(std::make_pair(name, new_global));
-    return new_global;
-  }
-
-  return search->second;
 }
 
 void carver_pass::get_instrument_func_set() {
@@ -1320,30 +1170,6 @@ void carver_pass::get_instrument_func_set() {
   }
 
   outfile.close();
-}
-
-std::string carver_pass::find_param_name(Value * param, BasicBlock * BB) {
-
-  Instruction * ptr = NULL;
-
-  for (auto instr_iter = BB->begin(); instr_iter != BB->end(); instr_iter++) {
-    if ((ptr == NULL) && isa<StoreInst>(instr_iter)) {
-      StoreInst * store_inst = dyn_cast<StoreInst>(instr_iter);
-      if (store_inst->getOperand(0) == param) {
-        ptr = (Instruction *) store_inst->getOperand(1);
-      }
-    } else if (isa<DbgVariableIntrinsic>(instr_iter)) {
-      DbgVariableIntrinsic * intrinsic = dyn_cast<DbgVariableIntrinsic>(instr_iter);
-      Value * valloc = intrinsic->getVariableLocationOp(0);
-
-      if (valloc == ptr) {
-        DILocalVariable * var = intrinsic->getVariable();
-        return var->getName().str();
-      }
-    }
-  }
-
-  return "";
 }
 
 static void registercarver_passPass(const PassManagerBuilder &,
