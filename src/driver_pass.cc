@@ -229,10 +229,12 @@ bool driver_pass::hookInstrs(Module &M) {
     return false;
   }
 
-  BasicBlock * cur_block = &(main_func->getEntryBlock());
+  BasicBlock * new_entry_block = BasicBlock::Create(C, "new_entry_block", main_func);
+
+  BasicBlock * cur_block = new_entry_block;
   replay_BBs.insert(cur_block);
 
-  IRB->SetInsertPoint(cur_block->getFirstNonPHIOrDbgOrLifetime());
+  IRB->SetInsertPoint(cur_block);
 
   //Record func ptr
   for (auto &Func : M.functions()) {
@@ -271,18 +273,11 @@ bool driver_pass::hookInstrs(Module &M) {
 
   Instruction * target_call = IRB->CreateCall(
     target_func->getFunctionType(), target_func, target_args);
-  target_call->setDebugLoc(DebugLoc());
 
   //Return
-  cur_block->splitBasicBlock(target_call->getNextNonDebugInstruction());
-  IRB->SetInsertPoint(target_call->getNextNonDebugInstruction());
-
   IRB->CreateCall(__replay_fini, empty_args);
 
-  Instruction * new_main_term = IRB->CreateRet(ConstantInt::get(Int32Ty, 0));
-  new_main_term->removeFromParent();
-  Instruction * old_term = cur_block->getTerminator();
-  ReplaceInstWithInst(old_term, new_main_term);
+  IRB->CreateRet(ConstantInt::get(Int32Ty, 0));
 
   //remove other BB
   std::vector<BasicBlock *> BBs;
@@ -394,16 +389,16 @@ std::pair<BasicBlock *, Value *>
         , pointee_size_val);
       
       //Make loop block
-      BasicBlock * loopblock = cur_block->splitBasicBlock(ptr_size->getNextNonDebugInstruction());
+      BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_block->getParent());
       BasicBlock * const loopblock_start = loopblock;
       replay_BBs.insert(loopblock);
-
-      IRB->SetInsertPoint(ptr_size->getNextNonDebugInstruction());
       
       Instruction * cmp_instr1 = (Instruction *)
         IRB->CreateICmpEQ(ptr_size, ConstantInt::get(Int32Ty, 0));
+      
+      Instruction * temp_br_instr = IRB->CreateBr(loopblock);
 
-      IRB->SetInsertPoint(loopblock->getFirstNonPHIOrDbgOrLifetime());
+      IRB->SetInsertPoint(loopblock);
       PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
       index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), cur_block);
 
@@ -438,33 +433,27 @@ std::pair<BasicBlock *, Value *>
 
       Instruction * cmp_instr2
         = (Instruction *) IRB->CreateICmpSLT(index_update_instr, ptr_size);
+      
+      Instruction * temp_br_instr2 = IRB->CreateBr(loopblock);
 
-      BasicBlock * endblock
-        = loopblock->splitBasicBlock(cmp_instr2->getNextNonDebugInstruction());
+      BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_block->getParent());
       replay_BBs.insert(endblock);
 
-      IRB->SetInsertPoint(cmp_instr1->getNextNonDebugInstruction());
+      IRB->SetInsertPoint(temp_br_instr);
 
       Instruction * BB_term
         = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
       BB_term->removeFromParent();
+      ReplaceInstWithInst(temp_br_instr, BB_term);
       
-      //remove old terminator
-      Instruction * old_term = cur_block->getTerminator();
-      ReplaceInstWithInst(old_term, BB_term);
-
-      IRB->SetInsertPoint(cmp_instr2->getNextNonDebugInstruction());
+      IRB->SetInsertPoint(temp_br_instr2);
 
       Instruction * loopblock_term
         = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
-
       loopblock_term->removeFromParent();
+      ReplaceInstWithInst(temp_br_instr2, loopblock_term);
 
-      //remove old terminator
-      old_term = loopblock->getTerminator();
-      ReplaceInstWithInst(old_term, loopblock_term);
-
-      IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
+      IRB->SetInsertPoint(endblock);
 
       cur_block = endblock;
 
@@ -475,6 +464,8 @@ std::pair<BasicBlock *, Value *>
     DEBUGDUMP(typeptr);
     DEBUG0("Unknown type\n");
   }
+
+
 
   return std::make_pair(cur_block , result);
 }
@@ -507,8 +498,6 @@ void driver_pass::insert_struct_replay_probe_inner(Value * struct_ptr
       = BasicBlock::Create(*Context, "entry", struct_replay_func);
 
     IRB->SetInsertPoint(entry_BB);
-    IRB->CreateRetVoid();
-    IRB->SetInsertPoint(entry_BB->getFirstNonPHIOrDbgOrLifetime());
 
     BasicBlock * cur_block = entry_BB;
     Value * replay_param = struct_replay_func->getArg(0);
@@ -535,6 +524,8 @@ void driver_pass::insert_struct_replay_probe_inner(Value * struct_ptr
         }
       }
     }
+
+    IRB->CreateRetVoid();
   }
 
   IRB->restoreIP(cur_ip);
