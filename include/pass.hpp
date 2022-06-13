@@ -54,6 +54,11 @@ std::string find_param_name(Value *, BasicBlock *);
 
 void get_struct_field_names_from_DIT(DIType *, std::vector<std::string> *);
 
+extern int num_class_name_const;
+extern std::vector<std::pair<Constant *, int>> class_name_consts;
+extern std::map<StructType *, std::pair<int, Constant *>> class_name_map;
+void get_class_type_info(Module *, IRBuilder<>*, const DataLayout *);
+
 extern std::vector<Value *> empty_args;
 
 #endif

@@ -42,9 +42,9 @@ int main(int argc, char * argv[]) {
    Shape shape;
    rect_ptr = &Rect;
    sha_ptr = &shape;
-   Rect.setWidth(40);
-   sha_ptr->setWidth(20);
-   rect_ptr->setWidth(45);
+   Rect.setWidth(40); //width = 400
+   sha_ptr->setWidth(20); //width = 200
+   rect_ptr->setWidth(45); //width = 450
    int width1 = foo (sha_ptr,rect_ptr);
    return width1;
 }

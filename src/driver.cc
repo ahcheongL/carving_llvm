@@ -1,203 +1,126 @@
 #include "utils.hpp"
 
-static vector<IVAR *> inputs;
 static vector<PTR> carved_ptrs;
+
 static vector<int> replayed_index;
+
+static vector<VAR<int>> ptr_inputs;
+static vector<void *> func_ptr_inputs;
 
 //assert(func_ptr.size() == funcnames.size())
 static vector<void *> func_ptrs;
 static vector<char *> funcnames;
 
-void __driver_inputf_reader(char ** argv) {
+static vector<const char *> class_names;
+static map<const char *, int> class_size;
+
+
+static FILE * input_fp;
+
+void __driver_inputf_open(char ** argv) {
   char * inputfilename = argv[1];
-  FILE * fp = fopen(inputfilename, "r");
-  if (fp == NULL) { fprintf(stderr, "Can't read input file\n"); std::abort(); }
-
-  ssize_t readbyte;
-  size_t len = 256;
-  char * line = NULL;
-  bool is_carved_ptr = false;
-  while ((readbyte = getline(&line, &len, fp)) != -1) {
-    line[readbyte - 1] = 0;  //remove '\n'
-    if (!is_carved_ptr) {
-      if (line[0] == '#') {
-        is_carved_ptr = true;
-      } else {
-        char * num_bytes_str = strchr(line, ':') + 1;
-        num_bytes_str = strchr(num_bytes_str, ':') + 1;
-        int num_bytes = atoi(num_bytes_str);
-        carved_ptrs.push_back(PTR(malloc(num_bytes), num_bytes));
-      }
-    } else {
-      char * split = strchr(line, ':');
-      char * type = split + 1;
-      *split = 0;
-      split = strchr(type, ':');
-      char * value = split + 1;
-      *split = 0;
-      char * offset = NULL;
-      split = strchr(value, ':');
-      if (split != NULL) {
-        offset = split + 1;
-        *split = 0;
-      }
-
-      if (!strcmp(type, "CHAR")) {
-        VAR<char> * inputv = new VAR<char> (atoi(value), line, INPUT_TYPE::CHAR);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "SHORT")) {
-        VAR<short> * inputv = new VAR<short> (atoi(value), line, INPUT_TYPE::SHORT);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "INT")) {
-        VAR<int> * inputv = new VAR<int> (atoi(value), line, INPUT_TYPE::INT);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "LONG")) {
-        VAR<long> * inputv = new VAR<long> (atoi(value), line, INPUT_TYPE::LONG);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "LONGLONG")) {
-        VAR<long long> * inputv = new VAR<long long> (atoi(value), line, INPUT_TYPE::LONGLONG);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "FLOAT")) {
-        VAR<float> * inputv = new VAR<float> (atoi(value), line, INPUT_TYPE::FLOAT);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "DOUBLE")) {
-        VAR<double> * inputv = new VAR<double> (atoi(value), line, INPUT_TYPE::DOUBLE);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "NULL")) {
-        VAR<void *> * inputv = new VAR<void *> (NULL, line, INPUT_TYPE::NULLPTR);
-        inputs.push_back((IVAR *) inputv);
-      } else if (!strcmp(type, "FUNCPTR")) {
-        int num_func = func_ptrs.size();
-        int idx;
-        size_t value_len = strlen(value);
-        
-        for (idx = 0; idx < num_func; idx++) {
-          if (strncmp(value, *(funcnames[idx]), value_len) == 0) {
-            VAR<void *> * inputv = new VAR<void *> (*(func_ptrs[idx]), line, INPUT_TYPE::FUNCPTR);
-            inputs.push_back((IVAR *) inputv);
-            break;
-          }
-        }
-
-        if (idx == num_func) {
-          VAR<void *> * inputv = new VAR<void *> (NULL, line, INPUT_TYPE::FUNCPTR);
-          inputs.push_back((IVAR *) inputv);
-        }        
-      } else if (!strcmp(type, "PTR")) {
-        VAR<int> * inputv = new VAR<int> (atoi(value), line, atoi(offset)
-          , INPUT_TYPE::POINTER);
-        inputs.push_back((IVAR *) inputv);
-      }
-      line = NULL;
-    }
+  input_fp = fopen(inputfilename, "r");
+  if (input_fp == NULL) {
+    fprintf(stderr, "Can't read input file\n");
+    std::abort();
   }
-  
   return;
 }
 
 static int cur_input_idx = 0;
 
 char Replay_char() {
-
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  char buf[sizeof(char) + 1];
+  if(!fread(buf, sizeof(char), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::CHAR) { return 0; }
-  VAR<char> * cur_input = (VAR<char> *) cur_input_tmp;
-  return cur_input->input;
 }
 
 short Replay_short() {
-
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  short buf[sizeof(short) + 1];
+  if(!fread(buf, sizeof(short), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::SHORT) { return 0; }
-  VAR<short> * cur_input = (VAR<short> *) cur_input_tmp;
-  return cur_input->input;
 }
 
 int Replay_int() {
-
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  int buf[sizeof(int) + 1];
+  if(!fread(buf, sizeof(int), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::INT) { return 0; }
-  VAR<int> * cur_input = (VAR<int> *) cur_input_tmp;
-  return cur_input->input;
 }
 
 long Replay_longtype() {
-
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  long buf[sizeof(long) + 1];
+  if(!fread(buf, sizeof(long), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::LONG) { return 0; }
-  VAR<long> * cur_input = (VAR<long> *) cur_input_tmp;
-  return cur_input->input;
 }
 
 long long Replay_longlong() {
-
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  long long buf[sizeof(long long) + 1];
+  if(!fread(buf, sizeof(long long), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::LONGLONG) { return 0; }
-  VAR<long long> * cur_input = (VAR<long long> *) cur_input_tmp;
-  return cur_input->input;
 }
 
 float Replay_float() {
-
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  float buf[sizeof(float) + 1];
+  if(!fread(buf, sizeof(float), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::FLOAT) { return 0; }
-  VAR<float> * cur_input = (VAR<float> *) cur_input_tmp;
-  return cur_input->input;
 }
 
 double Replay_double() {
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
+  double buf[sizeof(double) + 1];
+  if(!fread(buf, sizeof(double), 1, input_fp))
+  {
+      return 0;
+  } else {
+      return buf[0];
   }
-
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::DOUBLE) { return 0; }
-  VAR<double> * cur_input = (VAR<double> *) cur_input_tmp;
-  return cur_input->input;
 }
 
-static int cur_ptr_alloc_size = 0;
+static int cur_class_index;
+static int cur_class_size;
+static int cur_pointer_size;
+static int cur_ptr_idx = 0;
 
-void * Replay_pointer() {
-  cur_ptr_alloc_size = 0;
+void * Replay_pointer(char * default_class_name) {
 
-  if (cur_input_idx >= inputs.size()) {
-    return 0;
-  }
+  cur_class_index = -1;
+  cur_class_size = 0;
+  cur_pointer_size = 0;
 
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::POINTER) { return 0; }
-  VAR<int> * cur_input = (VAR<int> *) cur_input_tmp;
+  if (cur_ptr_idx >= ptr_inputs.size()) { return 0; }
+
+  VAR<int> * cur_input = ptr_inputs[cur_ptr_idx++];
   
   int carved_index = cur_input->input;
   
   if (carved_index >= carved_ptrs.size()) { return 0; }
 
-  char * ret_ptr = ((char *) carved_ptrs[carved_index]->addr)
+  PTR * carved_ptr = carved_ptrs[carved_index];
+
+  char * ret_ptr = ((char *) carved_ptr->addr)
     + cur_input->pointer_offset;
 
   if (cur_input->pointer_offset == 0) {
@@ -210,30 +133,95 @@ void * Replay_pointer() {
       replay_index++;
     }
 
-    cur_ptr_alloc_size
-      = carved_ptrs[carved_index]->alloc_size;
-    replayed_index.push_back(std::move(carved_index));
+    const char * pointee_type = carved_ptr->pointee_type;
+
+    int * class_size_ptr = class_size[pointee_type];
+
+    if (class_size_ptr != NULL) {
+      cur_class_index = class_names.get_idx(pointee_type);
+      cur_class_size = *class_size_ptr;
+    } else if (default_class_name != NULL) {
+      cur_class_index = class_names.get_idx(default_class_name);
+      cur_class_size = *class_size[default_class_name];
+    }
+
+    cur_pointer_size
+      = carved_ptr->alloc_size;
+    replayed_index.push_back(carved_index);
   }
 
   return ret_ptr;
 }
 
 int Replay_ptr_alloc_size() {
-  return cur_ptr_alloc_size;
+  return cur_pointer_size;
 }
 
+int Replay_ptr_class_index() {
+  return cur_class_index;
+}
+
+int Replay_ptr_class_size() {
+  return cur_class_size;
+}
+
+static int func_ptr_index = 0;
 void * Replay_func_ptr() {
-  if (cur_input_idx >= inputs.size()) {
+  if (func_ptr_index >= func_ptr_inputs.size()) {
     return 0;
   }
 
-  IVAR * cur_input_tmp = *(inputs[cur_input_idx++]);
-  if (cur_input_tmp->type != INPUT_TYPE::FUNCPTR) { return 0; }
-  VAR<void *> * cur_input = (VAR<void *> *) cur_input_tmp;
-  return cur_input->input;
+  void * func_ptr = *func_ptr_inputs[func_ptr_index++];
+  return func_ptr;
 }
 
 void __record_func_ptr(void * ptr, char * name) {
-  func_ptrs.push_back(std::move(ptr));
-  funcnames.push_back(std::move(name));
+  func_ptrs.push_back(ptr);
+  funcnames.push_back(name);
+}
+
+void __receive_carved_ptr(int size, char * pointee_type) {
+  void * ptr = malloc(size);
+  carved_ptrs.push_back(PTR(ptr, pointee_type, size));
+}
+
+void __receive_ptr_shape(int ptr_index, int offset) {
+  char * mock_name = (char *) malloc(sizeof(char) * 2);
+  mock_name[0] = 'a';
+  mock_name[1] = 0;
+  ptr_inputs.push_back(VAR<int> (ptr_index, mock_name, offset, INPUT_TYPE::POINTER));
+}
+
+void __receive_func_ptr(char * funcname) {
+  int idx = 0;
+  int size = funcnames.size();
+  for (idx = 0; idx < size; idx++) {
+    if (funcname == (*funcnames[idx])) {
+      break;
+    }
+  }
+
+  if (idx == size) {
+    func_ptr_inputs.push_back(NULL);
+  } else {
+    func_ptr_inputs.push_back(*func_ptrs.get(idx));
+  }
+}
+
+char * __update_class_ptr(char * ptr, int idx, int size) {
+  return ptr + (idx * size);
+}
+
+void __keep_class_name(char * name, int size) {
+  class_names.push_back(name);
+  class_size.insert(name, size);
+}
+
+void __replay_fini() {
+  fclose(input_fp);
+  int idx = 0;
+  int num_carved_ptrs = carved_ptrs.size();
+  for (idx = 0; idx < num_carved_ptrs; idx++) {
+    free(carved_ptrs[idx]->addr);
+  }
 }

@@ -25,3 +25,4 @@ lib/driver_probe_names.txt
 funcs.txt
 
 *.driver
+*.init

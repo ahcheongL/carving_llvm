@@ -35,19 +35,23 @@ enum INPUT_TYPE {
 
 class PTR {
 public:
+
+  PTR() : addr(0), pointee_type(0), alloc_size(0) {}
+
   PTR(void * _addr, int _size)
     : addr(_addr), pointee_type(0), alloc_size(_size)  {}
 
-  PTR(void * _addr, char * pointee_type, int _size)
+  PTR(void * _addr, const char * pointee_type, int _size)
     : addr(_addr), pointee_type(pointee_type), alloc_size(_size)  {}
   
   void * addr;
-  char * pointee_type;
+  const char * pointee_type;
   int alloc_size;
 };
 
 class IVAR {
 public:
+  IVAR() : type(INPUT_TYPE::CHAR), name(0) {}
   IVAR(char * name, enum INPUT_TYPE type) : name(name), type(type) {}
   ~IVAR() { free(name); }
   enum INPUT_TYPE type;
@@ -58,6 +62,8 @@ template<class input_type>
 class VAR : public IVAR {
 public:
 
+  VAR() : input(0), pointer_offset(0), IVAR() {}
+
   VAR(input_type _input, char * _name, enum INPUT_TYPE _type)
     : input(_input), IVAR(_name, _type) {}
 
@@ -65,6 +71,33 @@ public:
     , int _pointer_offset, enum INPUT_TYPE _type)
     : input(pointer_index), IVAR(_name, _type), pointer_offset(_pointer_offset)
     {}
+  
+  //copy constructor
+  VAR(const VAR<input_type> & other)
+    : input(other.input), IVAR(strdup(other.name), other.type)
+      , pointer_offset(other.pointer_offset) {}
+  
+  //move constructor
+  VAR(VAR<input_type> && other)
+    : input(other.input), IVAR(other.name, other.type)
+      , pointer_offset(other.pointer_offset) {}
+  
+  VAR& operator=(const VAR<input_type> & other) {
+    input = other.input;
+    name = strdup(other.name);
+    type = other.type;
+    pointer_offset = other.pointer_offset;
+    return *this;
+  }
+
+  VAR& operator=(VAR<input_type> && other) {
+    input = other.input;
+    name = other.name;
+    type = other.type;
+    pointer_offset = other.pointer_offset;
+    other.name = 0;
+    return *this;
+  }
 
   input_type input;
   int pointer_offset;
@@ -76,7 +109,45 @@ public:
   vector() {
     capacity = 128;
     num_elem = 0;
-    data = (elem_type *) malloc(sizeof(elem_type) * capacity);
+    data = new elem_type[capacity];
+  }
+
+  vector(const vector<elem_type> & other)
+    : capacity(other.capacity), num_elem(other.num_elem)
+      , data(new elem_type[other.capacity]) {
+    for (int i = 0; i < num_elem; i++) {
+      data[i] = other.data[i];
+    }
+  }
+
+  vector(vector<elem_type> && other)
+    : capacity(other.capacity), num_elem(other.num_elem)
+      , data(other.data) {
+    other.data = 0;
+  }
+
+  vector& operator=(const vector<elem_type> & other) {
+    if (this != &other) {
+      delete[] data;
+      capacity = other.capacity;
+      num_elem = other.num_elem;
+      data = new elem_type[capacity];
+      for (int i = 0; i < num_elem; i++) {
+        data[i] = other.data[i];
+      }
+    }
+    return *this;
+  }
+
+  vector& operator=(vector<elem_type> && other) {
+    if (this != &other) {
+      delete[] data;
+      capacity = other.capacity;
+      num_elem = other.num_elem;
+      data = other.data;
+      other.data = 0;
+    }
+    return *this;
   }
 
   void push_back(elem_type elem) {
@@ -84,8 +155,15 @@ public:
     num_elem++;
     if (num_elem >= capacity) {
       capacity *= 2;
-      
-      data = (elem_type *) realloc(data, sizeof(elem_type) * capacity);
+
+      elem_type * tmp = new elem_type[capacity];
+      int idx;
+      for (idx = 0; idx < num_elem; idx++) {
+        tmp[idx] = data[idx];
+      }
+
+      delete [] data;
+      data = tmp;
     }
   }
 
@@ -105,7 +183,7 @@ public:
     return &(data[idx]);
   }
 
-  int get_idx(elem_type elem) {
+  int get_idx(const elem_type elem) {
     int idx = 0;
     for (idx = 0 ; idx < num_elem; idx++) {
       if (elem == data[idx]) {
@@ -140,7 +218,7 @@ public:
   }
 
   ~vector() {
-    free(data);
+    delete [] data;
   }
 
 private:
@@ -248,8 +326,13 @@ public:
     return root->find_inner(key);
   }
 
-  data_node * operator[](int idx) {
-    if (idx >= num_nodes) { return 0; }
+  Elem * operator[](Key key) {
+    if (root == NULL) { return NULL; }
+    return root->find_inner(key);
+  }
+
+  data_node * get_by_idx(int idx) {
+    if (idx >= num_nodes) { return NULL; }
     return nodes[idx];
   }
 
@@ -334,10 +417,39 @@ private:
 class FUNC_CONTEXT {
 public:
 
+  FUNC_CONTEXT() : carved_ptr_begin_idx(0), carving_index(0), func_call_idx(0) {}
+
   FUNC_CONTEXT(int _carved_idx, int _func_call_idx)
     : carving_index(_carved_idx), func_call_idx(_func_call_idx)
-      , inputs(), carved_ptrs() {
-    carved_ptr_begin_idx = 0;
+      , carved_ptr_begin_idx(0)
+      , inputs(), carved_ptrs() {}
+
+  FUNC_CONTEXT(const FUNC_CONTEXT & other) :
+    carving_index(other.carving_index), func_call_idx(other.func_call_idx)
+    , carved_ptr_begin_idx(other.carved_ptr_begin_idx)
+    , inputs(other.inputs), carved_ptrs(other.carved_ptrs) {}
+  
+  FUNC_CONTEXT(FUNC_CONTEXT && other) :
+    carving_index(other.carving_index), func_call_idx(other.func_call_idx)
+    , carved_ptr_begin_idx(other.carved_ptr_begin_idx)
+    , inputs(other.inputs), carved_ptrs(other.carved_ptrs) {}
+
+  FUNC_CONTEXT& operator=(const FUNC_CONTEXT & other) {
+    carving_index = other.carving_index;
+    func_call_idx = other.func_call_idx;
+    carved_ptr_begin_idx = other.carved_ptr_begin_idx;
+    inputs = other.inputs;
+    carved_ptrs = other.carved_ptrs;
+    return *this;
+  }
+
+  FUNC_CONTEXT& operator=(FUNC_CONTEXT && other) {
+    carving_index = other.carving_index;
+    func_call_idx = other.func_call_idx;
+    carved_ptr_begin_idx = other.carved_ptr_begin_idx;
+    inputs = other.inputs;
+    carved_ptrs = other.carved_ptrs;
+    return *this;
   }
 
   void update_carved_ptr_begin_idx() {
@@ -345,7 +457,7 @@ public:
   }
 
   vector<IVAR *> inputs;
-  vector<PTR *> carved_ptrs;
+  vector<PTR> carved_ptrs;
   int carved_ptr_begin_idx;
   int carving_index;
   int func_call_idx;

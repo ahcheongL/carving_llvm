@@ -32,7 +32,7 @@ src/carver.o: src/carver.cc include/utils.hpp
 lib/carver.a: src/carver.o
 	$(AR) rsv $@ $^
 
-lib/driver_pass.so: src/driver_pass.cc include/pass.hpp src/pass_utils.o
+lib/driver_pass.so: src/driver_pass.cc include/pass.hpp src/pass_utils.o include/utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/pass_utils.o -o $@
 
 src/driver.o: src/driver.cc include/utils.hpp
@@ -59,3 +59,4 @@ clean:
 	rm lib/driver.a
 	rm src/driver.o
 	rm lib/driver_probe_names.txt
+	rm src/pass_utils.o

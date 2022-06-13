@@ -1,4 +1,4 @@
-__driver_inputf_reader
+__driver_inputf_open
 Replay_char
 Replay_short
 Replay_int
@@ -10,3 +10,11 @@ Replay_pointer
 Replay_ptr_alloc_size
 __record_func_ptr
 Replay_func_ptr
+__receive_carved_ptr
+__receive_ptr_shape
+__receive_func_ptr
+Replay_ptr_class_index
+Replay_ptr_class_size
+__update_class_ptr
+__keep_class_name
+__replay_fini

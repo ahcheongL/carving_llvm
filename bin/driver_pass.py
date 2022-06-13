@@ -4,12 +4,14 @@ import sys, os
 import subprocess as sp
 from pathlib import Path
 
-if len(sys.argv) <= 1:
-  print("usage : {} <input.bc> [<compile args> ...]".format(sys.argv[0]))
+if len(sys.argv) <= 2:
+  print("usage : {} <input.bc> <Func idx> [<compile args> ...]".format(sys.argv[0]))
   exit()
 
 inputbc = sys.argv[1]
-compile_args = sys.argv[2:]
+func_idx = sys.argv[2]
+compile_args = sys.argv[3:]
+
 
 #check given file exists
 if not os.path.isfile(inputbc):
@@ -52,24 +54,22 @@ if len(funcs) == 0:
   print("Can't get target functions")
   exit()
 
-func_idx = 0
 env=os.environ.copy()
-for func_name in funcs:
+env["FUNCIDX"] = func_idx
+func_name = funcs[int(func_idx)]
 
-  outname = ".".join(inputbc.split(".")[:-1]) + "." + func_name + ".driver"
+outname = ".".join(inputbc.split(".")[:-1]) + "." + func_name + ".driver"
 
-  cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
-    #, "-D_GLIBCXX_DEBUG"
-    , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-ggdb", "-O0"
-    , "-I", source_dir + "/include", "-o", outname, "-fsanitize=address"
-    , "-L", source_dir + "/lib", inputbc, "-l:driver.a" ] + compile_args
+cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
+  #, "-D_GLIBCXX_DEBUG"
+  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-ggdb", "-O0"
+  , "-I", source_dir + "/include", "-o", outname, "-fsanitize=address"
+  , "-L", source_dir + "/lib", inputbc, "-l:driver.a" ] + compile_args
 
-  env["FUNCIDX"] = str(func_idx)
-  #env["DUMP_IR"] = "1"
-  try:
-    sp.run(cmd, env=env)
-  except:
-    pass
-  func_idx += 1
-
-print("Finished, generated {} files".format(len(funcs)))
+env["FUNCIDX"] = str(func_idx)
+#env["DUMP_IR"] = "1"
+print(" ".join(cmd))
+try:
+  sp.run(cmd, env=env)
+except:
+  pass

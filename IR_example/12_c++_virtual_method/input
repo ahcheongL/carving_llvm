@@ -1,0 +1,22 @@
+0:0x7fffffffd668:16:%class.Shape = type { i32 (...)**, i8, i32 }
+1:0x30b720:8:i32 (...)*
+2:0x7fffffffd678:24:%class.Rectangle = type <{ %class.Shape, i32, [4 x i8] }>
+3:0x30b6e0:8:i32 (...)*
+####
+shape1:PTR:0:0
+shape1[0]._vptr$Shape:PTR:1:0
+shape1[0]._vptr$Shape[0]:FUNCPTR:_ZN5Shape8setWidthEi
+shape1[0].age:CHAR:3
+shape1[0].width:INT:20
+shape2:PTR:2:0
+shape2[0].Shape._vptr$Shape:PTR:3:0
+shape2[0].Shape._vptr$Shape[0]:FUNCPTR:_ZN9Rectangle8setWidthEi
+shape2[0].Shape.age:CHAR:3
+shape2[0].Shape.width:INT:450
+shape2[0].area:INT:423
+shape2[0].field2[0]:CHAR:0
+shape2[0].field2[1]:CHAR:0
+shape2[0].field2[2]:CHAR:0
+shape2[0].field2[3]:CHAR:0
+"_ZN5Shape8getWidthEv"_ret:INT:20
+"_ZN5Shape8getWidthEv"_ret:INT:450

@@ -9,7 +9,7 @@ class Shape {
    public:   
       Shape() {width = 42; age = 3;}
       virtual void setWidth(int w) {
-         std::cout << "Call Shape setwidth\n";
+         //std::cout << "Call Shape setwidth\n";
          width = w;
       }
       int getWidth() {
@@ -24,7 +24,7 @@ class Rectangle: public Shape {
 public:
    Rectangle() {area = 423;}
    void setWidth(int w) {
-      std::cout << "Call Rect setwidth\n";
+      //std::cout << "Call Rect setwidth\n";
       width = w * 10;
    }
    int getWidth() {
@@ -34,7 +34,7 @@ public:
 };
 
 int foo (Shape * shape1, Rectangle * shape2, struct small shape3[1]) {
-   std::cerr << "sha_arr[2].area : " << ((Rectangle *) shape1 + 2)->area << "\n";
+  // std::cerr << "sha_arr[2].area : " << ((Rectangle *) shape1 + 2)->area << "\n";
   return 0;
 }
 

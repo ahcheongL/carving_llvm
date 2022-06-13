@@ -43,11 +43,6 @@ class carver_pass : public ModulePass {
   
   void insert_global_carve_probe(Function * F, BasicBlock * BB);
 
-  int num_class_name_const = 0;
-  std::vector<std::pair<Constant *, int>> class_name_consts;
-  std::map<StructType *, std::pair<int, Constant *>> class_name_map;
-  void get_class_type_info();
-
   void gen_class_carver();
   
   DebugInfoFinder DbgFinder;
@@ -115,26 +110,7 @@ class carver_pass : public ModulePass {
 
 char carver_pass::ID = 0;
 
-void carver_pass::get_class_type_info() {
 
-  //Set dummy location...
-  for (auto &F : Mod->functions()) {
-    std::string func_name = F.getName().str();
-    if (func_name == "main") {
-      IRB->SetInsertPoint(F.getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
-      break;
-    }
-  }
-
-  for (auto struct_type : Mod->getIdentifiedStructTypes()) {
-    std::string name = get_type_str(struct_type);
-    Constant * name_const = gen_new_string_constant(name, IRB);
-    if (struct_type->isOpaque()) { continue; }
-    class_name_consts.push_back(std::make_pair(name_const, DL->getTypeAllocSize(struct_type)));
-    class_name_map.insert(std::make_pair(struct_type
-      , std::make_pair(num_class_name_const++, name_const)));
-  }
-}
 
 void carver_pass::find_global_var_uses() {
   for (auto &F : Mod->functions()) {
@@ -712,7 +688,9 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
 
 
 
-void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
+void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr
+  , Type * type) {
+  
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
   StructType * struct_type = dyn_cast<StructType>(type);
   const StructLayout * SL = DL->getStructLayout(struct_type);
@@ -941,7 +919,16 @@ bool carver_pass::hookInstrs(Module &M) {
   update_class_ptr = M.getOrInsertFunction(
     get_link_name("__update_class_ptr"), Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
 
-  get_class_type_info();
+  //Set dummy insertlocation...
+  for (auto &F : Mod->functions()) {
+    std::string func_name = F.getName().str();
+    if (func_name == "main") {
+      IRB->SetInsertPoint(F.getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
+      break;
+    }
+  }
+
+  get_class_type_info(Mod, IRB, DL);
 
   get_instrument_func_set();
 
