@@ -26,3 +26,5 @@ funcs.txt
 
 *.driver
 *.init
+
+**/input
