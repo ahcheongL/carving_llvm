@@ -3,17 +3,17 @@
 import os
 import subprocess as sp
 
-if not os.path.isfile("src/driver.o"):
-  print("Can't find driver.o file!")
+if not os.path.isfile("src/shape_fixed_driver.o"):
+  print("Can't find shape_fixed_driver.o file!")
   exit()
 
 probe_lists = []
 
-with open("src/driver_probes.txt", "r") as f:
+with open("src/shape_fixed_driver_probes.txt", "r") as f:
   for line in f:
     probe_lists.append(line.strip())
 
-cmd = ["nm", "src/driver.o"]
+cmd = ["nm", "src/shape_fixed_driver.o"]
 res = sp.run(cmd, stdout=sp.PIPE).stdout
 
 linking_names = dict()
@@ -22,6 +22,6 @@ for line in res.decode().split("\n"):
     if p in line:
       linking_names[p] = line.split(" ")[-1]
 
-with open("lib/driver_probe_names.txt", "w") as f:
+with open("lib/shape_fixed_driver_probe_names.txt", "w") as f:
   for probe in linking_names:
     f.write(probe + " " + linking_names[probe] + "\n")

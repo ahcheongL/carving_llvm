@@ -21,7 +21,7 @@ MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: lib/carver_pass.so lib/carver.a lib/carver_probe_names.txt
-all: lib/driver_pass.so lib/driver.a lib/driver_probe_names.txt
+all: lib/shape_fixed_driver_pass.so lib/shape_fixed_driver.a lib/shape_fixed_driver_probe_names.txt
 
 lib/carver_pass.so: src/carver_pass.cc include/pass.hpp src/pass_utils.o
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/pass_utils.o -o $@
@@ -32,20 +32,20 @@ src/carver.o: src/carver.cc include/utils.hpp
 lib/carver.a: src/carver.o
 	$(AR) rsv $@ $^
 
-lib/driver_pass.so: src/driver_pass.cc include/pass.hpp src/pass_utils.o include/utils.hpp
+lib/shape_fixed_driver_pass.so: src/shape_fixed_driver_pass.cc include/pass.hpp src/pass_utils.o include/utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/pass_utils.o -o $@
 
-src/driver.o: src/driver.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c src/driver.cc -o $@
+src/shape_fixed_driver.o: src/shape_fixed_driver_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c src/shape_fixed_driver_probes.cc -o $@
 
-lib/driver.a: src/driver.o
+lib/shape_fixed_driver.a: src/shape_fixed_driver.o
 	$(AR) rsv $@ $^
 
 lib/carver_probe_names.txt: src/carver.o src/carver_probes.txt
 	python3 bin/get_carver_probe_name.py
 
-lib/driver_probe_names.txt: src/driver.o src/driver_probes.txt
-	python3 bin/get_driver_probe_name.py
+lib/shape_fixed_driver_probe_names.txt: src/shape_fixed_driver.o src/shape_fixed_driver_probes.txt
+	python3 bin/get_shape_fixed_driver_probe_name.py
 
 src/pass_utils.o: src/pass_utils.cc include/pass.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/pass_utils.cc -o $@
@@ -55,8 +55,8 @@ clean:
 	rm lib/carver.a
 	rm src/carver.o
 	rm lib/carver_probe_names.txt
-	rm lib/driver_pass.so
-	rm lib/driver.a
-	rm src/driver.o
-	rm lib/driver_probe_names.txt
+	rm lib/shape_fixed_driver_pass.so
+	rm lib/shape_fixed_driver.a
+	rm src/shape_fixed_driver.o
+	rm lib/shape_fixed_driver_probe_names.txt
 	rm src/pass_utils.o

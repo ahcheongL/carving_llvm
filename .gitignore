@@ -17,7 +17,7 @@ a.out
 *.ll
 
 lib/carver_probe_names.txt
-lib/driver_probe_names.txt
+lib/shape_fixed_driver_probe_names.txt
 
 **/tmp
 **/tmp*
