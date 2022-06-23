@@ -3,6 +3,8 @@
 
 #include "utils.hpp"
 
+#define MAX_INPUTS 20000
+
 static char * outdir_name = NULL;
 
 static int * num_func_calls;
@@ -32,58 +34,77 @@ static map<char *, int> class_size;
 
 //variable naming
 static vector<char * > __carv_base_names;
+static vector<bool> __need_to_free_carv_base_names;
 
 static int cur_class_index = -1;
 static int cur_class_size = -1;
 
 
 void Carv_char(char input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
   VAR<char> * inputv = new VAR<char>(input
-    , *__carv_base_names.back(), INPUT_TYPE::CHAR);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::CHAR);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_short(short input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
   VAR<short> * inputv = new VAR<short>(input
-    , *__carv_base_names.back(), INPUT_TYPE::SHORT);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::SHORT);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_int(int input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
   VAR<int> * inputv = new VAR<int>(input
-    , *__carv_base_names.back(), INPUT_TYPE::INT);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::INT);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_longtype(long input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
   VAR<long> * inputv = new VAR<long>(input
-    , *__carv_base_names.back(), INPUT_TYPE::LONG);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::LONG);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_longlong(long long input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
   VAR<long long> * inputv = new VAR<long long>(input
-    , *__carv_base_names.back(), INPUT_TYPE::LONGLONG);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::LONGLONG);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_float(float input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
   VAR<float> * inputv = new VAR<float>(input
-    , *__carv_base_names.back(), INPUT_TYPE::FLOAT);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::FLOAT);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_double(double input) {
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
   VAR<double> * inputv = new VAR<double>(input
-    , *__carv_base_names.back(), INPUT_TYPE::DOUBLE);
+    , strdup(*__carv_base_names.back()), INPUT_TYPE::DOUBLE);
   cur_inputs->push_back((IVAR *) inputv);
 }
 
 int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size) {
-  char * updated_name = *(__carv_base_names.back());
+  char * updated_name = strdup(*(__carv_base_names.back()));
   if (ptr == NULL) {
     VAR<void *> * inputv = new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
     cur_inputs->push_back((IVAR *) inputv);
+    return 0;
+  }
+
+  if (cur_inputs->size() > 20000) {
+    free(updated_name);
     return 0;
   }
 
@@ -123,14 +144,10 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
         cur_class_index = class_names.get_idx(*name_ptr);
         cur_class_size = *class_size.find(*name_ptr);
         type_name = *name_ptr;
-        std::cerr << "Found class: " << type_name << std::endl;
       } else {
         cur_class_index = default_idx;
         cur_class_size = default_size;
       }
-
-      std::cerr << "cur_class_index: " << cur_class_index << std::endl;
-      std::cerr << "cur_class_size: " << cur_class_size << std::endl;
 
       cur_carved_ptrs->push_back(PTR(ptr, type_name, size));
 
@@ -154,7 +171,9 @@ void __record_func_ptr(void * ptr, char * name) {
 }
 
 void __Carv_func_ptr(void * ptr) {
-  char * updated_name = *__carv_base_names.back();
+  if (cur_inputs->size() > MAX_INPUTS) { return; }
+
+  char * updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
     if (ptr != NULL) {
@@ -177,6 +196,7 @@ void __carv_ptr_name_update(int idx) {
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s[%d]",base_name, idx);
   __carv_base_names.push_back(update_name);
+  __need_to_free_carv_base_names.push_back(true);
   return;
 }
 
@@ -198,18 +218,17 @@ int __get_class_size() {
 }
 
 void __carv_name_push(char * name) {
-  __carv_base_names.push_back(strdup(name));
-  return;
-}
-
-void __carv_name_free_pop() {
-  free(*__carv_base_names.back());
-  __carv_base_names.pop_back();
+  __carv_base_names.push_back(name);
+  __need_to_free_carv_base_names.push_back(false);
   return;
 }
 
 void __carv_name_pop() {
+  if (*__need_to_free_carv_base_names.back()) {
+    free(*__carv_base_names.back());
+  }
   __carv_base_names.pop_back();
+  __need_to_free_carv_base_names.pop_back();
   return;
 }
 
@@ -218,6 +237,7 @@ void __carv_struct_name_update(char * field_name) {
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s.%s",base_name, field_name);
   __carv_base_names.push_back(update_name);
+  __need_to_free_carv_base_names.push_back(true);
   return;
 }
 
@@ -263,13 +283,15 @@ void __carv_func_call_probe(int func_id) {
   }
 
   FUNC_CONTEXT new_ctx
-    = FUNC_CONTEXT(carved_index++, num_func_calls[func_id]);
+    = FUNC_CONTEXT(carved_index++, num_func_calls[func_id], func_id);
   num_func_calls[func_id] += 1;
 
   
   inputs.push_back(new_ctx);
   cur_inputs = &(inputs.back()->inputs);
   cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+
+  std::cerr << "Calling func : " << func_id << "\n";
 
   return;
 }
@@ -381,9 +403,18 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   const int num_carved_ptrs = cur_carved_ptrs->size();
   const int carved_ptrs_init_idx = cur_context->carved_ptr_begin_idx;
 
+  if (func_id != cur_context->func_id) {
+    std::cerr << "Error: func_id != cur_context->func_id\n";
+    std::cerr << "Returning func : " << func_name << "," << func_id << "\n";
+    std::cerr << "Missing func id : " << cur_context->func_id << "\n";
+    exit(1);
+  }
+
   //check memory overlap
-  carved_ptr_postprocessing(0, carved_ptrs_init_idx);
-  carved_ptr_postprocessing(carved_ptrs_init_idx, num_carved_ptrs);
+  //std::cerr << "Start processing...\n";
+  //carved_ptr_postprocessing(0, carved_ptrs_init_idx);
+  //carved_ptr_postprocessing(carved_ptrs_init_idx, num_carved_ptrs);
+  //std::cerr << "Processing done\n";
   const int num_inputs = cur_inputs->size();
   
   char outfile_name[256];
@@ -464,13 +495,13 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     idx++;
   }
 
-  int filesize = (int) outfile.tellp();
+  long filesize = (long) outfile.tellp();
   outfile.close();
 
-  if ((filesize <= 128) || (filesize > 8388608)) {
-    //remove(outfile_name);
+  if ((filesize <= 2048) || (filesize > (((long) 1) << 34))) {
+    remove(outfile_name);
   } else {
-    int tmp = 256;
+    long tmp = 4096;
     int index = 0;
     while (filesize > tmp) {
       tmp *= 2;
@@ -478,7 +509,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
 
     if (func_carved_filesize[func_id] == 0) {
-      func_carved_filesize[func_id] = (int *) calloc(24, sizeof(int));
+      func_carved_filesize[func_id] = (int *) calloc(28, sizeof(int));
     }
 
     if (func_carved_filesize[func_id][index] >= 8) {

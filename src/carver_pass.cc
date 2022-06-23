@@ -98,7 +98,6 @@ class carver_pass : public ModulePass {
   FunctionCallee carv_func_ret;
   FunctionCallee update_carved_ptr_idx;
   FunctionCallee mem_alloc_type;
-  FunctionCallee name_free_pop;
   FunctionCallee keep_class_name;
   FunctionCallee get_class_idx;
   FunctionCallee get_class_size;
@@ -323,12 +322,7 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
       IRB->CreateCall(carv_name_push, push_args);
 
       insert_carve_probe(IN, IN->getParent());
-
-      if (ret_type->isStructTy()) {
-        IRB->CreateCall(name_free_pop, empty_args);
-      } else {
-        IRB->CreateCall(carv_name_pop, empty_args);
-      }
+      IRB->CreateCall(carv_name_pop, empty_args);
     }
   }
 
@@ -439,7 +433,7 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
       if (pointee_type->isStructTy()) {
         insert_struct_carve_probe((Value *) glob_iter, pointee_type);
         std::vector<Value *> pop_args;
-        IRB->CreateCall(name_free_pop, pop_args);
+        IRB->CreateCall(carv_name_pop, pop_args);
       } else {
         Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
         cur_block = insert_carve_probe(load_val, cur_block);
@@ -546,7 +540,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
 
       if (array_elem_type->isStructTy()) {
         insert_struct_carve_probe(getelem_instr, array_elem_type);
-        IRB->CreateCall(name_free_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, empty_args);
       } else if (is_func_ptr_type(array_elem_type)) {
         Value * ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, casted_val, Int8PtrTy);
         std::vector<Value *> probe_args {ptrval};
@@ -650,13 +644,13 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
         Value * elem_ptr = IRB->CreateCall(update_class_ptr, args1);
         std::vector<Value *> args {elem_ptr, class_idx};
         IRB->CreateCall(class_carver, args);
-        IRB->CreateCall(name_free_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, empty_args);
       } else {
         Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
 
         if (pointee_type->isStructTy()) {
           insert_struct_carve_probe(getelem_instr, pointee_type);
-          IRB->CreateCall(name_free_pop, empty_args);
+          IRB->CreateCall(carv_name_pop, empty_args);
         } else if (is_func_ptr_type(pointee_type)) {
           Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
           Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
@@ -818,10 +812,10 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr
 
       if (gep_pointee_type->isStructTy()) {
         insert_struct_carve_probe(gep, gep_pointee_type);
-        IRB->CreateCall(name_free_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, empty_args);
       } else if (gep_pointee_type->isArrayTy()) {
         cur_block = insert_carve_probe(gep, cur_block);
-        IRB->CreateCall(name_free_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, empty_args);
       } else if (is_func_ptr_type(gep_pointee_type)) {
         Value * load_ptr = IRB->CreateLoad(gep_pointee_type, gep);
         Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
@@ -927,8 +921,6 @@ bool carver_pass::hookInstrs(Module &M) {
     get_link_name("__carv_name_push"), VoidTy, Int8PtrTy);
   carv_name_pop = M.getOrInsertFunction(
     get_link_name("__carv_name_pop"), VoidTy);
-  name_free_pop = M.getOrInsertFunction(
-    get_link_name("__carv_name_free_pop"), VoidTy);
   carv_func_ptr = M.getOrInsertFunction(get_link_name("__Carv_func_ptr")
     , VoidTy, Int8PtrTy);
   carv_func_call = M.getOrInsertFunction(
