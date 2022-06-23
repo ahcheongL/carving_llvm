@@ -1,7 +1,0 @@
-0:0x2b2310:16:%struct._a = type { i32, i8 }
-####
-s1:PTR:0:0
-s1[0].f1:INT:4
-s1[0].f2:CHAR:5
-s1[1].f1:INT:6
-s1[1].f2:CHAR:7

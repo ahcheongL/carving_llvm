@@ -23,6 +23,7 @@ lib/shape_fixed_driver_probe_names.txt
 **/tmp*
 
 funcs.txt
+funcs_size.txt
 
 *.driver
 *.init
