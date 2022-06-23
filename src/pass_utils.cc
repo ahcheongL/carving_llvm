@@ -141,9 +141,9 @@ std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 
 void get_class_type_info(Module * Mod, IRBuilder<>* IRB, const DataLayout * DL) {
   for (auto struct_type : Mod->getIdentifiedStructTypes()) {
-    std::string name = get_type_str(struct_type);
-    Constant * name_const = gen_new_string_constant(name, IRB);
     if (struct_type->isOpaque()) { continue; }
+    std::string name = get_type_str(struct_type);
+    Constant * name_const = gen_new_string_constant(name, IRB);    
     class_name_consts.push_back(std::make_pair(name_const, DL->getTypeAllocSize(struct_type)));
     class_name_map.insert(std::make_pair(struct_type
       , std::make_pair(num_class_name_const++, name_const)));

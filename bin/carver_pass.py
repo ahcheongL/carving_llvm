@@ -38,12 +38,12 @@ source_path = Path(__file__).resolve()
 source_dir = str(source_path.parent.parent)
 so_path = source_dir + "/lib/carver_pass.so"
 
-outname = ".".join(inputbc.split(".")[:-1]) + ".carv"
+outname = ".".join(inputbc.split(".")[:-1]) + ".rel.carv"
 
 cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
   #, "-D_GLIBCXX_DEBUG"
-  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-ggdb", "-O0"
-  , "-I", source_dir + "/include", "-o", outname, "-fsanitize=address"
+  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"#, "-ggdb", "-O0"
+  , "-I", source_dir + "/include", "-o", outname#, #"-fsanitize=address"
   , "-L", source_dir + "/lib", inputbc, "-l:carver.a" ] + compile_args
 
 env=os.environ.copy()

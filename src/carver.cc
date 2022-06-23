@@ -123,10 +123,14 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
         cur_class_index = class_names.get_idx(*name_ptr);
         cur_class_size = *class_size.find(*name_ptr);
         type_name = *name_ptr;
+        std::cerr << "Found class: " << type_name << std::endl;
       } else {
         cur_class_index = default_idx;
         cur_class_size = default_size;
       }
+
+      std::cerr << "cur_class_index: " << cur_class_index << std::endl;
+      std::cerr << "cur_class_size: " << cur_class_size << std::endl;
 
       cur_carved_ptrs->push_back(PTR(ptr, type_name, size));
 
@@ -230,7 +234,7 @@ void __mem_allocated_probe(void * ptr, int size) {
 }
 
 void __mem_alloc_type(void * ptr, char * type_name) {
-  std::cerr << "obj " << ptr << " has type : " << type_name << "\n";
+  //std::cerr << "obj " << ptr << " has type : " << type_name << "\n";
   alloced_type.insert(ptr, type_name);
 }
 
@@ -463,10 +467,10 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   int filesize = (int) outfile.tellp();
   outfile.close();
 
-  if ((filesize <= 64) || (filesize > 1048576)) {
+  if ((filesize <= 128) || (filesize > 8388608)) {
     //remove(outfile_name);
   } else {
-    int tmp = 128;
+    int tmp = 256;
     int index = 0;
     while (filesize > tmp) {
       tmp *= 2;
@@ -474,7 +478,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
 
     if (func_carved_filesize[func_id] == 0) {
-      func_carved_filesize[func_id] = (int *) calloc(20, sizeof(int));
+      func_carved_filesize[func_id] = (int *) calloc(24, sizeof(int));
     }
 
     if (func_carved_filesize[func_id][index] >= 8) {

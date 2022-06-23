@@ -30,6 +30,8 @@ class carver_pass : public ModulePass {
   std::map<Function *, std::set<Constant *>> global_var_uses;
   void find_global_var_uses();
 
+  void insert_mem_alloc_type(Instruction * IN);
+
   void Insert_alloca_probe(BasicBlock & entry_block);
   std::vector<AllocaInst *> tracking_allocas;
   void Insert_callinst_probe(Instruction *, std::string, bool);
@@ -216,12 +218,33 @@ void carver_pass::Insert_alloca_probe(BasicBlock& entry_block) {
   }
 }
 
+void carver_pass::insert_mem_alloc_type(Instruction * IN) {
+  if (IN == NULL) { return; }
+
+  CastInst * cast_instr;
+  if ((cast_instr = dyn_cast<CastInst>(IN->getNextNonDebugInstruction()))) {
+    Type * cast_type = cast_instr->getType();
+    if (isa<PointerType>(cast_type)) {
+      PointerType * cast_ptr_type = dyn_cast<PointerType>(cast_type);
+      Type * pointee_type = cast_ptr_type->getPointerElementType();
+      if (pointee_type->isStructTy()) {
+        std::string typestr = get_type_str(pointee_type);
+        Constant * typename_const = gen_new_string_constant(typestr, IRB);
+        std::vector<Value *> args1 {IN, typename_const};
+        IRB->CreateCall(mem_alloc_type, args1);
+      }
+    }
+  }
+}
+
 void carver_pass::Insert_callinst_probe(Instruction * IN
   , std::string callee_name, bool insert_ret_probe) {
   IRB->SetInsertPoint(IN->getNextNonDebugInstruction());
   
   if (callee_name == "malloc") {
     //Track malloc
+    insert_mem_alloc_type(IN);
+
     Value * size = IN->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
@@ -230,9 +253,15 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
     IRB->CreateCall(mem_allocated_probe, args);
   } else if (callee_name == "realloc") {
     //Track realloc
+    insert_mem_alloc_type(IN);
+
     std::vector<Value *> args0 {IN->getOperand(0)};
     IRB->CreateCall(remove_probe, args0);
-    std::vector<Value *> args1 {IN, IN->getOperand(1)};
+    Value * size = IN->getOperand(1);
+    if (size->getType() == Int64Ty) {
+      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
+    }
+    std::vector<Value *> args1 {IN, size};
     IRB->CreateCall(mem_allocated_probe, args1);
   } else if (callee_name == "free") {
     //Track free
@@ -274,20 +303,7 @@ void carver_pass::Insert_callinst_probe(Instruction * IN
     // IRB->CreateCall(mem_allocated_probe, args);
   } else if ((callee_name == "_Znwm") || (callee_name == "_Znam")) {
     //new operator
-    CastInst * cast_instr;
-    if ((cast_instr = dyn_cast<CastInst>(IN->getNextNonDebugInstruction()))) {
-      Type * cast_type = cast_instr->getType();
-      if (isa<PointerType>(cast_type)) {
-        PointerType * cast_ptr_type = dyn_cast<PointerType>(cast_type);
-        Type * pointee_type = cast_ptr_type->getPointerElementType();
-        if (pointee_type->isStructTy()) {
-          std::string typestr = get_type_str(pointee_type);
-          Constant * typename_const = gen_new_string_constant(typestr, IRB);
-          std::vector<Value *> args1 {IN, typename_const};
-          IRB->CreateCall(mem_alloc_type, args1);
-        }
-      }
-    }
+    insert_mem_alloc_type(IN);
 
     Value * size = IN->getOperand(0);
     if (size->getType() == Int64Ty) {
@@ -354,8 +370,8 @@ void carver_pass::Insert_main_probe(BasicBlock & entry_block, Function & F
 
     IRB->SetInsertPoint(new_argv_load_instr->getNextNonDebugInstruction());
   } else {
-    llvm::errs() << "This pass requires a main function"
-      << " which has argc, argv arguments\n";
+    DEBUG0("This pass requires a main function" 
+     << " which has argc, argv arguments\n");
     std::abort();
   }
 
@@ -430,8 +446,6 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
         std::vector<Value *> pop_args;
         IRB->CreateCall(carv_name_pop, pop_args);
       }
-
-      
     }
   }
 
@@ -479,6 +493,10 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
     }
 
     return cur_block;
+  } else if (is_func_ptr_type(val_type)) {
+    Value * ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
+    std::vector<Value *> probe_args {ptrval};
+    IRB->CreateCall(carv_func_ptr, probe_args);
   } else if (val_type->isFunctionTy() || val_type->isArrayTy()) {
     //Is it possible to reach here?
   } else if (val_type->isPointerTy()) {
@@ -492,7 +510,13 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
       if (tmptype->isOpaque()) { return BB; }
     }
 
-    unsigned pointee_size = DL->getTypeAllocSize(pointee_type);
+    unsigned int pointee_size = 0;
+    if (pointee_type->isFunctionTy()) {
+      pointee_size = 8;
+    } else {
+      pointee_size = DL->getTypeAllocSize(pointee_type);
+    }
+
     if (pointee_size == 0) { return BB; }
 
     if (pointee_type->isArrayTy()) {
@@ -583,6 +607,9 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
           is_class_type = true;
           default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
         }
+      } else if (pointee_type == Int8Ty) {
+        //check
+        is_class_type = true;
       }
 
       Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
@@ -758,8 +785,10 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr
     }
 
     auto memberoffsets = SL->getMemberOffsets();
+
     if (elem_names.size() > memberoffsets.size()) {
-      DEBUG0("Warn : Wrong # of elem names....\n");
+      DEBUG0("Warn : Wrong # of elem names, elem_names size : "
+        << elem_names.size() << ", memberoffsets size : " << memberoffsets.size() << "\n");
       elem_names.clear();
     }
 
@@ -798,7 +827,7 @@ void carver_pass::insert_struct_carve_probe_inner(Value * struct_ptr
         Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
         std::vector<Value *> probe_args {cast_ptr};
         IRB->CreateCall(carv_func_ptr, probe_args);
-        IRB->CreateCall(name_free_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, empty_args);
       } else {
         Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
         cur_block = insert_carve_probe(loadval, cur_block);
@@ -1129,6 +1158,8 @@ bool carver_pass::runOnModule(Module &M) {
 void carver_pass::get_instrument_func_set() {
   std::ofstream outfile("funcs.txt");
 
+  std::ofstream outfile2("funcs_size.txt");
+
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();
@@ -1145,6 +1176,8 @@ void carver_pass::get_instrument_func_set() {
         if (filename.find("/usr/bin/") == std::string::npos) {
           outfile << func_name << "\n";
           instrument_func_set.insert(func_name);
+
+          outfile2 << func_name << ":" << F.size() << "\n";
         }
         break;
       }
@@ -1157,6 +1190,7 @@ void carver_pass::get_instrument_func_set() {
   }
 
   outfile.close();
+  outfile2.close();
 }
 
 static void registercarver_passPass(const PassManagerBuilder &,
