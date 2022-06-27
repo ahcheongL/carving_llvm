@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <cstring>
 #include <fstream>
 #include <memory>
@@ -422,22 +423,24 @@ class FUNC_CONTEXT {
 public:
 
   FUNC_CONTEXT() : carved_ptr_begin_idx(0), carving_index(0)
-    , func_call_idx(0), func_id(0) {}
+    , func_call_idx(0), func_id(0), is_carved(false) {}
 
   FUNC_CONTEXT(int _carved_idx, int _func_call_idx, int _func_id)
     : carving_index(_carved_idx), func_call_idx(_func_call_idx)
       , carved_ptr_begin_idx(0)
-      , inputs(), carved_ptrs(), func_id(_func_id) {}
+      , inputs(), carved_ptrs(), func_id(_func_id), is_carved(true) {}
 
   FUNC_CONTEXT(const FUNC_CONTEXT & other) :
     carving_index(other.carving_index), func_call_idx(other.func_call_idx)
     , carved_ptr_begin_idx(other.carved_ptr_begin_idx)
-    , inputs(other.inputs), carved_ptrs(other.carved_ptrs), func_id(other.func_id) {}
+    , inputs(other.inputs), carved_ptrs(other.carved_ptrs)
+    , func_id(other.func_id), is_carved(other.is_carved) {}
   
   FUNC_CONTEXT(FUNC_CONTEXT && other) :
     carving_index(other.carving_index), func_call_idx(other.func_call_idx)
     , carved_ptr_begin_idx(other.carved_ptr_begin_idx)
-    , inputs(other.inputs), carved_ptrs(other.carved_ptrs), func_id(other.func_id) {}
+    , inputs(other.inputs), carved_ptrs(other.carved_ptrs)
+    , func_id(other.func_id), is_carved(other.is_carved) {}
 
   FUNC_CONTEXT& operator=(const FUNC_CONTEXT & other) {
     carving_index = other.carving_index;
@@ -446,6 +449,7 @@ public:
     inputs = other.inputs;
     carved_ptrs = other.carved_ptrs;
     func_id = other.func_id;
+    is_carved = other.is_carved;
     return *this;
   }
 
@@ -456,6 +460,7 @@ public:
     inputs = other.inputs;
     carved_ptrs = other.carved_ptrs;
     func_id = other.func_id;
+    is_carved = other.is_carved;
     return *this;
   }
 
@@ -469,6 +474,7 @@ public:
   int carving_index;
   int func_call_idx;
   int func_id;
+  bool is_carved;
 };
 
 #endif

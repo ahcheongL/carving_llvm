@@ -1078,10 +1078,35 @@ bool carver_pass::hookInstrs(Module &M) {
     for (auto call_instr : call_instrs) {
       //insert new/free probe, return value probe
       Function * callee = call_instr->getCalledFunction();
-      if ((callee == NULL) || (callee->isDebugInfoForProfiling()))
-        { continue; }
+      if ((callee == NULL) || (callee->isDebugInfoForProfiling())) { continue; }
+
       std::string callee_name = callee->getName().str();
-      Insert_callinst_probe(call_instr, callee_name, true);
+      if (callee_name == "__cxa_allocate_exception") { continue; }
+
+      if (callee_name == "__cxa_throw") {
+        //exception handling
+        IRB->SetInsertPoint(call_instr);
+        Constant * func_name_const = gen_new_string_constant(func_name, IRB);
+        std::vector<Value *> probe_args {func_name_const, func_id_const};
+        IRB->CreateCall(carv_func_ret, probe_args);    
+
+        //Remove alloca (local variable) memory tracking info.
+        for (auto iter = tracking_allocas.begin();
+          iter != tracking_allocas.end(); iter++) {
+          AllocaInst * alloc_instr = *iter;
+
+          Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
+          std::vector<Value *> args {casted_ptr};
+          IRB->CreateCall(remove_probe, args);          
+        }
+
+        //Insert fini
+        if (func_name == "main") {
+          IRB->CreateCall(__carv_fini, std::vector<Value *>());
+        }
+      } else {
+        Insert_callinst_probe(call_instr, callee_name, true);
+      }
     }
 
     //Probing at return
