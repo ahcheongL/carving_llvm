@@ -545,7 +545,7 @@ bool driver_pass::runOnModule(Module &M) {
 
   DEBUG0("Running binary fuzz driver_pass\n");
 
-  read_probe_list("binary_fuzz_driver_probe_names.txt");
+  read_probe_list("simple_unit_driver_probe_names.txt");
   hookInstrs(M);
 
   DEBUG0("Verifying module...\n");
