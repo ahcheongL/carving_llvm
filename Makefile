@@ -22,6 +22,7 @@ MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: lib/carver_pass.so lib/carver.a lib/carver_probe_names.txt
 all: lib/shape_fixed_driver_pass.so lib/shape_fixed_driver.a lib/shape_fixed_driver_probe_names.txt
+all: lib/binary_fuzz_driver_pass.so lib/binary_fuzz_driver.a lib/binary_fuzz_driver_probe_names.txt
 
 lib/carver_pass.so: src/carver_pass.cc include/pass.hpp src/pass_utils.o
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/pass_utils.o -o $@
@@ -41,11 +42,23 @@ src/shape_fixed_driver.o: src/shape_fixed_driver_probes.cc include/utils.hpp
 lib/shape_fixed_driver.a: src/shape_fixed_driver.o
 	$(AR) rsv $@ $^
 
+lib/binary_fuzz_driver_pass.so: src/binary_fuzz_driver_pass.cc include/pass.hpp src/pass_utils.o include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/pass_utils.o -o $@
+
+src/binary_fuzz_driver.o: src/binary_fuzz_driver_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c src/binary_fuzz_driver_probes.cc -o $@
+
+lib/binary_fuzz_driver.a: src/binary_fuzz_driver.o
+	$(AR) rsv $@ $^
+
 lib/carver_probe_names.txt: src/carver.o src/carver_probes.txt
-	python3 bin/get_carver_probe_name.py
+	python3 bin/get_probe_names.py src/carver.o src/carver_probes.txt $@
 
 lib/shape_fixed_driver_probe_names.txt: src/shape_fixed_driver.o src/shape_fixed_driver_probes.txt
-	python3 bin/get_shape_fixed_driver_probe_name.py
+	python3 bin/get_probe_names.py src/shape_fixed_driver.o src/shape_fixed_driver_probes.txt $@
+
+lib/binary_fuzz_driver_probe_names.txt: src/binary_fuzz_driver.o src/binary_fuzz_driver_probes.txt
+	python3 bin/get_probe_names.py src/binary_fuzz_driver.o src/binary_fuzz_driver_probes.txt $@
 
 src/pass_utils.o: src/pass_utils.cc include/pass.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/pass_utils.cc -o $@
@@ -59,4 +72,8 @@ clean:
 	rm lib/shape_fixed_driver.a
 	rm src/shape_fixed_driver.o
 	rm lib/shape_fixed_driver_probe_names.txt
+	rm lib/binary_fuzz_driver_pass.so
+	rm lib/binary_fuzz_driver.a
+	rm src/binary_fuzz_driver.o
+	rm lib/binary_fuzz_driver_probe_names.txt
 	rm src/pass_utils.o

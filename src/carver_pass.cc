@@ -158,7 +158,7 @@ void carver_pass::gen_class_carver() {
   Value * class_idx = class_carver_func->getArg(1);
 
   SwitchInst * switch_inst
-    = IRB->CreateSwitch(class_idx, default_BB, num_class_name_const);
+    = IRB->CreateSwitch(class_idx, default_BB, num_class_name_const + 1);
 
   for (auto class_type : class_name_map) {
     int case_id = class_type.second.first;
@@ -174,6 +174,21 @@ void carver_pass::gen_class_carver() {
     insert_struct_carve_probe_inner(casted_var, class_type_ptr);
     IRB->CreateRetVoid();
   }
+
+  //default is char *
+  int case_id = num_class_name_const;
+  BasicBlock * case_block = BasicBlock::Create(*Context, std::to_string(case_id), class_carver_func);
+  switch_inst->addCase(ConstantInt::get(Int32Ty, case_id), case_block);
+  IRB->SetInsertPoint(case_block);
+
+  Value * load_val = IRB->CreateLoad(Int8Ty, carving_ptr);
+  std::vector<Value *> probe_args {load_val};
+  IRB->CreateCall(carv_char_func, probe_args);
+  IRB->CreateRetVoid();
+
+  switch_inst->setDefaultDest(case_block);
+
+  default_BB->eraseFromParent();
 
   return;
 }
@@ -504,13 +519,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
       if (tmptype->isOpaque()) { return BB; }
     }
 
-    unsigned int pointee_size = 0;
-    if (pointee_type->isFunctionTy()) {
-      pointee_size = 8;
-    } else {
-      pointee_size = DL->getTypeAllocSize(pointee_type);
-    }
-
+    unsigned int pointee_size = DL->getTypeAllocSize(pointee_type);
     if (pointee_size == 0) { return BB; }
 
     if (pointee_type->isArrayTy()) {
@@ -604,6 +613,7 @@ BasicBlock * carver_pass::insert_carve_probe(Value * val, BasicBlock * BB) {
       } else if (pointee_type == Int8Ty) {
         //check
         is_class_type = true;
+        Value * default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
       }
 
       Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
@@ -1173,8 +1183,23 @@ bool carver_pass::runOnModule(Module &M) {
 }
 
 void carver_pass::get_instrument_func_set() {
-  std::ofstream outfile("funcs.txt");
 
+  std::ifstream targets("targets.txt");
+  if (targets.good()) {
+    DEBUG0("Reading targets from targets.txt\n");
+    std::string line;
+    while (std::getline(targets, line)) {
+      if (line.length() == 0) { continue; }
+      if (line[0] == '#') { continue; }
+      instrument_func_set.insert(line);
+    }
+
+    instrument_func_set.insert("main");
+
+    return;
+  }
+
+  std::ofstream outfile("funcs.txt");
   std::ofstream outfile2("funcs_size.txt");
 
   for (auto &F : Mod->functions()) {
@@ -1182,6 +1207,10 @@ void carver_pass::get_instrument_func_set() {
     std::string func_name = F.getName().str();
     if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
     if (func_name == "__cxx_global_var_init") { continue; }
+    GlobalValue::LinkageTypes Flinkage = F.getLinkage();
+    
+    if (!GlobalValue::isExternalLinkage(Flinkage)) { continue; }
+    if (F.size() < 10) { continue; }
 
     //TODO
     if (F.isVarArg()) { continue; }
@@ -1194,7 +1223,7 @@ void carver_pass::get_instrument_func_set() {
           outfile << func_name << "\n";
           instrument_func_set.insert(func_name);
 
-          outfile2 << func_name << ":" << F.size() << "\n";
+          outfile2 << func_name << ":" << F.size() << ":" << filename << "\n";
         }
         break;
       }

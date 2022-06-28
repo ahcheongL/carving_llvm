@@ -50,6 +50,22 @@ public:
   int alloc_size;
 };
 
+class PTR2 {
+public:
+
+  PTR2() : addr(0), pointee_type_id(0), alloc_size(0) {}
+
+  PTR2(void * _addr, int _size)
+    : addr(_addr), pointee_type_id(0), alloc_size(_size)  {}
+
+  PTR2(void * _addr, int pointee_type, int _size)
+    : addr(_addr), pointee_type_id(pointee_type), alloc_size(_size)  {}
+  
+  void * addr;
+  int pointee_type_id;
+  int alloc_size;
+};
+
 class IVAR {
 public:
   IVAR() : type(INPUT_TYPE::CHAR), name(0) {}

@@ -6,11 +6,11 @@
 #include <unistd.h>
 
 #define MAX_NUM_FILE 4
-#define MINSIZE 0
+#define MINSIZE 4
 #define MAXSIZE 24
 #define MAX_INPUTS (((long) 1) << MAXSIZE)
 #define MAX_PTR_SIZE 512
-#define CARV_PROB 100
+#define CARV_PROB 10
 
 static char * outdir_name = NULL;
 
@@ -449,9 +449,9 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   bool skip_write = false;
 
   if (num_inputs <= (1 << MINSIZE)) {
-    //skip_write = true;
+    skip_write = true;
   } else {
-    int tmp = 128;
+    int tmp = (1 << (MINSIZE + 1));
     int index = 0;
     while (num_inputs > tmp) {
       tmp *= 2;
