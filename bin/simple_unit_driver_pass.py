@@ -43,7 +43,7 @@ ld_path = out.stdout.decode()[:-1] + "/ld.lld"
 #get carver_pass.so filepath
 source_path = Path(__file__).resolve()
 source_dir = str(source_path.parent.parent)
-so_path = source_dir + "/lib/binary_fuzz_driver_pass.so"
+so_path = source_dir + "/lib/simple_unit_driver_pass.so"
 
 funcs = []
 with open(funcs_txt_file_path) as f1:
@@ -64,7 +64,7 @@ cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-ggdb", "-O0"
   , "-I", source_dir + "/include", "-o", outname
   #, "-fsanitize=address"
-  , "-L", source_dir + "/lib", inputbc, "-l:binary_fuzz_driver.a", ] + compile_args
+  , "-L", source_dir + "/lib", inputbc, "-l:simple_unit_driver.a", ] + compile_args
 
 #env["DUMP_IR"] = "1"
 print(" ".join(cmd))

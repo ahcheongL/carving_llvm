@@ -151,7 +151,10 @@ void * Replay_pointer_check_pointee_type(int default_idx, int default_pointee_si
   } else {
     int num_class_types = class_size.size();
 
-    if (num_class_types == 0) {
+    int idx = Replay_int();
+    idx = idx % (num_class_types* 10);
+
+    if (idx > num_class_types) {
       //use default type id
       cur_alloc_size = coin2 * default_pointee_size;
       char * new_ptr = (char *)malloc(cur_alloc_size);
@@ -161,31 +164,16 @@ void * Replay_pointer_check_pointee_type(int default_idx, int default_pointee_si
         , default_idx, cur_alloc_size));
       return new_ptr;
     } else {
-      num_class_types ++;
-      int idx = Replay_int();
-      idx = idx % (num_class_types* 10);
-
-      if (idx > num_class_types) {
-        //use default type id
-        cur_alloc_size = coin2 * default_pointee_size;
-        char * new_ptr = (char *)malloc(cur_alloc_size);
-        cur_pointee_size = default_pointee_size;
-        cur_class_index = default_idx;
-        alloced_ptrs.push_back(PTR2((void*) new_ptr
-          , default_idx, cur_alloc_size));
-        return new_ptr;
+      cur_class_index = idx;
+      if (idx == num_class_types) {
+        cur_pointee_size = 1;
       } else {
-        cur_class_index = idx;
-        if (idx == num_class_types - 1) {
-          cur_pointee_size = 1;
-        } else {
-          cur_pointee_size = *class_size[idx];
-        }
-        cur_alloc_size = coin2 * cur_pointee_size;
-        char * new_ptr = (char *)malloc(cur_alloc_size);
-        alloced_ptrs.push_back(PTR2((void*) new_ptr, idx, cur_alloc_size));
-        return new_ptr;
+        cur_pointee_size = *class_size[idx];
       }
+      cur_alloc_size = coin2 * cur_pointee_size;
+      char * new_ptr = (char *)malloc(cur_alloc_size);
+      alloced_ptrs.push_back(PTR2((void*) new_ptr, idx, cur_alloc_size));
+      return new_ptr;
     }
   }
 }
