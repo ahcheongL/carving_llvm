@@ -42,34 +42,6 @@ class driver_pass : public ModulePass {
 
   std::set<Function *> probe_funcs;
   
-  DebugInfoFinder DbgFinder;
-  Module * Mod;
-  LLVMContext * Context;
-  const DataLayout * DL;
-
-  IRBuilder<> *IRB;
-  Type        *VoidTy;
-  IntegerType *Int1Ty;
-  IntegerType *Int8Ty;
-  IntegerType *Int16Ty;
-  IntegerType *Int32Ty;
-  IntegerType *Int64Ty;
-  IntegerType *Int128Ty;
-
-  Type        *FloatTy;
-  Type        *DoubleTy;
-  
-  PointerType *Int8PtrTy;
-  PointerType *Int16PtrTy;
-  PointerType *Int32PtrTy;
-  PointerType *Int64PtrTy;
-  PointerType *Int128PtrTy;
-  PointerType *Int8PtrPtrTy;
-  PointerType *Int8PtrPtrPtrTy;
-
-  PointerType *FloatPtrTy;
-  PointerType *DoublePtrTy;
-  
   FunctionCallee __inputf_open;
 
   FunctionCallee replay_char_func;
@@ -110,35 +82,8 @@ class driver_pass : public ModulePass {
 char driver_pass::ID = 0;
 
 bool driver_pass::hookInstrs(Module &M) {
-  LLVMContext &              C = M.getContext();
-  const DataLayout & dataLayout = M.getDataLayout();
-  Mod = &M;
-  Context = &C;
-  DL = &dataLayout;
-  IRB = new IRBuilder<> (C);
-  
-  DbgFinder.processModule(M);
-
-  VoidTy = Type::getVoidTy(C);
-  Int1Ty = IntegerType::getInt1Ty(C);
-  Int8Ty = IntegerType::getInt8Ty(C);
-  Int16Ty = IntegerType::getInt16Ty(C);
-  Int32Ty = IntegerType::getInt32Ty(C);
-  Int64Ty = IntegerType::getInt64Ty(C);
-  Int128Ty = IntegerType::getInt128Ty(C);
-
-  FloatTy = Type::getFloatTy(C);
-  DoubleTy = Type::getDoubleTy(C);
-  Int8PtrTy = PointerType::get(Int8Ty, 0);
-  Int16PtrTy = PointerType::get(Int16Ty, 0);
-  Int32PtrTy = PointerType::get(Int32Ty, 0);
-  Int64PtrTy = PointerType::get(Int64Ty, 0);
-  Int128PtrTy = PointerType::get(Int128Ty, 0);
-  Int8PtrPtrTy = PointerType::get(Int8PtrTy, 0);
-  Int8PtrPtrPtrTy = PointerType::get(Int8PtrPtrTy, 0);
-
-  FloatPtrTy = Type::getFloatPtrTy(C);
-  DoublePtrTy = Type::getDoublePtrTy(C);
+  initialize_pass_contexts(M);
+  get_llvm_types();
 
   __inputf_open = M.getOrInsertFunction(
     get_link_name("__driver_inputf_open"), VoidTy, Int8PtrPtrTy);
@@ -201,7 +146,7 @@ bool driver_pass::hookInstrs(Module &M) {
     }
   }
 
-  get_class_type_info(Mod, IRB, DL);
+  get_class_type_info();
 
   gen_class_replay();
 
@@ -227,7 +172,7 @@ bool driver_pass::hookInstrs(Module &M) {
     return false;
   }
 
-  BasicBlock * new_entry_block = BasicBlock::Create(C, "new_entry_block", main_func);
+  BasicBlock * new_entry_block = BasicBlock::Create(*Context, "new_entry_block", main_func);
 
   BasicBlock * cur_block = new_entry_block;
   replay_BBs.insert(cur_block);
@@ -568,13 +513,6 @@ bool driver_pass::runOnModule(Module &M) {
 }
 
 bool driver_pass::get_target_func() {
-  std::ifstream funcnames("funcs.txt");
-
-  if (funcnames.fail()) {
-    DEBUG0("Failed to open funcs.txt\n");
-    return false;
-  }
-
   char * target_name = getenv("TARGET_NAME");
   if (target_name == NULL) {
     DEBUG0("TARGET_NAME is not set\n");
@@ -589,8 +527,6 @@ bool driver_pass::get_target_func() {
       break;
     }
   }
-
-  funcnames.close();
 
   if (target_func == NULL) {
     DEBUG0("Can't find target\n");

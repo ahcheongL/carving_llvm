@@ -12,6 +12,7 @@
 #include <fstream>
 #include <vector>
 #include <sys/time.h>
+#include <sstream>
 
 #include "llvm/Config/llvm-config.h"
 #include "llvm/ADT/Statistic.h"
@@ -57,8 +58,85 @@ void get_struct_field_names_from_DIT(DIType *, std::vector<std::string> *);
 extern int num_class_name_const;
 extern std::vector<std::pair<Constant *, int>> class_name_consts;
 extern std::map<StructType *, std::pair<int, Constant *>> class_name_map;
-void get_class_type_info(Module *, IRBuilder<>*, const DataLayout *);
+void get_class_type_info();
 
 extern std::vector<Value *> empty_args;
+
+extern std::map<Function *, std::set<Constant *>> global_var_uses;
+void find_global_var_uses();
+
+extern Type        *VoidTy;
+extern IntegerType *Int1Ty;
+extern IntegerType *Int8Ty;
+extern IntegerType *Int16Ty;
+extern IntegerType *Int32Ty;
+extern IntegerType *Int64Ty;
+extern IntegerType *Int128Ty;
+
+extern Type        *FloatTy;
+extern Type        *DoubleTy;
+
+extern PointerType *Int8PtrTy;
+extern PointerType *Int16PtrTy;
+extern PointerType *Int32PtrTy;
+extern PointerType *Int64PtrTy;
+extern PointerType *Int128PtrTy;
+extern PointerType *Int8PtrPtrTy;
+extern PointerType *Int8PtrPtrPtrTy;
+
+extern PointerType *FloatPtrTy;
+extern PointerType *DoublePtrTy;
+
+void get_llvm_types();
+
+extern FunctionCallee mem_allocated_probe;
+extern FunctionCallee remove_probe;
+extern FunctionCallee record_func_ptr;
+extern FunctionCallee argv_modifier;
+extern FunctionCallee __carv_fini;
+extern FunctionCallee strlen_callee;
+extern FunctionCallee carv_char_func;
+extern FunctionCallee carv_short_func;
+extern FunctionCallee carv_int_func;
+extern FunctionCallee carv_long_func;
+extern FunctionCallee carv_longlong_func;
+extern FunctionCallee carv_float_func;
+extern FunctionCallee carv_double_func;
+extern FunctionCallee carv_ptr_func;
+extern FunctionCallee carv_ptr_name_update;
+extern FunctionCallee struct_name_func;
+extern FunctionCallee carv_name_push;
+extern FunctionCallee carv_name_pop;
+extern FunctionCallee carv_func_ptr;
+extern FunctionCallee carv_func_call;
+extern FunctionCallee carv_func_ret;
+extern FunctionCallee update_carved_ptr_idx;
+extern FunctionCallee mem_alloc_type;
+extern FunctionCallee keep_class_name;
+extern FunctionCallee get_class_idx;
+extern FunctionCallee get_class_size;
+extern FunctionCallee class_carver;
+extern FunctionCallee update_class_ptr;
+
+void get_carving_func_callees();
+
+extern std::vector<AllocaInst *> tracking_allocas;
+void Insert_alloca_probe(BasicBlock &);
+void Insert_mem_func_call_probe(Instruction *, std::string);
+void Insert_carving_main_probe(BasicBlock &, Function &, global_range);
+
+BasicBlock * insert_carve_probe(Value *, BasicBlock *);
+
+extern std::set<std::string> struct_carvers;
+void insert_struct_carve_probe(Value *, Type *);
+void insert_struct_carve_probe_inner(Value *, Type *);
+
+extern Module * Mod;
+extern LLVMContext * Context;
+extern const DataLayout * DL;
+extern IRBuilder<> *IRB;
+extern DebugInfoFinder DbgFinder;
+
+void initialize_pass_contexts(Module &);
 
 #endif

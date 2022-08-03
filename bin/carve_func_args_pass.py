@@ -33,10 +33,10 @@ if b"command not found" in out.stderr:
 
 ld_path = out.stdout.decode()[:-1] + "/ld.lld"
 
-#get carver_pass.so filepath
+#get carve_func_args_pass.so filepath
 source_path = Path(__file__).resolve()
 source_dir = str(source_path.parent.parent)
-so_path = source_dir + "/lib/carver_pass.so"
+so_path = source_dir + "/lib/carve_func_args_pass.so"
 
 outname = ".".join(inputbc.split(".")[:-1]) + ".rel.carv"
 
