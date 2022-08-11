@@ -221,7 +221,7 @@ bool driver_pass::hookInstrs(Module &M) {
     target_func->getFunctionType(), target_func, target_args);
 
   //Return
-  IRB->CreateCall(__replay_fini, empty_args);
+  IRB->CreateCall(__replay_fini, {});
 
   IRB->CreateRet(ConstantInt::get(Int32Ty, 0));
 
@@ -254,22 +254,22 @@ std::pair<BasicBlock *, Value *>
   Value * result = NULL;
 
   if (typeptr == Int1Ty) {
-    result = IRB->CreateCall(replay_char_func, empty_args);
+    result = IRB->CreateCall(replay_char_func, {});
     result = IRB->CreateCast(Instruction::CastOps::Trunc, result, Int1Ty);
   } else if (typeptr == Int8Ty) {
-    result = IRB->CreateCall(replay_char_func, empty_args);
+    result = IRB->CreateCall(replay_char_func, {});
   } else if (typeptr == Int16Ty) {
-    result = IRB->CreateCall(replay_short_func, empty_args);
+    result = IRB->CreateCall(replay_short_func, {});
   } else if (typeptr == Int32Ty) {
-    result = IRB->CreateCall(replay_int_func, empty_args);
+    result = IRB->CreateCall(replay_int_func, {});
   } else if (typeptr == Int64Ty) {
-    result = IRB->CreateCall(replay_long_func, empty_args);
+    result = IRB->CreateCall(replay_long_func, {});
   } else if (typeptr == Int128Ty) {
-    result = IRB->CreateCall(replay_longlong_func, empty_args);
+    result = IRB->CreateCall(replay_longlong_func, {});
   } else if (typeptr == FloatTy) {
-    result = IRB->CreateCall(replay_float_func, empty_args);
+    result = IRB->CreateCall(replay_float_func, {});
   } else if (typeptr == DoubleTy) {
-    result = IRB->CreateCall(replay_double_func, empty_args);
+    result = IRB->CreateCall(replay_double_func, {});
   } else if (typeptr->isStructTy()) {
     //TODO
   } else if (typeptr->isFunctionTy() || typeptr->isArrayTy()) {
@@ -326,8 +326,8 @@ std::pair<BasicBlock *, Value *>
 
       Value * class_idx = NULL;
       if (is_class_type) {
-        pointee_size_val = IRB->CreateCall(replay_ptr_class_size, empty_args);
-        class_idx = IRB->CreateCall(replay_ptr_class_index, empty_args);
+        pointee_size_val = IRB->CreateCall(replay_ptr_class_size, {});
+        class_idx = IRB->CreateCall(replay_ptr_class_index, {});
       }
       
       Instruction * ptr_bytesize = IRB->CreateCall(replay_ptr_alloc_size, probe_args);
@@ -359,7 +359,7 @@ std::pair<BasicBlock *, Value *>
         if (pointee_type->isStructTy()) {
           insert_struct_replay_probe(getelem_instr, pointee_type);
         }  else if (is_func_ptr_type(pointee_type)) {
-          Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, empty_args);
+          Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
           Value * casted_val = IRB->CreateBitCast(func_ptr_val, pointee_type);
           IRB->CreateStore(casted_val, getelem_instr);
         } else {
@@ -457,7 +457,7 @@ void driver_pass::insert_struct_replay_probe_inner(Value * struct_ptr
       if (field_type->isStructTy()) {
         insert_struct_replay_probe(gep, field_type);
       } else if (is_func_ptr_type(field_type)) {
-        Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, empty_args);
+        Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
         Value * casted_val = IRB->CreateBitCast(func_ptr_val, field_type);
         IRB->CreateStore(casted_val, gep);
       } else {

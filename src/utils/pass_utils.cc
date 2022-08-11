@@ -18,8 +18,6 @@ void initialize_pass_contexts(Module &M) {
   DbgFinder.processModule(M);
 }
 
-std::vector<Value *> empty_args;
-
 static std::map<std::string, Constant *> new_string_globals;
 static std::map<std::string, std::string> probe_link_names;
 
@@ -78,7 +76,7 @@ Constant * gen_new_string_constant(std::string name, IRBuilder<> * IRB) {
   auto search = new_string_globals.find(name);
 
   if (search == new_string_globals.end()) {
-    Constant * new_global = IRB->CreateGlobalStringPtr(name);
+    Constant * new_global = IRB->CreateGlobalStringPtr(name, "", 0, Mod);
     new_string_globals.insert(std::make_pair(name, new_global));
     return new_global;
   }
@@ -111,45 +109,49 @@ std::string find_param_name(Value * param, BasicBlock * BB) {
 }
 
 void get_struct_field_names_from_DIT(DIType * dit, std::vector<std::string> * elem_names) {
-  while ((dit != NULL) && (
-    isa<DIDerivedType>(dit) || isa<DISubroutineType>(dit))) {
-    if (isa<DIDerivedType>(dit)) {
-      DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
-      dit = tmptype->getBaseType();
-    } else {
-      DISubroutineType * tmptype = dyn_cast<DISubroutineType>(dit);
-      //TODO
-      dit = NULL;
-      break;
-    }
+
+  while ((dit != NULL) && isa<DIDerivedType>(dit)) {
+    DIDerivedType * tmptype = dyn_cast<DIDerivedType>(dit);
+    dit = tmptype->getBaseType();
   }
 
-  if ((dit == NULL) || (!isa<DICompositeType>(dit))) {
+  if (dit == NULL) { return; }
+
+  if (isa<DISubroutineType>(dit)) {
+    DISubroutineType * subroutine_type = dyn_cast<DISubroutineType>(dit);
+    for (auto subtype : subroutine_type->getTypeArray()) {
+      if (subtype == NULL) { continue; }
+
+      get_struct_field_names_from_DIT(subtype, elem_names);
+    }
+    
+  } else if (isa<DICompositeType>(dit)) {
+    DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
+    int field_idx = 0;
+    for (auto iter2 : struct_DIT->getElements()) {
+      if (isa<DIDerivedType>(iter2)) {
+        DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
+        dwarf::Tag elem_tag = elem_DIT->getTag();
+        std::string elem_name = "";
+        if (elem_tag == dwarf::Tag::DW_TAG_member) {
+          elem_name = elem_DIT->getName().str();
+        } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
+          elem_name = elem_DIT->getBaseType()->getName().str();
+        }
+
+        if (elem_name == "") {
+          elem_name = "field" + std::to_string(field_idx);
+        }
+        elem_names->push_back(elem_name);
+        field_idx++;
+      } else if (isa<DISubprogram>(iter2)) {
+        //methods of classes, skip
+        continue;
+      }
+    }
+  } else {
+    //TODO
     return;
-  }
-
-  DICompositeType * struct_DIT = dyn_cast<DICompositeType>(dit);
-  int field_idx = 0;
-  for (auto iter2 : struct_DIT->getElements()) {
-    if (isa<DIDerivedType>(iter2)) {
-      DIDerivedType * elem_DIT = dyn_cast<DIDerivedType>(iter2);
-      dwarf::Tag elem_tag = elem_DIT->getTag();
-      std::string elem_name = "";
-      if (elem_tag == dwarf::Tag::DW_TAG_member) {
-        elem_name = elem_DIT->getName().str();
-      } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
-        elem_name = elem_DIT->getBaseType()->getName().str();
-      }
-
-      if (elem_name == "") {
-        elem_name = "field" + std::to_string(field_idx);
-      }
-      elem_names->push_back(elem_name);
-      field_idx++;
-    } else if (isa<DISubprogram>(iter2)) {
-      //methods of classes, skip
-      continue;
-    }
   }
 }
 
@@ -160,7 +162,8 @@ std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 void get_class_type_info() {
   for (auto struct_type : Mod->getIdentifiedStructTypes()) {
     if (struct_type->isOpaque()) { continue; }
-    std::string name = get_type_str(struct_type);
+    //std::string name = get_type_str(struct_type);
+    std::string name = struct_type->getName().str();
     Constant * name_const = gen_new_string_constant(name, IRB);    
     class_name_consts.push_back(std::make_pair(name_const, DL->getTypeAllocSize(struct_type)));
     class_name_map.insert(std::make_pair(struct_type
@@ -352,10 +355,9 @@ void Insert_alloca_probe(BasicBlock& entry_block) {
       }
 
       if (allocated_type->isStructTy()) {
-        std::string typestr = get_type_str(allocated_type);         
+        std::string typestr = allocated_type->getStructName().str();       
         Constant * typename_const = gen_new_string_constant(typestr, IRB);
-        std::vector<Value *> args1 {casted_ptr, typename_const};
-        IRB->CreateCall(mem_alloc_type, args1);
+        IRB->CreateCall(mem_alloc_type, {casted_ptr, typename_const});
       }
 
       Value * size_const = ConstantInt::get(Int32Ty, size);
@@ -376,10 +378,9 @@ static void insert_mem_alloc_type(Instruction * IN) {
       PointerType * cast_ptr_type = dyn_cast<PointerType>(cast_type);
       Type * pointee_type = cast_ptr_type->getPointerElementType();
       if (pointee_type->isStructTy()) {
-        std::string typestr = get_type_str(pointee_type);
+        std::string typestr = pointee_type->getStructName().str();
         Constant * typename_const = gen_new_string_constant(typestr, IRB);
-        std::vector<Value *> args1 {IN, typename_const};
-        IRB->CreateCall(mem_alloc_type, args1);
+        IRB->CreateCall(mem_alloc_type, {IN, typename_const});
       }
     }
   }
@@ -467,6 +468,9 @@ void Insert_mem_func_call_probe(Instruction * IN, std::string callee_name) {
   return;
 }
 
+unsigned int num_global_tracked = 0;
+unsigned int num_func_tracked = 0;
+
 void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
     , global_range globals) {
 
@@ -510,16 +514,10 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
   //Global variables memory probing
   for (auto global_iter = globals.begin(); global_iter != globals.end(); global_iter++) {
 
-    if (!isa<GlobalVariable>(*global_iter)
-      && !isa<Function>(*global_iter)) { continue; }
-
-    if (isa<Function>(*global_iter)) {
-      Function * global_f = dyn_cast<Function>(&(*global_iter));
-      if (global_f->size() == 0) { continue; }
-    } else if (isa<GlobalVariable>(*global_iter)) {
-      GlobalVariable * global_v = dyn_cast<GlobalVariable>(&(*global_iter));
-      if (global_v->getName().str().find("llvm.") != std::string::npos) { continue; }
-    }
+    if (!isa<GlobalVariable>(*global_iter)) { continue; }
+    
+    GlobalVariable * global_v = dyn_cast<GlobalVariable>(&(*global_iter));
+    if (global_v->getName().str().find("llvm.") != std::string::npos) { continue; }
     
     Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, &(*global_iter), Int8PtrTy);
     Type * gv_type = (*global_iter).getValueType();
@@ -530,6 +528,7 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
     Value * size_const = ConstantInt::get(Int32Ty, size);
     std::vector<Value *> args{casted_ptr, size_const};
     IRB->CreateCall(mem_allocated_probe, args);
+    num_global_tracked++;
   }
 
   //Record func ptr
@@ -540,40 +539,44 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
       , (Value *) &Func, Int8PtrTy);
     std::vector<Value *> probe_args {cast_val, func_name_const};
     IRB->CreateCall(record_func_ptr, probe_args);
+    num_func_tracked++;
   }
 
   //Record class type string constants
   for (auto iter : class_name_consts) {
-    std::vector<Value *> args {iter.first, ConstantInt::get(Int32Ty, iter.second)};
-    IRB->CreateCall(keep_class_name, args);
+    IRB->CreateCall(keep_class_name
+      , {iter.first, ConstantInt::get(Int32Ty, iter.second)});
   }
 
-  return;
+  Constant * ready = Mod->getOrInsertGlobal(get_link_name("__carv_ready"), Int8Ty);
+  IRB->CreateStore(ConstantInt::get(Int8Ty, 1), ready);
 
+  return;
 }
 
 BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
   Type * val_type = val->getType();
 
-  std::vector<Value *> probe_args {val};
   if (val_type == Int1Ty) {
     Value * cast_val = IRB->CreateZExt(val, Int8Ty);
-    std::vector<Value *> probe_args {cast_val};
-    IRB->CreateCall(carv_char_func, probe_args);
+    IRB->CreateCall(carv_char_func, {cast_val});
   } else if (val_type == Int8Ty) {
-    IRB->CreateCall(carv_char_func, probe_args);
+    IRB->CreateCall(carv_char_func, {val});
   } else if (val_type == Int16Ty) {
-    IRB->CreateCall(carv_short_func, probe_args);
+    IRB->CreateCall(carv_short_func, {val});
   } else if (val_type == Int32Ty) {
-    IRB->CreateCall(carv_int_func, probe_args);
+    IRB->CreateCall(carv_int_func, {val});
   } else if (val_type == Int64Ty) {
-    IRB->CreateCall(carv_long_func, probe_args);
+    IRB->CreateCall(carv_long_func, {val});
   } else if (val_type == Int128Ty) {
-    IRB->CreateCall(carv_longlong_func, probe_args);
+    IRB->CreateCall(carv_longlong_func, {val});
   } else if (val_type == FloatTy) {
-    IRB->CreateCall(carv_float_func, probe_args);
+    IRB->CreateCall(carv_float_func, {val});
   } else if (val_type == DoubleTy) {
-    IRB->CreateCall(carv_double_func, probe_args);
+    IRB->CreateCall(carv_double_func, {val});
+  } else if (val_type->isX86_FP80Ty()) {
+    Value * cast_val = IRB->CreateFPCast(val, DoubleTy);
+    IRB->CreateCall(carv_double_func, {cast_val});
   } else if (val_type->isStructTy()) {
     //Sould be very simple tiny struct...
     StructType * struct_type = dyn_cast<StructType>(val_type);
@@ -588,7 +591,7 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
       Value * extracted_val = IRB->CreateExtractValue(val, idx);
       IRB->CreateCall(struct_name_func, gen_new_string_constant(field_name, IRB));
       cur_block = insert_carve_probe(extracted_val, cur_block);
-      IRB->CreateCall(carv_name_pop, empty_args);
+      IRB->CreateCall(carv_name_pop, {});
       idx++;
     }
 
@@ -640,16 +643,16 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
 
       if (array_elem_type->isStructTy()) {
         insert_struct_carve_probe(getelem_instr, array_elem_type);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else if (is_func_ptr_type(array_elem_type)) {
         Value * ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, casted_val, Int8PtrTy);
         std::vector<Value *> probe_args {ptrval};
         IRB->CreateCall(carv_func_ptr, probe_args);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else {
         Value * load_ptr = IRB->CreateLoad(array_elem_type, getelem_instr);
         loopblock = insert_carve_probe(load_ptr, loopblock);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       }
 
       Value * index_update_instr
@@ -717,8 +720,8 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
       
       Value * class_idx = NULL;
       if (is_class_type) {
-        pointee_size_val = IRB->CreateCall(get_class_size, empty_args);
-        class_idx = IRB->CreateCall(get_class_idx, empty_args);
+        pointee_size_val = IRB->CreateCall(get_class_size, {});
+        class_idx = IRB->CreateCall(get_class_idx, {});
       }
 
       Instruction * pointer_size = (Instruction *)
@@ -745,25 +748,25 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
         Value * elem_ptr = IRB->CreateCall(update_class_ptr, args1);
         std::vector<Value *> args {elem_ptr, class_idx};
         IRB->CreateCall(class_carver, args);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else {
         Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
 
         if (pointee_type->isStructTy()) {
           insert_struct_carve_probe(getelem_instr, pointee_type);
-          IRB->CreateCall(carv_name_pop, empty_args);
+          IRB->CreateCall(carv_name_pop, {});
         } else if (is_func_ptr_type(pointee_type)) {
           Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
           Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
           std::vector<Value *> probe_args {cast_ptr};
           IRB->CreateCall(carv_func_ptr, probe_args);
-          IRB->CreateCall(carv_name_pop, empty_args);
+          IRB->CreateCall(carv_name_pop, {});
         } else {
           Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
           loopblock = insert_carve_probe(load_ptr, loopblock);
-          IRB->CreateCall(carv_name_pop, empty_args);
+          IRB->CreateCall(carv_name_pop, {});
         }
-      } 
+      }
 
       Value * index_update_instr
         = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
@@ -808,6 +811,7 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
   return BB;
 }
 
+std::set<std::string> struct_carvers;
 void insert_struct_carve_probe(Value * struct_ptr, Type * type) {
 
   StructType * struct_type = dyn_cast<StructType>(type);
@@ -823,6 +827,22 @@ void insert_struct_carve_probe(Value * struct_ptr, Type * type) {
   }
 
   return;
+}
+
+static std::map<std::string, DIType *> struct_ditype_map;
+
+void construct_ditype_map() {
+  for (auto iter : DbgFinder.types()) {
+    std::string type_name = iter->getName().str();
+    DIType * dit = iter;
+    struct_ditype_map[type_name] = dit;
+  }
+
+  for (auto DIsubprog : DbgFinder.subprograms()) {
+    std::string type_name = DIsubprog->getName().str();
+    DIType * DISubroutType = DIsubprog->getType();
+    struct_ditype_map[type_name] = DISubroutType;
+  }
 }
 
 void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
@@ -852,52 +872,21 @@ void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
       = BasicBlock::Create(*Context, "entry", struct_carv_func);
 
     IRB->SetInsertPoint(entry_BB);
-    IRB->CreateRetVoid();
+    Instruction * ret_void_instr = IRB->CreateRetVoid();
     IRB->SetInsertPoint(entry_BB->getFirstNonPHIOrDbgOrLifetime());
 
-    BasicBlock * cur_block = entry_BB;
-
     //Get field names
-    bool found_DIType = false;
     std::vector<std::string> elem_names;
-    for (auto iter : DbgFinder.types()) {
-      if (struct_name == iter->getName().str()) {
-        found_DIType = true;
-        DIType * dit = iter;
-        get_struct_field_names_from_DIT(dit, &elem_names);
-        break;
-      }
-    }
 
-    if (!found_DIType) {
-      //Infer DIType from using DISubprogram
-      for (auto DIsubprog : DbgFinder.subprograms()) {
-        if (struct_name == DIsubprog->getName().str()) {
-          DISubroutineType * DISubroutType = DIsubprog->getType();
-          for (auto subtype : DISubroutType->getTypeArray()) {
-            if (subtype == NULL) { continue; }
-
-            if (isa<DIDerivedType>(subtype)) {
-              DIDerivedType * DIderived_type = dyn_cast<DIDerivedType>(subtype);
-              if (DIderived_type->getTag() == dwarf::Tag::DW_TAG_pointer_type) {
-                DIType * DItype = DIderived_type->getBaseType();
-                if ((DItype != NULL) && isa<DICompositeType>(DItype)) {
-                  DEBUGDUMP(DItype);
-                  get_struct_field_names_from_DIT(DItype, &elem_names);
-                }
-              }
-            }
-          }
-          break;
-        }
-      }
+    auto search = struct_ditype_map.find(struct_name);
+    if (search != struct_ditype_map.end()) {
+      DIType * dit = search->second;
+      get_struct_field_names_from_DIT(dit, &elem_names);
     }
 
     auto memberoffsets = SL->getMemberOffsets();
 
     if (elem_names.size() > memberoffsets.size()) {
-      DEBUG0("Warn : Wrong # of elem names, elem_names size : "
-        << elem_names.size() << ", memberoffsets size : " << memberoffsets.size() << "\n");
       elem_names.clear();
     }
 
@@ -915,6 +904,34 @@ void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
 
     Value * carver_param = struct_carv_func->getArg(0);
 
+    //depth check
+    Constant * depth_check_const = Mod->getOrInsertGlobal(get_link_name("__carv_depth"), Int8Ty);
+
+    Value * depth_check_val = IRB->CreateLoad(Int8Ty, depth_check_const);
+    Value * depth_check_cmp = IRB->CreateICmpSGT(depth_check_val, ConstantInt::get(Int8Ty, STRUCT_CARV_DEPTH));
+    BasicBlock * depth_check_BB = BasicBlock::Create(*Context, "depth_check", struct_carv_func);
+    BasicBlock * do_carving_BB = BasicBlock::Create(*Context, "do_carving", struct_carv_func);
+    BranchInst * depth_check_br = IRB->CreateCondBr(depth_check_cmp, depth_check_BB, do_carving_BB);
+    depth_check_br->removeFromParent();
+    ReplaceInstWithInst(ret_void_instr, depth_check_br);
+
+    IRB->SetInsertPoint(depth_check_BB);
+
+    IRB->CreateRetVoid();
+
+    IRB->SetInsertPoint(do_carving_BB);
+
+    BasicBlock * cur_block = do_carving_BB;
+
+    Value * add_one_depth = IRB->CreateAdd(depth_check_val, ConstantInt::get(Int8Ty, 1));
+    IRB->CreateStore(add_one_depth, depth_check_const);
+
+    Instruction * depth_store_instr2 = IRB->CreateStore(depth_check_val, depth_check_const);
+
+    IRB->CreateRetVoid();
+
+    IRB->SetInsertPoint(depth_store_instr2);
+
     int elem_idx = 0;
     for (auto iter : elem_names) {
       Constant * field_name_const = gen_new_string_constant(iter, IRB);
@@ -927,20 +944,20 @@ void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
 
       if (gep_pointee_type->isStructTy()) {
         insert_struct_carve_probe(gep, gep_pointee_type);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else if (gep_pointee_type->isArrayTy()) {
         cur_block = insert_carve_probe(gep, cur_block);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else if (is_func_ptr_type(gep_pointee_type)) {
         Value * load_ptr = IRB->CreateLoad(gep_pointee_type, gep);
         Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
         std::vector<Value *> probe_args {cast_ptr};
         IRB->CreateCall(carv_func_ptr, probe_args);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else {
         Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
         cur_block = insert_carve_probe(loadval, cur_block);
-        IRB->CreateCall(carv_name_pop, empty_args);
+        IRB->CreateCall(carv_name_pop, {});
       }
       elem_idx ++;
     }

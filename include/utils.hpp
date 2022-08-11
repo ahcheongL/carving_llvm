@@ -250,80 +250,86 @@ public:
 
   class data_node {
   public:
-    data_node(Key _key, Elem _elem) {
-      key = _key; elem = _elem; left = NULL; right= NULL;
+    data_node () : key(0), elem(0), left(0), right(0), parent(0) {}
+
+    data_node(Key _key, Elem _elem, data_node * _left
+      , data_node * _right, data_node * _parent) {
+
+      key = _key; elem = _elem; left = _left; right = _right; parent = _parent;
     }
 
-    data_node * insert_inner(Key _key, Elem _elem) {
-      if (_key == key) {
-        elem = _elem;
-        return NULL;
-      } else if (_key < key) {
-        if (left == NULL) {
-          left = new data_node(_key, _elem);
-          return left;
-        } else {
-          data_node * inserted = left->insert_inner(_key, _elem);
-          return inserted;
-        }
-      } else {
-        if (right == NULL) {
-          right = new data_node(_key, _elem);
-          return right;
-        } else {
-          data_node * inserted = right->insert_inner(_key, _elem);
-          return inserted;
-        }
-      }
+    data_node(const data_node & other) {
+      key = other.key; elem = other.elem; left = other.left; right = other.right;
+      parent = other.parent;
     }
 
-    Elem * find_inner(Key _key) {
-      if (key == _key) { return &elem; }
-      else if (_key < key) {
-        if (left == NULL) { return NULL; }
-        return left->find_inner(_key);
-      } else {
-        if (right == NULL) { return NULL; }
-        return right->find_inner(_key);
-      }
+    data_node(data_node && other) {
+      key = other.key; elem = other.elem; left = other.left; right = other.right;
+      parent = other.parent;
+    }
+
+    data_node& operator=(const data_node & other) {
+      key = other.key; elem = other.elem; left = other.left; right = other.right;
+      parent = other.parent;
+      return *this;
+    }
+
+    data_node& operator=(data_node && other) {
+      key = other.key; elem = other.elem; left = other.left; right = other.right;
+      parent = other.parent;
+      return *this;
     }
 
     void insert_right(data_node * node) {
+      if (node == NULL) { return; }
       if (right == NULL) {
         right = node;
-      } else {
-        data_node * ptr = right;
-        while (ptr->right != NULL) {
-          ptr = ptr->right;
-        }
-        ptr->right = node;
+        node->parent = this;
+        return;
       }
+
+      data_node * ptr = right;
+      while (ptr->right != NULL) {
+        ptr = ptr->right;
+      }
+      ptr->right = node;
+      node->parent = ptr;
+      return;
     }
 
-    data_node * remove_key(data_node ** parent, Key _key) {
-      if (key == _key) {
-        if (left == NULL) {
-          *parent = right;
-        } else if (right == NULL) {
-          *parent = left;
-        } else {
-          left->insert_right(right);
-          *parent = left;
-        }
+    data_node * find_node(Key _key, data_node ** parent_ptr) {
+      data_node * search_node = this;
 
-        return this;
-      } else if (_key < key) {
-        if (left == NULL) { return NULL; }
-        return left->remove_key(&left, _key);
-      } else {
-        if (right == NULL) { return NULL; }
-        return right->remove_key(&right, _key);
+      while (search_node->key != _key) {
+        if (search_node->key < _key) {
+          if (search_node->right == NULL) {
+            if (parent_ptr != NULL) {
+              *parent_ptr = search_node;
+            }
+            return NULL;
+          }
+          search_node = search_node->right;
+        } else {
+          if (search_node->left == NULL) {
+            if (parent_ptr != NULL) {
+              *parent_ptr = search_node;
+            }
+            return NULL;
+          }
+          search_node = search_node->left;
+        }
       }
+
+      if (parent_ptr != NULL) {
+        *parent_ptr = search_node;
+      }
+      return search_node;
     }
 
     data_node *left;
     data_node *right;
-    Key key; 
+    data_node *parent;
+    Key key;
     Elem elem;
   };
 
@@ -331,96 +337,264 @@ public:
     root = NULL;
     capacity = 128;
     num_nodes = 0;
-    nodes = (data_node **) malloc(sizeof(data_node *) * capacity);
+    nodes = new data_node[capacity];
   }
 
-  ~map() {
-    int idx = 0;
-    for (idx = 0; idx < num_nodes; idx++) {
-      delete nodes[idx];
+  /*
+  map(const map<Key, Elem> & other) :
+    capacity(other.capacity),
+    num_nodes(other.num_nodes),
+    nodes(new data_node[capacity]) {
+    for (int i = 0; i < num_nodes; i++) {
+      nodes[i] = other.nodes[i];
     }
-    free(nodes);
+    if (other.root == NULL) {
+      root = NULL;
+    } else {
+      root = nodes;
+    }
+  }
+
+  map(map<Key, Elem> && other) :
+    root(other.root),
+    capacity(other.capacity),
+    num_nodes(other.num_nodes),
+    nodes(other.nodes) {
+    other.nodes = NULL;
+  }
+
+  map& operator=(const map<Key, Elem> & other) {
+    if (this == &other) {
+      return *this;
+    }
+    delete [] nodes;
+    capacity = other.capacity;
+    num_nodes = other.num_nodes;
+    nodes = new data_node[capacity];
+    for (int i = 0; i < num_nodes; i++) {
+      nodes[i] = other.nodes[i];
+    }
+    if (other.root == NULL) {
+      root = NULL;
+    } else {
+      root = nodes;
+    }
+    return *this;
+  }
+
+  map& operator=(map<Key, Elem> && other) {
+    if (this == &other) {
+      return *this;
+    }
+    delete [] nodes;
+    root = other.root;
+    capacity = other.capacity;
+    num_nodes = other.num_nodes;
+    nodes = other.nodes;
+    other.nodes = NULL;
+    return *this;
+  }
+  */
+
+  ~map() {
+    delete [] nodes;
   }
 
   Elem* find (Key key) {
     if (root == NULL) { return NULL; }
-    return root->find_inner(key);
+    data_node * search_node = root->find_node(key, NULL);
+    if (search_node == NULL) { return NULL; }
+    return &(search_node->elem);
   }
 
   Elem * operator[](Key key) {
     if (root == NULL) { return NULL; }
-    return root->find_inner(key);
+    data_node * search_node = root->find_node(key, NULL);
+    if (search_node == NULL) { return NULL; }
+    return &(search_node->elem);
   }
 
   data_node * get_by_idx(int idx) {
     if (idx >= num_nodes) { return NULL; }
-    return nodes[idx];
+    return &(nodes[idx]);
   }
 
   void insert(Key key, Elem elem) {
     if (root == NULL) {
-      root = new data_node(key, elem);
-      nodes[num_nodes++] = root;
-    } else {
-      data_node * inserted = root->insert_inner(key, elem);
-      if (inserted != NULL) {
-        nodes[num_nodes++] = inserted;
-        if (num_nodes >= capacity) {
-          capacity *= 2;
-          nodes = (data_node **) realloc(nodes, sizeof(data_node *) * capacity);
-        }
-      }
+      root = nodes;
+      nodes[0] = data_node(key, elem, NULL, NULL, NULL);
+      num_nodes ++;
+      return;
     }
 
+    data_node * parent_node = root;
+    data_node * key_node = root->find_node(key, &parent_node);
+    if (key_node == NULL) {
+      data_node * new_node = nodes + num_nodes;
+      *new_node = data_node(key, elem, NULL, NULL, parent_node);
+      num_nodes++;
+      if (key < parent_node->key) {
+        parent_node->left = new_node;
+      } else {
+        parent_node->right = new_node;
+      }
+
+      if (num_nodes == capacity) {
+        capacity *= 2;
+        data_node * new_nodes = new data_node[capacity];
+        
+        if (new_nodes > nodes) {
+          unsigned long ptr_diff = (char *)new_nodes - (char *)nodes;
+          for (int i = 0; i < num_nodes; i++) {
+            new_nodes[i] = nodes[i];
+            if (nodes[i].left != NULL) {
+              new_nodes[i].left = (data_node *)((char *)new_nodes[i].left + ptr_diff);
+            }
+            if (nodes[i].right != NULL) {
+              new_nodes[i].right = (data_node *)((char *)new_nodes[i].right + ptr_diff);
+            }
+            if (nodes[i].parent != NULL) {
+              new_nodes[i].parent = (data_node *)((char *)new_nodes[i].parent + ptr_diff);
+            }
+          }
+        } else {
+          unsigned int ptr_diff = (char *)nodes - (char *)new_nodes;
+          for (int i = 0; i < num_nodes; i++) {
+            new_nodes[i] = nodes[i];
+            if (nodes[i].left != NULL) {
+              new_nodes[i].left = (data_node *)((char *)new_nodes[i].left - ptr_diff);
+            }
+            if (nodes[i].right != NULL) {
+              new_nodes[i].right = (data_node *)((char *)new_nodes[i].right - ptr_diff);
+            }
+            if (nodes[i].parent != NULL) {
+              new_nodes[i].parent = (data_node *)((char *)new_nodes[i].parent - ptr_diff);
+            }
+          }
+        }
+
+        delete [] nodes;
+        nodes = new_nodes;
+        root = nodes;
+      }
+    } else {
+      key_node->elem = elem;
+    }
     return;
   }
 
-  void remove(Key key) {
-    if (root == NULL) {
+  void move_or_remove_last(data_node * node) {
+    if (node == nodes + num_nodes - 1) {
+      num_nodes--;
       return;
-    } else {
-      //update nodes array
-      data_node * removed = NULL;
+    }
 
-      if (root->key == key) {
-        removed = root;
+    data_node * last_node = nodes + num_nodes - 1;
+    data_node * parent_node = last_node->parent;
+    if (parent_node->left == last_node) {
+      parent_node->left = node;
+    } else {
+      parent_node->right = node;
+    }
+
+    if (last_node->left != NULL) {
+      last_node->left->parent = node;
+    }
+    if (last_node->right != NULL) {
+      last_node->right->parent = node;
+    }
+
+    node->key = last_node->key;
+    node->elem = last_node->elem;
+    node->parent = parent_node;
+    node->left = last_node->left;
+    node->right = last_node->right;
+
+    num_nodes--;
+  }
+
+  void remove(Key key) {
+    if (root == NULL) { return; }
+
+    if (root->key == key) {
+      if (root->left != NULL) {
+        data_node * to_be_root = root->left;
+        data_node * root_right = root->right;
+        root->key = to_be_root->key;
+        root->elem = to_be_root->elem;
+        root->left = to_be_root->left;
+        root->right = to_be_root->right;
 
         if (root->left != NULL) {
-          data_node * tmp = root->left;
-          if (root->right != NULL) {
-            root->left->insert_right(root->right);
-          }
-          root = tmp;          
-        } else {
-          if (root->right == NULL) {
-            root = NULL;
-          } else {
-            data_node * tmp = root->right;
-            root = tmp;
-          }
+          root->left->parent = root;
         }
-      } else if (key < root->key) {
-        if (root->left == NULL) { return; }
-        removed = root->left->remove_key(&(root->left), key);
-      } else {
-        if (root->right == NULL) { return; }
-        removed = root->right->remove_key(&(root->right), key);
-      }
-      if (removed != NULL) {
-        int idx = 0;
-        for (idx = 0; idx < num_nodes; idx++) {
-          if (nodes[idx] == removed) {
-            memmove(&(nodes[idx]), &(nodes[idx+1])
-              , sizeof(data_node *) * (num_nodes - idx - 1));
-            num_nodes --;
-            break;
+        if (root->right != NULL) {
+          root->right->parent = root;
+        }
+      
+        if (root_right != NULL) {
+          if (root->right == NULL) {
+            root->right = root_right;
+            root_right->parent = root;
+          } else {
+            root->right->insert_right(root_right);
           }
         }
 
-        delete removed;
+        move_or_remove_last(to_be_root);
+      } else {
+        if (root->right == NULL) {
+          root = NULL;
+          num_nodes = 0;
+        } else {
+          data_node * to_be_root = root->right;
+          root->key = to_be_root->key;
+          root->elem = to_be_root->elem;
+          root->left = to_be_root->left;
+          root->right = to_be_root->right;
+
+          if (root->left != NULL) {
+            root->left->parent = root;
+          }
+          if (root->right != NULL) {
+            root->right->parent = root;
+          }
+
+          move_or_remove_last(to_be_root);
+        }
       }
+
+      return;
     }
     
+    data_node * key_node = root->find_node(key, NULL);
+
+    if (key_node == NULL) { return; }
+
+    if (key_node->left != NULL) {
+      if (key_node->parent->left == key_node) {
+        key_node->parent->left = key_node->left;
+      } else {
+        key_node->parent->right = key_node->left;
+      }
+      key_node->left->parent = key_node->parent;
+      key_node->left->insert_right(key_node->right);
+    } else if (key_node->right != NULL) {
+      key_node->right->parent = key_node->parent;
+      if (key_node->parent->left == key_node) {
+        key_node->parent->left = key_node->right;
+      } else {
+        key_node->parent->right = key_node->right;
+      }
+    } else {
+      if (key_node->parent->left == key_node) {
+        key_node->parent->left = NULL;
+      } else {
+        key_node->parent->right = NULL;
+      }
+    }
+
+    move_or_remove_last(key_node);
     return;
   }
 
@@ -428,9 +602,8 @@ public:
     return num_nodes;
   }
 
-private:
+  data_node * nodes;
   data_node * root;
-  data_node ** nodes;
   int capacity;
   int num_nodes;
 };

@@ -24,6 +24,7 @@ all: lib/carve_func_args_pass.so lib/carver.a lib/carver_probe_names.txt
 all: lib/shape_fixed_driver_pass.so lib/shape_fixed_driver.a lib/shape_fixed_driver_probe_names.txt
 all: lib/simple_unit_driver_pass.so lib/simple_unit_driver.a lib/simple_unit_driver_probe_names.txt
 all: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
+all: lib/carve_type_pass.so
 
 lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/pass.hpp src/utils/pass_utils.o
 	mkdir -p lib
@@ -89,6 +90,10 @@ lib/call_seq.a: src/tools/call_seq.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
+lib/carve_type_pass.so: src/carving/carve_type_pass.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+	mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+
 clean:
 	rm -f lib/carve_func_args_pass.so
 	rm -f lib/carver.a
@@ -107,3 +112,4 @@ clean:
 	rm -f lib/get_call_seq.so
 	rm -f lib/call_seq.a
 	rm -f src/utils/pass_utils.o
+	rm -f lib/carve_type_pass.so

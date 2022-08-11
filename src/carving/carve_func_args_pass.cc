@@ -22,8 +22,6 @@ class carver_pass : public ModulePass {
  private:
   bool hookInstrs(Module &M);
 
-  std::map<std::string, std::string> probe_link_names;
-
   std::set<std::string> instrument_func_set;
   void get_instrument_func_set();
   
@@ -104,7 +102,7 @@ void carver_pass::Insert_return_val_probe(Instruction * IN, std::string callee_n
     IRB->CreateCall(carv_name_push, push_args);
 
     insert_carve_probe(IN, IN->getParent());
-    IRB->CreateCall(carv_name_pop, empty_args);
+    IRB->CreateCall(carv_name_pop, {});
   }
 }
 
@@ -127,13 +125,11 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
       if (pointee_type->isStructTy()) {
         insert_struct_carve_probe((Value *) glob_iter, pointee_type);
-        std::vector<Value *> pop_args;
-        IRB->CreateCall(carv_name_pop, pop_args);
+        IRB->CreateCall(carv_name_pop, {});
       } else {
         Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
         cur_block = insert_carve_probe(load_val, cur_block);
-        std::vector<Value *> pop_args;
-        IRB->CreateCall(carv_name_pop, pop_args);
+        IRB->CreateCall(carv_name_pop, {});
       }
     }
   }
@@ -277,7 +273,7 @@ bool carver_pass::hookInstrs(Module &M) {
       insert_global_carve_probe(&F, insert_block);
     }
 
-    IRB->CreateCall(update_carved_ptr_idx, empty_args);
+    IRB->CreateCall(update_carved_ptr_idx, {});
 
     DEBUG0("Insert memory tracking for " << func_name << "\n");
 

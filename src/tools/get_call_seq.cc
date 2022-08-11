@@ -61,7 +61,7 @@ bool extract_callseq_pass::hookInstrs(Module &M) {
 
     if (func_name == "main") {
       IRB->SetInsertPoint(&F.getEntryBlock().front());
-      IRB->CreateCall(open_call_seq, empty_args);
+      IRB->CreateCall(open_call_seq, {});
 
       std::set<ReturnInst *> ret_instrs;
       for (auto &BB : F) {
@@ -74,7 +74,7 @@ bool extract_callseq_pass::hookInstrs(Module &M) {
 
       for (auto &ret_instr : ret_instrs) {
         IRB->SetInsertPoint(ret_instr);
-        IRB->CreateCall(close_call_seq, empty_args);
+        IRB->CreateCall(close_call_seq, {});
       }
     } else {
       IRB->SetInsertPoint(&F.getEntryBlock().front());

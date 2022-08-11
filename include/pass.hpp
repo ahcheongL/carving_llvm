@@ -40,6 +40,8 @@
 #define DEBUGDUMP(x)
 #endif
 
+#define STRUCT_CARV_DEPTH 5
+
 using namespace llvm;
 
 typedef llvm::iterator_range<llvm::Module::global_value_iterator> global_range;
@@ -59,8 +61,6 @@ extern int num_class_name_const;
 extern std::vector<std::pair<Constant *, int>> class_name_consts;
 extern std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 void get_class_type_info();
-
-extern std::vector<Value *> empty_args;
 
 extern std::map<Function *, std::set<Constant *>> global_var_uses;
 void find_global_var_uses();
@@ -138,5 +138,10 @@ extern IRBuilder<> *IRB;
 extern DebugInfoFinder DbgFinder;
 
 void initialize_pass_contexts(Module &);
+
+void construct_ditype_map();
+
+extern unsigned int num_global_tracked;
+extern unsigned int num_func_tracked;
 
 #endif

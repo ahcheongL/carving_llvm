@@ -24,3 +24,7 @@ __keep_class_name
 __get_class_idx
 __get_class_size
 __update_class_ptr
+__carv_open
+__carv_close
+__carv_ready
+__carv_depth
