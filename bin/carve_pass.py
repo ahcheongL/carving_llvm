@@ -37,8 +37,9 @@ outname = ".".join(inputbc.split(".")[:-1]) + ".carv"
 cmd = ["clang++", "--ld-path=" + ld_path
   , "-fno-experimental-new-pass-manager"
 #  , "-stdlib=libc++"
-  , "-ggdb", "-O0"
-  , "-fsanitize=address"
+#  , "-ggdb", "-O0"
+#  , "-fsanitize=address"
+  , "-O2"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
   , "-I", source_dir + "/include", "-o", outname
   , "-L", source_dir + "/lib", inputbc, "-l:carver.a" ] + compile_args

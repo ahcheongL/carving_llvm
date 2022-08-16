@@ -3,6 +3,7 @@
 import sys, os
 import subprocess as sp
 from pathlib import Path
+import tools.utils as utils
 
 if len(sys.argv) <= 2:
   print("usage : {} <input.bc> <Func name> [<compile args> ...]".format(sys.argv[0]))
@@ -13,46 +14,15 @@ func_name = sys.argv[2]
 compile_args = sys.argv[3:]
 
 
-#check given file exists
-if not os.path.isfile(inputbc):
-  print("Can't find file : {}".format(inputbc))
+if utils.check_given_bitcode(inputbc) == False:
   exit()
 
-funcs_txt_file_path = "/".join(inputbc.split("/")[:-1]) + "funcs.txt"
-if not os.path.isfile(funcs_txt_file_path):
-  print("This tool assumes funcs.txt file located in the same directory with input bitcode file")
-  exit()
+ld_path = utils.get_ld_path()
 
-#check given file format
-cmd = ["file", inputbc]
-stdout = sp.run(cmd, stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
-if b"bitcode" not in stdout:
-  print("Can't recognize file : {}".format(inputbc))
-  exit()
-
-#get ld.lld path
-cmd = ["llvm-config", "--bindir"]
-out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE)
-
-if b"command not found" in out.stderr:
-  print("Can't find llvm-config, please check PATH")
-  exit()
-
-ld_path = out.stdout.decode()[:-1] + "/ld.lld"
-
-#get carver_pass.so filepath
+#get simple_unit_driver_pass.so filepath
 source_path = Path(__file__).resolve()
 source_dir = str(source_path.parent.parent)
 so_path = source_dir + "/lib/simple_unit_driver_pass.so"
-
-funcs = []
-with open(funcs_txt_file_path) as f1:
-  for line in f1:
-    funcs.append(line.strip())
-
-if len(funcs) == 0:
-  print("Can't get target functions")
-  exit()
 
 env=os.environ.copy()
 env["TARGET_NAME"] = func_name
@@ -60,15 +30,20 @@ env["TARGET_NAME"] = func_name
 outname = ".".join(inputbc.split(".")[:-1]) + "." + func_name + ".driver"
 
 cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
-  #, "-D_GLIBCXX_DEBUG"
-  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-ggdb", "-O0"
+  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
   , "-I", source_dir + "/include", "-o", outname
   #, "-fsanitize=address"
+  , "-ggdb", "-O0"
   , "-L", source_dir + "/lib", inputbc, "-l:simple_unit_driver.a", ] + compile_args
 
 #env["DUMP_IR"] = "1"
 print(" ".join(cmd))
-try:
-  sp.run(cmd, env=env)
-except:
-  pass
+
+process= sp.Popen(cmd, env=env, stdout=sp.PIPE, stderr=sp.STDOUT, encoding="utf-8")
+
+while True:
+  line = process.stdout.readline()
+  if line == '' and process.poll() != None:
+    break
+
+  print(line.strip(), flush=True)

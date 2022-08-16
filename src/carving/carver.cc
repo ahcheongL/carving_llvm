@@ -7,12 +7,12 @@
 
 #include <chrono>
 
-#define MAX_NUM_FILE 8
-#define MINSIZE 4
+#define MAX_NUM_FILE 32
+#define MINSIZE 1
 #define MAXSIZE 24
 #define MAX_INPUTS (((long) 1) << MAXSIZE)
-#define MAX_PTR_SIZE 512
-#define CARV_PROB 10
+#define CARV_PROB 100
+#define CARV_PROB_TYPE 100
 
 static char * outdir_name = NULL;
 
@@ -20,6 +20,9 @@ static int * num_func_calls;
 static int num_func_calls_size;
 
 static int ** func_carved_filesize;
+
+static int num_type_carved;
+static int ** type_carved_inputssize;
 
 static int * callseq;
 static int callseq_size;
@@ -36,8 +39,7 @@ static vector<IVAR *> * cur_inputs = NULL;
 static vector<PTR> * cur_carved_ptrs = NULL;
 
 //memory info
-static map<void *, int> alloced_ptrs;
-static map<void *, char *> alloced_type;
+static map<void *, struct typeinfo> alloced_ptrs;
 static vector<char *> class_names;
 static map<char *, int> class_size;
 
@@ -108,13 +110,11 @@ void Carv_double(double input) {
 
 int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size) {
   if (!__carv_ready) { return 0; }
-
-  char * updated_name = strdup(*(__carv_base_names.back()));
-
   if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) {
-    free(updated_name);
     return 0;
   }
+
+  char * updated_name = strdup(*(__carv_base_names.back()));
 
   if (ptr == NULL) {
     VAR<void *> * inputv = new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
@@ -147,24 +147,21 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
   while (index < num_alloced_ptrs) {
     auto alloced_ptr = alloced_ptrs.get_by_idx(index);
     char * alloced_addr = (char *) alloced_ptr->key;
-    int alloced_size = alloced_ptr->elem;
+    typeinfo * alloced_type = &alloced_ptr->elem;
+    int alloced_size = alloced_type->size;
     char * alloced_addr_end = alloced_addr + alloced_size;
     if ((alloced_addr <= ptr) && (ptr < alloced_addr_end)) {
       int size = alloced_addr_end - ((char *) ptr);
       int new_carved_ptr_index = cur_carved_ptrs->size();
       
-      char ** name_ptr = alloced_type.find(ptr);
+      char * name_ptr = alloced_type->type_name;
       if (name_ptr != NULL) {
-        cur_class_index = class_names.get_idx(*name_ptr);
-        cur_class_size = *class_size.find(*name_ptr);
-        type_name = *name_ptr;
+        cur_class_index = class_names.get_idx(name_ptr);
+        cur_class_size = *class_size.find(name_ptr);
+        type_name = name_ptr;
       } else {
         cur_class_index = default_idx;
         cur_class_size = default_size;
-      }
-
-      if ((size / cur_class_size) > MAX_PTR_SIZE) {
-        size = cur_class_size;
       }
 
       cur_carved_ptrs->push_back(PTR(ptr, type_name, size));
@@ -255,6 +252,7 @@ void __carv_name_pop() {
 }
 
 void __carv_struct_name_update(char * field_name) {
+  if (!__carv_ready) { return; }
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s.%s",base_name, field_name);
@@ -263,24 +261,11 @@ void __carv_struct_name_update(char * field_name) {
   return;
 }
 
-void __mem_allocated_probe(void * ptr, int size) {
-  if (alloced_ptrs.nodes == NULL) { return; }
-
-  int * search = alloced_ptrs.find(ptr);
-
-  if (search != NULL) {
-    *search = size;
-    return;
-  }
-
-  alloced_ptrs.insert(ptr, size);
-  return;
-}
-
-void __mem_alloc_type(void * ptr, char * type_name) {
+void __mem_allocated_probe(void * ptr, int size, char * type_name) {
   if (!__carv_ready) { return; }
-
-  alloced_type.insert(ptr, type_name);
+  struct typeinfo tmp {type_name, size};
+  alloced_ptrs.insert(ptr, tmp);
+  return;
 }
 
 void __remove_mem_allocated_probe(void * ptr) { 
@@ -289,6 +274,8 @@ void __remove_mem_allocated_probe(void * ptr) {
 }
 
 void __carv_func_call_probe(int func_id) {
+  if (!__carv_ready) { return; }
+
   //Write call sequence
   callseq[callseq_index++] = func_id;
   if (callseq_index >= callseq_size) {
@@ -325,6 +312,7 @@ void __carv_func_call_probe(int func_id) {
 }
 
 void __update_carved_ptr_idx() {
+  if (!__carv_ready) { return; }
   inputs.back()->update_carved_ptr_begin_idx();
 }
 
@@ -422,7 +410,10 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
   return ;
 }
 
+static int num_excluded = 0;
+
 void __carv_func_ret_probe(char * func_name, int func_id) {
+  if (!__carv_ready) { return; }
 
   if (cur_inputs == NULL) {
     inputs.pop_back();
@@ -482,8 +473,15 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       func_carved_filesize[func_id][index] += 1;
     }
   }
+  skip_write = false;
 
   if (skip_write) {
+    idx = 0;
+    while (idx < num_inputs) {
+      delete *(cur_inputs->get(idx));
+      idx++;
+    }
+
     class FUNC_CONTEXT * next_ctx = inputs.back();
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
       cur_inputs = NULL;
@@ -492,6 +490,8 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
     }
+
+    num_excluded++;
     return;
   }
 
@@ -504,7 +504,12 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
 
   if (outfile == NULL) {
     std::cerr << "Error: Failed to open file : " << outfile_name << ", errno : " << strerror(errno) << "\n";
-    exit(1);
+  
+    idx = 0;
+    while (idx < num_inputs) {
+      delete *(cur_inputs->get(idx));
+      idx++;
+    }
 
     class FUNC_CONTEXT * next_ctx = inputs.back();
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
@@ -518,7 +523,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   }
 
   //Write carved pointers
-  idx = 0;  
+  idx = 0;
   while (idx < num_carved_ptrs) {
     PTR * carved_ptr = cur_carved_ptrs->get(idx);
     fprintf(outfile, "%d:%p:%d:%s\n", idx, carved_ptr->addr
@@ -532,7 +537,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   while (idx < num_inputs) {
     IVAR * elem = *(cur_inputs->get(idx));
     if (elem->type == INPUT_TYPE::CHAR) {
-      fprintf(outfile, "%s:CAHR:%d\n", elem->name, (int) (((VAR<char>*) elem)->input));
+      fprintf(outfile, "%s:CHAR:%d\n", elem->name, (int) (((VAR<char>*) elem)->input));
     } else if (elem->type == INPUT_TYPE::SHORT) {
       fprintf(outfile, "%s:SHORT:%d\n", elem->name, (int) (((VAR<short>*) elem)->input));
     } else if (elem->type == INPUT_TYPE::INT) {
@@ -618,16 +623,20 @@ void __carver_argv_modifier(int * argcptr, char *** argvptr) {
   }
 
   (*argvptr)[argc] = 0;
-  __mem_allocated_probe(*argvptr, sizeof(char *) * argc);
+  __mem_allocated_probe(*argvptr, sizeof(char *) * argc, 0);
   int idx;
   for (idx = 0; idx < argc; idx++) {
     char * argv_str = (*argvptr)[idx];
-    __mem_allocated_probe(argv_str, strlen(argv_str) + 1);
+    __mem_allocated_probe(argv_str, strlen(argv_str) + 1, 0);
   }
 
   num_func_calls_size = 256;
   num_func_calls = (int *) calloc(num_func_calls_size, sizeof(int));
   func_carved_filesize = (int **) calloc(num_func_calls_size, sizeof(int *));
+
+  num_type_carved = 2048;
+  type_carved_inputssize = (int **) calloc(num_type_carved, sizeof(int *)); 
+
   callseq_size = 16384;
   callseq = (int *) malloc(callseq_size * sizeof(int));
   callseq_index = 0;
@@ -637,6 +646,11 @@ void __carver_argv_modifier(int * argcptr, char *** argvptr) {
   srand(time(NULL));
   return;
 }
+
+static int64_t alloc_total_time = 0;
+static int64_t dealloc_total_time = 0;
+static int64_t carv_total_time = 0;
+
 
 void __carv_FINI() {
   char buffer[256];
@@ -649,11 +663,26 @@ void __carv_FINI() {
   fclose(__call_seq_file);
   free(callseq);
   free(num_func_calls);
-  free(func_carved_filesize);
-  free(outdir_name);
-}
 
-#define CARV_PROB_SMALL 80
+  int idx;
+  for (idx = 0; idx < num_func_calls_size; idx++) {
+    free(func_carved_filesize[idx]);
+  }
+  free(func_carved_filesize);
+
+  for (idx = 0; idx < num_type_carved; idx++) {
+    free(type_carved_inputssize[idx]);
+  }
+  free(type_carved_inputssize);
+  free(outdir_name);
+
+  std::cerr << "Total alloc time : " << alloc_total_time << "\n";
+  std::cerr << "Total dealloc time : " << dealloc_total_time << "\n";
+  std::cerr << "Total carv time : " << carv_total_time << "\n";
+  std::cerr << "Total excluded : " << num_excluded << "\n";
+
+  __carv_ready = false;
+}
 
 
 static std::chrono::steady_clock::time_point carv_begin;
@@ -661,7 +690,7 @@ static std::chrono::steady_clock::time_point carv_begin;
 void __carv_open() {
   if (!__carv_ready) { return; }
 
-  if ((rand() % 100) < CARV_PROB_SMALL) {
+  if ((rand() % 100) < CARV_PROB_TYPE) {
     FUNC_CONTEXT new_ctx = FUNC_CONTEXT(carved_index++, 0, 0);
     inputs.push_back(new_ctx);
     cur_inputs = &(inputs.back()->inputs);
@@ -677,10 +706,9 @@ static map<const char *, unsigned int> type_counter;
 static map<const char *, unsigned int> type_idx;
 static unsigned int max_type_idx = 0;
 
-void __carv_close(const char * type_name) {
+void __carv_close(const char * type_name, const char * func_name) {
   if (cur_inputs == NULL) { return; }
 
-  std::chrono::steady_clock::time_point carv_close_start = std::chrono::steady_clock::now();
   FUNC_CONTEXT * cur_context = inputs.back();
   inputs.pop_back();
 
@@ -710,18 +738,37 @@ void __carv_close(const char * type_name) {
       index += 1;
     }
 
-    if (func_carved_filesize[cur_type_idx] == 0) {
-      func_carved_filesize[cur_type_idx] = (int *) calloc(MAXSIZE - MINSIZE + 1, sizeof(int));
+    if (cur_type_idx >= num_type_carved) {
+      int tmp = num_type_carved;
+      while (cur_type_idx >= num_type_carved ) {
+        num_type_carved *= 2;
+      }
+
+      type_carved_inputssize = (int **) realloc(type_carved_inputssize, sizeof(int *) * num_type_carved);
+      memset(type_carved_inputssize + tmp, 0, sizeof(int *) * (num_type_carved - tmp));
     }
 
-    if (func_carved_filesize[cur_type_idx][index] >= MAX_NUM_FILE) {
+    if (type_carved_inputssize[cur_type_idx] == 0) {
+      type_carved_inputssize[cur_type_idx] = (int *) calloc(MAXSIZE - MINSIZE + 1, sizeof(int));
+    }
+
+    if (type_carved_inputssize[cur_type_idx][index] >= MAX_NUM_FILE) {
       skip_write = true;
     } else {
-      func_carved_filesize[cur_type_idx][index] += 1;
+      type_carved_inputssize[cur_type_idx][index] += 1;
     }
   }
 
-  if (skip_write) { return; }
+  if (skip_write) {
+    idx = 0;
+    while (idx < num_inputs) {
+      delete *(cur_inputs->get(idx));
+      idx++;
+    }
+
+    num_excluded += 1;
+    return;
+  }
 
   unsigned int * type_count = type_counter[type_name];
   if (type_count == NULL) {
@@ -732,9 +779,17 @@ void __carv_close(const char * type_name) {
   }
 
   char outfile_name[256];
-  snprintf(outfile_name, 256, "%s/%s_%d", outdir_name, type_name, (*type_count));
+  snprintf(outfile_name, 256, "%s/%s_%d_%s", outdir_name, type_name, (*type_count), func_name);
   FILE * outfile = fopen(outfile_name, "w");
-  if (outfile == NULL) { return; }
+
+  if (outfile == NULL) {
+    idx = 0;
+    while (idx < num_inputs) {
+      delete *(cur_inputs->get(idx));
+      idx++;
+    }
+    return;
+  }
 
   idx = 0;  
   while (idx < num_carved_ptrs) {
@@ -750,7 +805,7 @@ void __carv_close(const char * type_name) {
   while (idx < num_inputs) {
     IVAR * elem = *(cur_inputs->get(idx));
     if (elem->type == INPUT_TYPE::CHAR) {
-      fprintf(outfile, "%s:CAHR:%d\n", elem->name, (int) (((VAR<char>*) elem)->input));
+      fprintf(outfile, "%s:CHAR:%d\n", elem->name, (int) (((VAR<char>*) elem)->input));
     } else if (elem->type == INPUT_TYPE::SHORT) {
       fprintf(outfile, "%s:SHORT:%d\n", elem->name, (int) (((VAR<short>*) elem)->input));
     } else if (elem->type == INPUT_TYPE::INT) {
@@ -803,13 +858,40 @@ void __carv_close(const char * type_name) {
 
   fclose(outfile);
 
-  std::chrono::steady_clock::time_point carv_close_done = std::chrono::steady_clock::now();
+  std::chrono::steady_clock::time_point carv_close_end = std::chrono::steady_clock::now();
 
-  fprintf(stderr, "Carving %s done in %.3f (writing : %.3f) secs.\n",
-    type_name,
-    std::chrono::duration_cast<std::chrono::milliseconds>(carv_close_done - carv_begin).count() / 1000000.0,
-    std::chrono::duration_cast<std::chrono::milliseconds>(carv_close_done - carv_close_start).count() / 1000000.0);
+  carv_total_time += 
+    std::chrono::duration_cast<std::chrono::microseconds>(carv_close_end - carv_begin).count();
   
+  return;
+}
+
+
+static std::chrono::steady_clock::time_point alloc_begin;
+static std::chrono::steady_clock::time_point alloc_end;
+
+void __carv_alloc_begin() {
+  alloc_begin = std::chrono::steady_clock::now();
+}
+
+void __carv_alloc_end() {
+  alloc_end = std::chrono::steady_clock::now();
+  alloc_total_time +=
+    std::chrono::duration_cast<std::chrono::microseconds>(alloc_end - alloc_begin).count();
+}
+
+
+static std::chrono::steady_clock::time_point dealloc_begin;
+static std::chrono::steady_clock::time_point dealloc_end;
+
+void __carv_dealloc_begin() {
+  dealloc_begin = std::chrono::steady_clock::now();
+}
+
+void __carv_dealloc_end() {
+  dealloc_end = std::chrono::steady_clock::now();
+  dealloc_total_time += 
+    std::chrono::duration_cast<std::chrono::microseconds>(dealloc_end - dealloc_begin).count();
 }
 
 #endif

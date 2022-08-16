@@ -152,13 +152,15 @@ bool driver_pass::hookInstrs(Module &M) {
 
   gen_class_replay();
 
+  find_global_var_uses();
+
   DEBUG0("Iterating functions...\n");
 
   for (auto &F : M) {
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();
 
-    if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
+    if (func_name == "_GLOBAL__sub_I_") { continue;}
     if (func_name == "__cxx_global_var_init") { continue; }
     if (func_name == "__class_replay") { continue; }
     if (func_name.find("__Replay__") != std::string::npos) { continue; }
@@ -198,7 +200,6 @@ bool driver_pass::hookInstrs(Module &M) {
     IRB->CreateCall(keep_class_name, args);
   }
 
-
   Value * argv = main_func->getArg(1);
   std::vector<Value *> reader_args {argv};
   IRB->CreateCall(__inputf_open, reader_args);
@@ -215,6 +216,19 @@ bool driver_pass::hookInstrs(Module &M) {
     auto replay_res = insert_replay_probe(arg_type, cur_block);
     cur_block = replay_res.first;
     target_args.push_back(replay_res.second);
+  }
+
+  auto search = global_var_uses.find(target_func);
+  if (search != global_var_uses.end()) {
+    for (auto glob_iter : search->second) {
+      llvm::errs() << "target function using glob : " << glob_iter->getName().str() << "\n";
+      Type * val_type = glob_iter->getType();
+      auto replay_res = insert_replay_probe(val_type, cur_block);
+      cur_block = replay_res.first;
+      
+      Value * glob_val = replay_res.second;
+      IRB->CreateStore(glob_val, glob_iter);
+    }
   }
 
   Instruction * target_call = IRB->CreateCall(

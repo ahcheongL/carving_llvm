@@ -69,7 +69,7 @@ bool carver_pass::hookInstrs(Module &M) {
   get_carving_func_callees();
 
   carv_open = M.getOrInsertFunction(get_link_name("__carv_open"), VoidTy);
-  carv_close = M.getOrInsertFunction(get_link_name("__carv_close"), VoidTy, Int8PtrTy);
+  carv_close = M.getOrInsertFunction(get_link_name("__carv_close"), VoidTy, Int8PtrTy, Int8PtrTy);
 
   //Set dummy insertlocation...
   for (auto &F : Mod->functions()) {
@@ -83,14 +83,13 @@ bool carver_pass::hookInstrs(Module &M) {
   size_t num_funcs = 0;
   size_t num_instrs = 0;
   for (auto &F : M) {
-    llvm::errs() << F.getName().str() << "\n";
     for (auto &BB : F) {
       num_instrs += BB.size();
     }
     num_funcs++;
   }
-  llvm::errs() << "# of functions: " << num_funcs << "\n";
-  llvm::errs() << "# of instructions : " << num_instrs << "\n";
+  DEBUG0("# of functions: " << num_funcs << "\n");
+  DEBUG0("# of instructions : " << num_instrs << "\n");
 
   get_class_type_info();
 
@@ -117,7 +116,6 @@ bool carver_pass::hookInstrs(Module &M) {
     std::string func_name = F.getName().str();
 
     if (func_name.substr(0, 7) == "__Carv_") { continue; }
-    if (func_name.find("_GLOBAL__sub_I_main.cc") != std::string::npos) { continue; }
     if (func_name.find("__cxx_global_var_init") != std::string::npos) { continue; }
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
 
@@ -143,77 +141,6 @@ bool carver_pass::hookInstrs(Module &M) {
     if (func_name == "main") {
       Insert_carving_main_probe(entry_block, F, M.global_values());
       main_func = &F;
-    } else if (F.isVarArg()) {
-      //TODO
-    } else {
-
-      IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
-
-      //Insert input carving probes
-      int param_idx = 0;
-  
-      BasicBlock * insert_block = &entry_block;
-
-      for (auto &arg_iter : F.args()) {
-        Value * func_arg = &arg_iter;
-        Type * func_arg_type = func_arg->getType();
-
-        bool to_carve = is_complex_type(func_arg_type);
-        if (!to_carve) { continue; }
-
-        std::string type_name = get_type_name(func_arg_type);
-        if (type_name == "") { continue; }
-
-        std::string param_name = find_param_name(func_arg, insert_block);
-
-        if (param_name == "") {
-          param_name = "parm_" + std::to_string(param_idx);
-        }
-
-        Constant * type_name_const = gen_new_string_constant(type_name, IRB);
-
-        IRB->CreateCall(carv_open, {});
-
-        Constant * param_name_const = gen_new_string_constant(param_name, IRB);
-        IRB->CreateCall(carv_name_push, {param_name_const});
-
-        insert_block
-          = insert_carve_probe(func_arg, insert_block);
-        
-        IRB->CreateCall(carv_name_pop, {});
-
-        IRB->CreateCall(carv_close, {type_name_const});
-        param_idx ++;
-      }
-
-      auto globals = global_var_uses.find(&F);
-
-      if (globals != global_var_uses.end()) {
-        for (auto &global_var : globals->second) {
-          Type * global_var_type = global_var->getType();
-
-          bool to_carve = is_complex_type(global_var_type);
-          if (!to_carve) { continue; }
-
-          std::string type_name = get_type_name(global_var_type);
-          if (type_name == "") { continue; }
-
-          Constant * type_name_const = gen_new_string_constant(type_name, IRB);
-
-          IRB->CreateCall(carv_open, {});
-
-          std::string glob_name = global_var->getName().str();
-          Constant * glob_name_const = gen_new_string_constant(glob_name, IRB);
-          IRB->CreateCall(carv_name_push, {glob_name_const});
-
-          insert_block
-            = insert_carve_probe(global_var, insert_block);
-          
-          IRB->CreateCall(carv_name_pop, {});
-
-          IRB->CreateCall(carv_close, {type_name_const});
-        }
-      }
     }
 
     //Call instr probing
@@ -243,8 +170,41 @@ bool carver_pass::hookInstrs(Module &M) {
         if (func_name == "main") {
           IRB->CreateCall(__carv_fini, std::vector<Value *>());
         }
-      } else {
-        Insert_mem_func_call_probe(call_instr, callee_name);
+        continue;
+      }
+      
+      bool mem_funcs = Insert_mem_func_call_probe(call_instr, callee_name);
+      if (mem_funcs) { continue; }
+
+      IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
+
+      int operand_index = 0;
+
+      BasicBlock * insert_block = call_instr->getParent();
+      for (auto &arg_iter : call_instr->arg_operands()) {
+        Value * func_arg = arg_iter;
+        Type * func_arg_type = func_arg->getType();
+        bool to_carve = is_complex_type(func_arg_type);
+        if (!to_carve) { operand_index++; continue; }
+
+        std::string type_name = get_type_name(func_arg_type);
+        if (type_name == "") { continue; }
+
+        IRB->CreateCall(carv_open, {});
+
+        std::string operand_name = "op_" + std::to_string(operand_index);
+        Constant * operand_name_const = gen_new_string_constant(operand_name, IRB);
+        IRB->CreateCall(carv_name_push, {operand_name_const});
+
+        insert_block
+          = insert_carve_probe(func_arg, insert_block);
+        
+        IRB->CreateCall(carv_name_pop, {});
+
+        Constant * type_name_const = gen_new_string_constant(type_name, IRB);
+        Constant * func_name_const = gen_new_string_constant(func_name, IRB);
+        IRB->CreateCall(carv_close, {type_name_const, func_name_const});
+        operand_index ++;
       }
     }
 
@@ -252,6 +212,7 @@ bool carver_pass::hookInstrs(Module &M) {
     for (auto ret_instr : ret_instrs) {
       IRB->SetInsertPoint(ret_instr);
 
+      IRB->CreateCall(carv_dealloc_time_begin, {});
       //Remove alloca (local variable) memory tracking info.
       for (auto iter = tracking_allocas.begin();
         iter != tracking_allocas.end(); iter++) {
@@ -261,6 +222,7 @@ bool carver_pass::hookInstrs(Module &M) {
         std::vector<Value *> args {casted_ptr};
         IRB->CreateCall(remove_probe, args);
       }
+      IRB->CreateCall(carv_dealloc_time_end, {});
 
       //Insert fini
       if (func_name == "main") {
@@ -289,9 +251,9 @@ bool carver_pass::hookInstrs(Module &M) {
     }
     num_funcs ++;
   }
-  llvm::errs() << "# of functions: " << num_funcs << "\n";
-  llvm::errs() << "# of instructions : " << num_instrs << "\n";
-  llvm::errs() << "# of alloca instructions : " << num_alloca_instrs * 2 << "\n";
+  DEBUG0("# of functions: " << num_funcs << "\n");
+  DEBUG0("# of instructions : " << num_instrs << "\n");
+  DEBUG0("# of alloca instructions : " << num_alloca_instrs * 2 << "\n");
 
   delete IRB;
 
@@ -393,14 +355,13 @@ void carver_pass::get_complex_types() {
       } else {
         for (auto field_type : struct_type->elements()) {
 
-          if (field_type->isPointerTy()) {
+          while (field_type->isPointerTy()) {
             field_type = field_type->getPointerElementType();
           }
 
-          if (field_type->isArrayTy()) {
+          while (field_type->isArrayTy()) {
             field_type = field_type->getArrayElementType();
           }
-
 
           if (!field_type->isStructTy()) { continue; }
 
@@ -458,10 +419,10 @@ bool carver_pass::is_complex_type(Type * type) {
     if (complex_types.find(struct_type) != complex_types.end()) { return true; }
   } else if (type->isPointerTy()) {
     PointerType * ptr_type = dyn_cast<PointerType>(type);
-    if (ptr_type->getElementType()->isStructTy()) {
-      StructType * struct_type = dyn_cast<StructType>(ptr_type->getElementType());
-      if (complex_types.find(struct_type) != complex_types.end()) { return true; }
-    }
+    return is_complex_type(ptr_type->getElementType());
+  } else if (type->isArrayTy()) {
+    ArrayType * array_type = dyn_cast<ArrayType>(type);
+    return is_complex_type(array_type->getElementType());
   }
   return false;
 }

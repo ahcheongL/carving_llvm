@@ -30,3 +30,6 @@ funcs_size.txt
 **/input
 
 __pycache__
+
+**/carved
+log

@@ -81,8 +81,7 @@ void carver_pass::gen_class_carver() {
   IRB->SetInsertPoint(case_block);
 
   Value * load_val = IRB->CreateLoad(Int8Ty, carving_ptr);
-  std::vector<Value *> probe_args {load_val};
-  IRB->CreateCall(carv_char_func, probe_args);
+  IRB->CreateCall(carv_char_func, {load_val});
   IRB->CreateRetVoid();
 
   switch_inst->setDefaultDest(case_block);
@@ -98,8 +97,7 @@ void carver_pass::Insert_return_val_probe(Instruction * IN, std::string callee_n
   Type * ret_type = IN->getType();
   if (ret_type != VoidTy) {
     Constant * name_const = gen_new_string_constant("\"" + callee_name + "\"_ret", IRB);
-    std::vector<Value *> push_args {name_const};
-    IRB->CreateCall(carv_name_push, push_args);
+    IRB->CreateCall(carv_name_push, {name_const});
 
     insert_carve_probe(IN, IN->getParent());
     IRB->CreateCall(carv_name_pop, {});
@@ -110,9 +108,12 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
   BasicBlock * cur_block = BB;
 
+  llvm::errs() << "insert global carve probe for " << F->getName() << "\n";
+
   auto search = global_var_uses.find(F);
   if (search != global_var_uses.end()) {
     for (auto glob_iter : search->second) {
+      llvm::errs() << "glob : " << glob_iter->getName().str() << "\n";
       std::string glob_name = glob_iter->getName().str();
 
       Type * const_type = glob_iter->getType();
@@ -120,11 +121,14 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
       Type * pointee_type = dyn_cast<PointerType>(const_type)->getPointerElementType();
 
       Constant * glob_name_const = gen_new_string_constant(glob_name, IRB);
-      std::vector<Value *> push_args {glob_name_const};
-      IRB->CreateCall(carv_name_push, push_args);
+      IRB->CreateCall(carv_name_push, {glob_name_const});
 
       if (pointee_type->isStructTy()) {
         insert_struct_carve_probe((Value *) glob_iter, pointee_type);
+        IRB->CreateCall(carv_name_pop, {});
+      } else if (is_func_ptr_type(const_type)) {
+        Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, glob_iter, Int8PtrTy);
+        IRB->CreateCall(carv_func_ptr, {cast_ptr});
         IRB->CreateCall(carv_name_pop, {});
       } else {
         Value * load_val = IRB->CreateLoad(pointee_type, (Value *) glob_iter);
@@ -201,8 +205,7 @@ bool carver_pass::hookInstrs(Module &M) {
           AllocaInst * alloc_instr = *iter;
 
           Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
-          std::vector<Value *> args {casted_ptr};
-          IRB->CreateCall(remove_probe, args);
+          IRB->CreateCall(remove_probe, {casted_ptr});
         }
       }
 
@@ -232,9 +235,8 @@ bool carver_pass::hookInstrs(Module &M) {
 
     IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
     Constant * func_id_const = ConstantInt::get(Int32Ty, func_id++);
-    std::vector<Value *> func_call_args {func_id_const};
     Instruction * init_probe
-      = IRB->CreateCall(carv_func_call, func_call_args);
+      = IRB->CreateCall(carv_func_call, {func_id_const});
 
     //Main argc argv handling
     if (func_name == "main") {
@@ -399,12 +401,11 @@ void carver_pass::get_instrument_func_set() {
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();
-    if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
+    if (func_name == "_GLOBAL__sub_I_") { continue;}
     if (func_name == "__cxx_global_var_init") { continue; }
     GlobalValue::LinkageTypes Flinkage = F.getLinkage();
     
     if (!GlobalValue::isExternalLinkage(Flinkage)) { continue; }
-    if (F.size() < 10) { continue; }
 
     //TODO
     if (F.isVarArg()) { continue; }

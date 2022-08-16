@@ -59,8 +59,7 @@ class driver_pass : public ModulePass {
   FunctionCallee receive_ptr_shape;
   FunctionCallee receive_func_ptr;
 
-  FunctionCallee replay_ptr_func_default;
-  FunctionCallee replay_ptr_func_check;
+  FunctionCallee replay_ptr_func;
 
   FunctionCallee replay_ptr_alloc_size;
   FunctionCallee replay_ptr_class_index;
@@ -68,7 +67,7 @@ class driver_pass : public ModulePass {
 
   FunctionCallee update_class_ptr;
 
-  FunctionCallee keep_class_size;
+  FunctionCallee keep_class_info;
 
   FunctionCallee __replay_fini;
 
@@ -102,11 +101,8 @@ bool driver_pass::hookInstrs(Module &M) {
     , FloatTy);
   replay_double_func = M.getOrInsertFunction(get_link_name("Replay_double")
     , DoubleTy);
-  replay_ptr_func_default = M.getOrInsertFunction(get_link_name("Replay_pointer_with_given_size")
-    , Int8PtrTy, Int32Ty);
-  
-  replay_ptr_func_check = M.getOrInsertFunction(get_link_name("Replay_pointer_check_pointee_type")
-    , Int8PtrTy, Int32Ty, Int32Ty);
+  replay_ptr_func = M.getOrInsertFunction(get_link_name("Replay_pointer")
+    , Int8PtrTy, Int32Ty, Int32Ty, Int8PtrTy);
 
   replay_ptr_alloc_size = M.getOrInsertFunction(get_link_name("Replay_ptr_alloc_size")
     , Int32Ty);
@@ -122,8 +118,8 @@ bool driver_pass::hookInstrs(Module &M) {
   record_func_ptr = M.getOrInsertFunction(get_link_name("__record_func_ptr"),
     VoidTy, Int8PtrTy, Int8PtrTy);
 
-  keep_class_size = M.getOrInsertFunction(get_link_name("__keep_class_size"),
-    VoidTy, Int32Ty);
+  keep_class_info = M.getOrInsertFunction(get_link_name("__keep_class_info"),
+    VoidTy, Int8PtrTy, Int32Ty, Int32Ty);
 
   update_class_ptr = M.getOrInsertFunction(get_link_name("__update_class_ptr"),
     Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
@@ -149,6 +145,8 @@ bool driver_pass::hookInstrs(Module &M) {
   get_class_type_info();
 
   gen_class_replay();
+
+  find_global_var_uses();
 
   DEBUG0("Iterating functions...\n");
 
@@ -190,15 +188,16 @@ bool driver_pass::hookInstrs(Module &M) {
   }
 
   //Record class type string constants
-  for (auto iter : class_name_consts) {
-    std::vector<Value *> args {ConstantInt::get(Int32Ty, iter.second)};
-    IRB->CreateCall(keep_class_size, args);
+  for (auto iter : class_name_map) {
+    unsigned int class_size = DL->getTypeAllocSize(iter.first);
+    llvm::errs() << "class name : " << iter.first->getName().str() << ", idx : " << iter.second.first << ", size : " << class_size << "\n";
+    IRB->CreateCall(keep_class_info, {iter.second.second
+      , ConstantInt::get(Int32Ty, class_size)
+      , ConstantInt::get(Int32Ty, iter.second.first)});
   }
 
-
   Value * argv = main_func->getArg(1);
-  std::vector<Value *> reader_args {argv};
-  IRB->CreateCall(__inputf_open, reader_args);
+  IRB->CreateCall(__inputf_open, {argv});
 
   std::vector<Value *> target_args;
   for (auto &arg : target_func->args()) {
@@ -206,6 +205,19 @@ bool driver_pass::hookInstrs(Module &M) {
     auto replay_res = insert_replay_probe(arg_type, cur_block);
     cur_block = replay_res.first;
     target_args.push_back(replay_res.second);
+  }
+
+  auto search = global_var_uses.find(target_func);
+  if (search != global_var_uses.end()) {
+    for (auto glob_iter : search->second) {
+      llvm::errs() << "target function using glob : " << glob_iter->getName().str() << "\n";
+      Type * val_type = glob_iter->getType();
+      auto replay_res = insert_replay_probe(val_type, cur_block);
+      cur_block = replay_res.first;
+      
+      Value * glob_val = replay_res.second;
+      IRB->CreateStore(glob_val, glob_iter);
+    }
   }
 
   Instruction * target_call = IRB->CreateCall(
@@ -267,7 +279,16 @@ std::pair<BasicBlock *, Value *>
   } else if (typeptr == DoubleTy) {
     result = IRB->CreateCall(replay_double_func, {});
   } else if (typeptr->isStructTy()) {
-    //TODO
+    StructType * struct_type = dyn_cast<StructType>(typeptr);
+    
+    unsigned int num_elem = struct_type->getNumElements();
+
+    unsigned int idx = 0;
+    for (idx = 0; idx < num_elem; idx ++) {
+      auto carved_val = insert_replay_probe(struct_type->getTypeAtIndex(idx), cur_block);
+      cur_block = carved_val.first;
+      result = IRB->CreateInsertValue(UndefValue::get(typeptr), carved_val.second, idx);
+    }
   } else if (is_func_ptr_type(typeptr)) {
     result = IRB->CreateCall(replay_func_ptr, {});
     result = IRB->CreateBitCast(result, typeptr);
@@ -291,29 +312,103 @@ std::pair<BasicBlock *, Value *>
     if (pointee_size == 0) { return std::make_pair(cur_block , result); }
 
     if (pointee_type->isArrayTy()) {
-      //TODO
-    } else {
+      unsigned array_size = pointee_size;
 
+      ArrayType * arrtype = dyn_cast<ArrayType>(pointee_type);
+      Type * array_elem_type = arrtype->getArrayElementType();
+
+      pointee_size = DL->getTypeAllocSize(array_elem_type);
+      Value * pointer_size = ConstantInt::get(Int32Ty, array_size / pointee_size);
+
+      //Make loop block
+      BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_block->getParent());
+      BasicBlock * const loopblock_start = loopblock;
+      replay_BBs.insert(loopblock);
+      
+      Value * cmp_instr1 = IRB->CreateICmpEQ(pointer_size, ConstantInt::get(Int32Ty, 0));
+      
+      Instruction * temp_br_instr = IRB->CreateBr(loopblock);
+
+      IRB->SetInsertPoint(loopblock);
+      PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
+      index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), cur_block);
+
+      Value * getelem_instr = IRB->CreateGEP(pointee_type, result, index_phi);
+
+      if (pointee_type->isStructTy()) {
+        insert_struct_replay_probe_inner(getelem_instr, pointee_type);
+      }  else if (is_func_ptr_type(pointee_type)) {
+        Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
+        Value * casted_val = IRB->CreateBitCast(func_ptr_val, pointee_type);
+        IRB->CreateStore(casted_val, getelem_instr);
+      } else {
+        auto ptr_result = insert_replay_probe(pointee_type, loopblock);
+        loopblock = ptr_result.first;
+        Value * ptr_replay_res = ptr_result.second;
+        if (ptr_replay_res != NULL) {
+          Value * casted_val = IRB->CreateBitCast(ptr_replay_res, pointee_type);
+          IRB->CreateStore(casted_val, getelem_instr);
+        }
+      }
+
+      Value * index_update_instr
+        = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
+      index_phi->addIncoming(index_update_instr, loopblock);
+
+      Instruction * cmp_instr2
+        = (Instruction *) IRB->CreateICmpSLT(index_update_instr, pointer_size);
+      
+      Instruction * temp_br_instr2 = IRB->CreateBr(loopblock);
+
+      BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_block->getParent());
+      replay_BBs.insert(endblock);
+
+      IRB->SetInsertPoint(temp_br_instr);
+
+      Instruction * BB_term
+        = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
+      BB_term->removeFromParent();
+      ReplaceInstWithInst(temp_br_instr, BB_term);
+      
+      IRB->SetInsertPoint(temp_br_instr2);
+
+      Instruction * loopblock_term
+        = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
+      loopblock_term->removeFromParent();
+      ReplaceInstWithInst(temp_br_instr2, loopblock_term);
+
+      IRB->SetInsertPoint(endblock);
+
+      cur_block = endblock;
+
+    } else {
       bool is_class_type = false;
       Value * default_class_idx = NULL;
+      Constant * class_name_const = NULL;
       if (pointee_type->isStructTy()) {
         StructType * struct_type = dyn_cast<StructType> (pointee_type);
         auto search = class_name_map.find(struct_type);
         if (search != class_name_map.end()) {
           is_class_type = true;
           default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
+          std::string struct_name = struct_type->getName().str();
+          class_name_const = gen_new_string_constant(struct_name, IRB);
         }
       } else if (pointee_type == Int8Ty) {
         is_class_type = true;
         default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
+        class_name_const = gen_new_string_constant("i8*", IRB);
       }
 
       if (is_class_type) {
-        std::vector<Value *> args {default_class_idx, ConstantInt::get(Int32Ty, pointee_size)};
-        result = IRB->CreateCall(replay_ptr_func_check, args);
+        result = IRB->CreateCall(replay_ptr_func
+          , {default_class_idx, ConstantInt::get(Int32Ty, pointee_size)
+            , class_name_const});
       } else {
-        std::vector<Value *> args {ConstantInt::get(Int32Ty, pointee_size)};
-        result = IRB->CreateCall(replay_ptr_func_default, args);
+        result = IRB->CreateCall(replay_ptr_func
+          , {ConstantInt::get(Int32Ty, 0)
+              , ConstantInt::get(Int32Ty, pointee_size)
+              , ConstantPointerNull::get(Int8PtrTy)});
       }
       
       result = IRB->CreatePointerCast(result, typeptr);
@@ -454,6 +549,21 @@ void driver_pass::insert_struct_replay_probe_inner(Value * struct_ptr
         Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
         Value * casted_val = IRB->CreateBitCast(func_ptr_val, field_type);
         IRB->CreateStore(casted_val, gep);
+      } else if (field_type->isArrayTy()) {
+        ArrayType * array_type = dyn_cast<ArrayType>(field_type);
+        Type * array_elem_type = array_type->getArrayElementType();
+
+        unsigned int array_size = array_type->getNumElements();
+        unsigned int elem_size = DL->getTypeAllocSize(array_elem_type);
+        int idx = 0;
+        for (idx = 0; idx < array_size; idx++) {
+          auto ptr_result = insert_replay_probe(array_elem_type, cur_block);
+          cur_block = ptr_result.first;
+
+          Value * ptr_replay_res = ptr_result.second;
+          Value * array_gep = IRB->CreateGEP(array_elem_type, gep, ConstantInt::get(Int32Ty, idx));
+          IRB->CreateStore(ptr_replay_res, array_gep);
+        }
       } else {
         auto ptr_result = insert_replay_probe(field_type, cur_block);
         cur_block = ptr_result.first;
@@ -553,6 +663,9 @@ void driver_pass::make_stub(Function * F) {
         //return null
         PointerType * ptr_type = dyn_cast<PointerType>(return_type);
         IRB->CreateRet(ConstantPointerNull::get(ptr_type));
+      } else if (return_type->isStructTy()) {
+        StructType * struct_type = dyn_cast<StructType>(return_type);
+        IRB->CreateRet(ConstantAggregateZero::get(struct_type));
       } else {
         DEBUG0("Returning unknown type\n");
         F->dump();

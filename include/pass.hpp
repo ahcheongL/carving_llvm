@@ -62,7 +62,7 @@ extern std::vector<std::pair<Constant *, int>> class_name_consts;
 extern std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 void get_class_type_info();
 
-extern std::map<Function *, std::set<Constant *>> global_var_uses;
+extern std::map<Function *, std::vector<Constant *>> global_var_uses;
 void find_global_var_uses();
 
 extern Type        *VoidTy;
@@ -111,18 +111,20 @@ extern FunctionCallee carv_func_ptr;
 extern FunctionCallee carv_func_call;
 extern FunctionCallee carv_func_ret;
 extern FunctionCallee update_carved_ptr_idx;
-extern FunctionCallee mem_alloc_type;
 extern FunctionCallee keep_class_name;
 extern FunctionCallee get_class_idx;
 extern FunctionCallee get_class_size;
 extern FunctionCallee class_carver;
 extern FunctionCallee update_class_ptr;
 
+extern FunctionCallee carv_dealloc_time_begin;
+extern FunctionCallee carv_dealloc_time_end;
+
 void get_carving_func_callees();
 
 extern std::vector<AllocaInst *> tracking_allocas;
 void Insert_alloca_probe(BasicBlock &);
-void Insert_mem_func_call_probe(Instruction *, std::string);
+bool Insert_mem_func_call_probe(Instruction *, std::string);
 void Insert_carving_main_probe(BasicBlock &, Function &, global_range);
 
 BasicBlock * insert_carve_probe(Value *, BasicBlock *);

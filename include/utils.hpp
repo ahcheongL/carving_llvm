@@ -50,22 +50,6 @@ public:
   int alloc_size;
 };
 
-class PTR2 {
-public:
-
-  PTR2() : addr(0), pointee_type_id(0), alloc_size(0) {}
-
-  PTR2(void * _addr, int _size)
-    : addr(_addr), pointee_type_id(0), alloc_size(_size)  {}
-
-  PTR2(void * _addr, int pointee_type, int _size)
-    : addr(_addr), pointee_type_id(pointee_type), alloc_size(_size)  {}
-  
-  void * addr;
-  int pointee_type_id;
-  int alloc_size;
-};
-
 class IVAR {
 public:
   IVAR() : type(INPUT_TYPE::CHAR), name(0) {}
@@ -458,7 +442,8 @@ public:
             }
           }
         } else {
-          unsigned int ptr_diff = (char *)nodes - (char *)new_nodes;
+          unsigned long ptr_diff = (char *)nodes - (char *)new_nodes;
+
           for (int i = 0; i < num_nodes; i++) {
             new_nodes[i] = nodes[i];
             if (nodes[i].left != NULL) {
@@ -664,6 +649,100 @@ public:
   int func_call_idx;
   int func_id;
   bool is_carved;
+};
+
+class typeinfo {
+public:
+  char * type_name;
+  int size;
+
+  typeinfo(char * type_name, int size) {
+    this->type_name = type_name;
+    this->size = size;
+  }
+
+  typeinfo () {
+    this->type_name = NULL;
+    this->size = 0;
+  }
+
+  typeinfo(int) {
+    type_name = NULL;
+    size = 0;
+  }
+
+  typeinfo(const typeinfo & other) {
+    type_name = other.type_name;
+    size = other.size;
+  }
+
+  typeinfo(typeinfo && other) {
+    type_name = other.type_name;
+    size = other.size;
+    other.type_name = NULL;
+    other.size = 0;
+  }
+
+  typeinfo & operator=(const typeinfo & other) {
+    type_name = other.type_name;
+    size = other.size;
+    return *this;
+  }
+
+  typeinfo & operator=(typeinfo && other) {
+    type_name = other.type_name;
+    size = other.size;
+    other.type_name = NULL;
+    other.size = 0;
+    return *this;
+  }
+};
+
+class classinfo {
+public:
+  int class_index;
+  int size;
+
+  classinfo(int class_index, int size) {
+    this->class_index = class_index;
+    this->size = size;
+  }
+
+  classinfo () {
+    this->class_index = 0;
+    this->size = 0;
+  }
+
+  classinfo(int) {
+    class_index = 0;
+    size = 0;
+  }
+
+  classinfo(const classinfo & other) {
+    class_index = other.class_index;
+    size = other.size;
+  }
+
+  classinfo(classinfo && other) {
+    class_index = other.class_index;
+    size = other.size;
+    other.class_index = 0;
+    other.size = 0;
+  }
+
+  classinfo & operator=(const classinfo & other) {
+    class_index = other.class_index;
+    size = other.size;
+    return *this;
+  }
+
+  classinfo & operator=(classinfo && other) {
+    class_index = other.class_index;
+    size = other.size;
+    other.class_index = 0;
+    other.size = 0;
+    return *this;
+  }
 };
 
 #endif

@@ -1,181 +1,316 @@
 #include "utils.hpp"
 
-#define MAX_PTR_SIZE 1024
+static map<char *, classinfo> class_info;
 
-static vector<int> class_size;
+static map<void *, struct typeinfo> alloced_ptrs;
 
-static vector<PTR2> alloced_ptrs;
+//Function pointer names
+static map<void *, char *> func_ptrs;
 
-static vector<void *> func_ptrs;
-
-static FILE * input_fp;
+static vector<IVAR *> inputs;
+static vector<PTR> carved_ptrs;
 
 void __driver_inputf_open(char ** argv) {
   char * inputfilename = argv[1];
-  input_fp = fopen(inputfilename, "r");
+  FILE * input_fp = fopen(inputfilename, "r");
   if (input_fp == NULL) {
     fprintf(stderr, "Can't read input file\n");
     std::abort();
   }
+
+  char * line = NULL;
+  size_t len = 0;
+  ssize_t read;
+  bool is_carved_ptr = true;
+  while ((read = getline(&line, &len, input_fp)) != -1) {
+    if (is_carved_ptr) {
+      if (line[0] == '#') {
+        is_carved_ptr = false;
+      } else {
+        char * addr_str = strchr(line, ':');
+        if (addr_str == NULL) { 
+          fprintf(stderr, "Invalid input file\n");
+          std::abort();
+        }
+        char * size_str = strchr(addr_str + 1, ':');
+        if (size_str == NULL) { 
+          fprintf(stderr, "Invalid input file\n");
+          std::abort();
+        }
+        char * type_str = strchr(size_str + 1, ':');
+        if (type_str == NULL) { 
+          fprintf(stderr, "Invalid input file\n");
+          std::abort();
+        }
+
+        *type_str = 0;
+        line[len - 1] = 0;
+
+        int ptr_size = atoi(size_str + 1);
+
+        void * new_ptr = malloc(ptr_size);
+
+        carved_ptrs.push_back(PTR(new_ptr, strdup(type_str + 1), ptr_size));
+      }
+    } else {
+      char * type_str = strchr(line, ':');
+      if (type_str == NULL) { 
+        fprintf(stderr, "Invalid input file\n");
+        std::abort();
+      }
+      char * value_str = strchr(type_str + 1, ':');
+      if (value_str == NULL) { 
+        fprintf(stderr, "Invalid input file\n");
+        std::abort();
+      }
+      char * index_str = strchr(value_str + 1, ':');
+
+      *value_str = 0;
+      line[len - 1] = 0;
+
+      type_str ++;
+      if (!strncmp(type_str, "CHAR", 4)) {
+        char value = atoi(value_str + 1);
+        VAR<char> * inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "SHORT", 5)) {
+        short value = atoi(value_str + 1);
+        VAR<short> * inputv = new VAR<short>(value, 0, INPUT_TYPE::SHORT);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "INT", 3)) {
+        int value = atoi(value_str + 1);
+        VAR<int> * inputv = new VAR<int>(value, 0, INPUT_TYPE::INT);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "LONG", 4)) {
+        long value = atol(value_str + 1);
+        VAR<long> * inputv = new VAR<long>(value, 0, INPUT_TYPE::LONG);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "LONGLONG", 8)) {
+        long long value = atoll(value_str + 1);
+        VAR<long long> * inputv = new VAR<long long>(value, 0, INPUT_TYPE::LONGLONG);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "FLOAT", 5)) {
+        float value = atof(value_str + 1);
+        VAR<float> * inputv = new VAR<float>(value, 0, INPUT_TYPE::FLOAT);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "DOUBLE", 6)) {
+        double value = atof(value_str + 1);
+        VAR<double> * inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "NULL", 4)) {
+        VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "FUNCPTR", 7)) {
+        char * func_name = value_str + 1;
+        int idx = 0;
+        int num_funcs = func_ptrs.size();
+        for (idx = 0; idx < num_funcs; idx++) {
+          auto data = func_ptrs.get_by_idx(idx);
+          if (!strcmp(func_name, data->elem)) {
+            VAR<void *> * inputv = new VAR<void *>(data->key, 0, INPUT_TYPE::FUNCPTR);
+            inputs.push_back((IVAR *) inputv);
+            break;
+          }
+        }
+
+        if (idx == num_funcs) {
+          fprintf(stderr, "Replay error : Can't get function name : %s\n", func_name);
+          VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::FUNCPTR);
+          inputs.push_back((IVAR *) inputv);
+        }
+      } else if (!strncmp(type_str, "PTR", 3)) {
+        if (index_str == NULL) {
+          fprintf(stderr, "Invalid input file\n");
+          std::abort();
+        }
+
+        int ptr_index = atoi(value_str + 1);
+        int ptr_offset = atoi(index_str + 1);
+        VAR<int> * inputv = new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::POINTER);
+        inputs.push_back((IVAR *) inputv);
+      } else if (!strncmp(type_str, "UNKNOWN_PTR", 11)) {
+        VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
+        inputs.push_back((IVAR *) inputv);
+      } else {
+        fprintf(stderr, "Invalid input file\n");
+        std::abort();
+      }
+    }
+  }
+
+  if (line) { free(line); }
+  fclose(input_fp);
   return;
 }
 
 static int cur_input_idx = 0;
 
 char Replay_char() {
-  char buf[sizeof(char) + 1];
-  if(!fread(buf, sizeof(char), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::CHAR)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+
+  std::cerr << "Replay_char : " << ((VAR<char> *) elem_ptr)->input << std::endl;
+
+  
+  return ((VAR<char> *) elem_ptr)->input;
 }
 
 short Replay_short() {
-  short buf[sizeof(short) + 1];
-  if(!fread(buf, sizeof(short), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::SHORT)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+  return ((VAR<short> *) elem_ptr)->input;
 }
 
 int Replay_int() {
-  int buf[sizeof(int) + 1];
-  if(!fread(buf, sizeof(int), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::INT)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+  return ((VAR<int> *) elem_ptr)->input;
 }
 
 long Replay_longtype() {
-  long buf[sizeof(long) + 1];
-  if(!fread(buf, sizeof(long), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::LONG)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+
+  std::cerr << "Replay_longtype : " << ((VAR<long> *) elem_ptr)->input << std::endl;
+
+  return ((VAR<long> *) elem_ptr)->input;
 }
 
 long long Replay_longlong() {
-  long long buf[sizeof(long long) + 1];
-  if(!fread(buf, sizeof(long long), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::LONGLONG)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+  return ((VAR<long long> *) elem_ptr)->input;
 }
 
 float Replay_float() {
-  float buf[sizeof(float) + 1];
-  if(!fread(buf, sizeof(float), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::FLOAT)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+  return ((VAR<float> *) elem_ptr)->input;
 }
 
 double Replay_double() {
-  double buf[sizeof(double) + 1];
-  if(!fread(buf, sizeof(double), 1, input_fp))
-  {
-      return 0;
-  } else {
-      return buf[0];
+  auto elem = inputs[cur_input_idx++];
+
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::DOUBLE)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
+
+  IVAR * elem_ptr = *elem;
+  return ((VAR<double> *) elem_ptr)->input;
 }
 
 static int cur_alloc_size = 0;
+static int cur_class_index = -1;
+static int cur_pointee_size = -1;
 
-void * Replay_pointer_with_given_size(int pointee_size) {
-  int coin = Replay_int();
-  int coin2 = coin % (MAX_PTR_SIZE * 3);
+void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee_type_name) {
 
-  if (coin2 > (MAX_PTR_SIZE * 2)) {
-    cur_alloc_size = 0;
-    return NULL;
-  } else if (coin2 > MAX_PTR_SIZE) {
-    int num_alloced_ptr = alloced_ptrs.size();
-    if (num_alloced_ptr == 0) {
-      cur_alloc_size = 0;
-      return NULL;
-    } else {
-      int idx = coin % num_alloced_ptr;
-      cur_alloc_size = alloced_ptrs[idx]->alloc_size;
-      return alloced_ptrs[idx]->addr;
-    }
-  } else {
-    cur_alloc_size = coin2 * pointee_size;
-    char * new_ptr = (char *)malloc(cur_alloc_size);
-    alloced_ptrs.push_back(PTR2((void*) new_ptr
-      , class_size.size() //char * type id
-      , cur_alloc_size));
-    return new_ptr;
+  auto elem = inputs[cur_input_idx++];
+  if (elem == NULL) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
-}
 
-static int cur_class_index = 0;
-static int cur_pointee_size = 0;
+  IVAR * elem_ptr = *elem;
 
-void * Replay_pointer_check_pointee_type(int default_idx, int default_pointee_size) {
-  int coin = Replay_int();
-  int coin2 = coin % (MAX_PTR_SIZE * 3);
+    std::cerr << "Replay_pointer : idx " << default_idx << ", size " << default_pointee_size << ", pointee name :  " << pointee_type_name << std::endl;
 
-  if (coin2 > (MAX_PTR_SIZE * 2)) {
+    std::cerr << "elem_type : " << elem_ptr->type << std::endl;
+
+  if (elem_ptr->type == INPUT_TYPE::NULLPTR) {
     cur_alloc_size = 0;
-    return NULL;
-  } else if (coin2 > MAX_PTR_SIZE) {
-    int num_alloced_ptr = alloced_ptrs.size();
-    if (num_alloced_ptr == 0) {
-      cur_alloc_size = 0;
-      return NULL;
-    } else {
-      int idx = coin % num_alloced_ptr;
-      PTR2 * selected_ptr = alloced_ptrs[idx];
-      cur_alloc_size = selected_ptr->alloc_size;
-      cur_class_index = selected_ptr->pointee_type_id;
-      if (cur_class_index == class_size.size()) {
-        cur_pointee_size = 1;
-      } else {
-        cur_pointee_size = *class_size[cur_class_index];
-      }
-      return selected_ptr->addr;
-    }
-  } else {
-    int num_class_types = class_size.size();
+    cur_pointee_size = -1;
+    return 0;
+  }
 
-    int idx = Replay_int();
-    idx = idx % (num_class_types* 10);
+  if (elem_ptr->type == INPUT_TYPE::UNKNOWN_PTR) {
+    cur_alloc_size = 0;
+    cur_pointee_size = -1;
+    return 0;
+  }
 
-    if (idx > num_class_types) {
-      //use default type id
-      cur_alloc_size = coin2 * default_pointee_size;
-      char * new_ptr = (char *)malloc(cur_alloc_size);
-      cur_pointee_size = default_pointee_size;
-      cur_class_index = default_idx;
-      alloced_ptrs.push_back(PTR2((void*) new_ptr
-        , default_idx, cur_alloc_size));
-      return new_ptr;
-    } else {
-      cur_class_index = idx;
-      if (idx == num_class_types) {
-        cur_pointee_size = 1;
-      } else {
-        cur_pointee_size = *class_size[idx];
-      }
-      cur_alloc_size = coin2 * cur_pointee_size;
-      char * new_ptr = (char *)malloc(cur_alloc_size);
-      alloced_ptrs.push_back(PTR2((void*) new_ptr, idx, cur_alloc_size));
-      return new_ptr;
+  if (elem_ptr->type != INPUT_TYPE::POINTER) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
+  }
+
+  VAR<int> * elem_v = (VAR<int> *) elem_ptr;
+  int ptr_index = elem_v->input;
+  int ptr_offset = elem_v->pointer_offset;
+  
+  PTR * carved_ptr = carved_ptrs[ptr_index];
+
+  if (ptr_offset != 0) {
+    cur_alloc_size = 0;
+    cur_pointee_size = -1;
+    return (char *) carved_ptr->addr + ptr_offset;
+  }
+
+  cur_alloc_size = carved_ptr->alloc_size;
+
+  if (pointee_type_name == NULL) {
+    return carved_ptr->addr;
+  }
+
+  const char * type_name = carved_ptr->pointee_type;
+
+  cur_pointee_size = default_pointee_size;
+  cur_class_index = default_idx;
+
+  if (!strcmp(type_name, pointee_type_name)) {
+    return carved_ptr->addr;
+  }
+
+  // carved ptr has different type
+  int num_class_info = class_info.size();
+  int idx = 0;
+  for (idx = 0; idx < num_class_info; idx++) {
+    auto class_info_elem = class_info.get_by_idx(idx);
+    if (!strcmp(type_name, class_info_elem->key)) {
+      cur_pointee_size = class_info_elem->elem.size;
+      cur_class_index = class_info_elem->elem.class_index;
+      break;
     }
   }
+
+  return carved_ptr->addr;
 }
 
 int Replay_ptr_alloc_size() {
@@ -191,29 +326,24 @@ int Replay_ptr_pointee_size() {
 }
 
 void * Replay_func_ptr() {
+  auto elem = inputs[cur_input_idx++];
 
-  int num_func_ptrs = func_ptrs.size() * 2;
-
-  if (num_func_ptrs == 0) { return NULL; }
-
-  int coin = Replay_int();
-
-  int coin2 = coin % num_func_ptrs;
-
-  if (coin2 >= num_func_ptrs) {
-    return 0;
+  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::FUNCPTR)) {
+    fprintf(stderr, "Replay error : Invalid input type\n");
+    std::abort();
   }
 
-  void * func_ptr = *func_ptrs[coin2];
-  return func_ptr;
+  IVAR * elem_ptr = *elem;
+  return ((VAR<void *> *) elem_ptr)->input;
 }
 
-void __keep_class_size(int size) {
-  class_size.push_back(size);
+void __keep_class_info(char * class_name, int size, int index) {
+  classinfo tmp {index, size};
+  class_info.insert(class_name, tmp);
 }
 
 void __record_func_ptr(void * ptr, char * name) {
-  func_ptrs.push_back(ptr);
+  func_ptrs.insert(ptr, name);
 }
 
 char * __update_class_ptr(char * ptr, int idx, int size) {
@@ -221,5 +351,5 @@ char * __update_class_ptr(char * ptr, int idx, int size) {
 }
 
 void __replay_fini() {
-  fclose(input_fp);
+  //TODO free
 }
