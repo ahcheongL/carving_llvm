@@ -44,8 +44,6 @@
 
 using namespace llvm;
 
-typedef llvm::iterator_range<llvm::Module::global_value_iterator> global_range;
-
 std::string get_type_str(Type * type);
 bool is_func_ptr_type(Type * type);
 
@@ -62,7 +60,7 @@ extern std::vector<std::pair<Constant *, int>> class_name_consts;
 extern std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 void get_class_type_info();
 
-extern std::map<Function *, std::vector<Constant *>> global_var_uses;
+extern std::map<Function *, std::vector<GlobalVariable *>> global_var_uses;
 void find_global_var_uses();
 
 extern Type        *VoidTy;
@@ -116,16 +114,15 @@ extern FunctionCallee get_class_idx;
 extern FunctionCallee get_class_size;
 extern FunctionCallee class_carver;
 extern FunctionCallee update_class_ptr;
-
-extern FunctionCallee carv_dealloc_time_begin;
-extern FunctionCallee carv_dealloc_time_end;
+extern FunctionCallee carv_time_begin;
+extern FunctionCallee carv_time_end;
 
 void get_carving_func_callees();
 
 extern std::vector<AllocaInst *> tracking_allocas;
 void Insert_alloca_probe(BasicBlock &);
 bool Insert_mem_func_call_probe(Instruction *, std::string);
-void Insert_carving_main_probe(BasicBlock &, Function &, global_range);
+void Insert_carving_main_probe(BasicBlock &, Function &);
 
 BasicBlock * insert_carve_probe(Value *, BasicBlock *);
 
@@ -143,7 +140,18 @@ void initialize_pass_contexts(Module &);
 
 void construct_ditype_map();
 
-extern unsigned int num_global_tracked;
 extern unsigned int num_func_tracked;
+
+BasicBlock * insert_gep_carve_probe(Value * gep_val, BasicBlock * cur_block);
+BasicBlock * insert_array_carve_probe(Value * arr_ptr_val, BasicBlock * cur_block);
+
+extern std::set<std::string> no_carve_funcs;
+extern std::set<std::string> no_instrument_funcs;
+
+void insert_check_carve_ready();
+
+void insert_dealloc_probes();
+
+extern Constant * const_carve_ready;
 
 #endif

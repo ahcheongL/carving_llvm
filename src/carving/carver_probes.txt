@@ -27,7 +27,5 @@ __carv_open
 __carv_close
 __carv_ready
 __carv_depth
-__carv_alloc_begin
-__carv_alloc_end
-__carv_dealloc_begin
-__carv_dealloc_end
+__carv_time_begin
+__carv_time_end

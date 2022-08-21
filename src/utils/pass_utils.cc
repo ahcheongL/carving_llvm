@@ -7,6 +7,8 @@ const DataLayout * DL;
 IRBuilder<> *IRB;
 DebugInfoFinder DbgFinder;
 
+Constant * const_carve_ready = NULL;
+
 void initialize_pass_contexts(Module &M) {
   LLVMContext &              C = M.getContext();
   const DataLayout & dataLayout = M.getDataLayout();
@@ -14,8 +16,19 @@ void initialize_pass_contexts(Module &M) {
   Context = &C;
   DL = &dataLayout;
   IRB = new IRBuilder<> (C);
-  
+
   DbgFinder.processModule(M);
+
+  //Set dummy insertlocation...
+  for (auto &F : Mod->functions()) {
+    if (F.isIntrinsic() || !F.size()) { continue; }
+
+    std::string func_name = F.getName().str();
+    if (func_name == "main") {
+      IRB->SetInsertPoint(F.getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
+      break;
+    }
+  }
 }
 
 static std::map<std::string, Constant *> new_string_globals;
@@ -162,7 +175,6 @@ std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 void get_class_type_info() {
   for (auto struct_type : Mod->getIdentifiedStructTypes()) {
     if (struct_type->isOpaque()) { continue; }
-    //std::string name = get_type_str(struct_type);
     std::string name = struct_type->getName().str();
     Constant * name_const = gen_new_string_constant(name, IRB);    
     class_name_consts.push_back(std::make_pair(name_const, DL->getTypeAllocSize(struct_type)));
@@ -171,47 +183,49 @@ void get_class_type_info() {
   }
 }
 
-std::map<Function *, std::vector<Constant *>> global_var_uses;
+std::map<Function *, std::vector<GlobalVariable *>> global_var_uses;
+static std::set<Use *> searching_uses;
 
-static void add_global_use(Use & op, std::set<Constant *> * inserted, Function * F) {
-  if (isa<Constant>(op)) {
-    Constant * constant = dyn_cast<Constant>(op);
-    if (isa<Function>(constant)) { return; }
-    std::string glob_name = constant->getName().str();
+static void add_global_use(Use & op
+  , std::set<GlobalVariable *> * inserted, Function * F) {
 
-    if (isa<ConstantExpr>(constant)) {
-      ConstantExpr * const_expr = dyn_cast<ConstantExpr>(constant);
-      Instruction * instr = const_expr->getAsInstruction();
-      if (instr == NULL) { return; }
-      for (auto &op2 : instr->operands()) {
-        add_global_use(op2, inserted, F);
-      }
-      instr->deleteValue();
-      return;
-    }
+  if (searching_uses.find(&op) != searching_uses.end()) { return; }
 
+  if (isa<GlobalVariable>(op)) {
+    GlobalVariable * global = dyn_cast<GlobalVariable>(op);
+    if (inserted->find(global) != inserted->end()) { return; }
+    if (global->isConstant()) { return; }
+
+    std::string glob_name = global->getName().str();
     if (glob_name.size() == 0) { return; }
-    if (inserted->find(constant) != inserted->end()) { return; }
 
-    auto search = global_var_uses.find(F);
-    if (search == global_var_uses.end()) {
-      global_var_uses.insert(std::make_pair(F, std::vector<Constant *>()));
+    llvm::errs() << "Found global variable " << glob_name << "\n";
+    global_var_uses[F].push_back(global);
+    inserted->insert(global);
+  } else if (isa<ConstantExpr>(op)) {
+    ConstantExpr * const_expr = dyn_cast<ConstantExpr>(op);
+    Instruction * instr = const_expr->getAsInstruction();
+    if (instr == NULL) { return; }
+    searching_uses.insert(&op);
+    for (auto &op2 : instr->operands()) {
+      add_global_use(op2, inserted, F);
     }
-    llvm::errs() << "inserting " << glob_name << "\n";
-    global_var_uses[F].push_back(constant);
-    inserted->insert(constant);
+    instr->deleteValue();
   } else if (isa<Instruction>(op)) {
     Instruction * instr = dyn_cast<Instruction>(op);
+    searching_uses.insert(&op);
     for (auto &op2 : instr->operands()) {
       add_global_use(op2, inserted, F);
     }
   }
+
+  return;
 }
 
 void find_global_var_uses() {
   for (auto &F : Mod->functions()) {
-    std::set<Constant *> inserted;
-    llvm::errs() << "Getting uses of global variables in " << F.getName() << "\n";
+    std::set<GlobalVariable *> inserted;
+    global_var_uses.insert(std::make_pair(&F, std::vector<GlobalVariable *>()));
     for (auto &BB : F.getBasicBlockList()) {
       for (auto &Instr : BB.getInstList()) {
         for (auto &op : Instr.operands()) {
@@ -219,6 +233,7 @@ void find_global_var_uses() {
         }
       }
     }
+    searching_uses.clear();
   }
 
   //TODO : track callee's uses
@@ -296,10 +311,8 @@ FunctionCallee get_class_size;
 FunctionCallee class_carver;
 FunctionCallee update_class_ptr;
 
-FunctionCallee carv_alloc_time_begin;
-FunctionCallee carv_alloc_time_end;
-FunctionCallee carv_dealloc_time_begin;
-FunctionCallee carv_dealloc_time_end;
+FunctionCallee carv_time_begin;
+FunctionCallee carv_time_end;
 
 void get_carving_func_callees() {
   mem_allocated_probe = Mod->getOrInsertFunction(
@@ -354,14 +367,10 @@ void get_carving_func_callees() {
   update_class_ptr = Mod->getOrInsertFunction(
     get_link_name("__update_class_ptr"), Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
 
-  carv_alloc_time_begin = Mod->getOrInsertFunction(
-    get_link_name("__carv_alloc_begin"), VoidTy);
-  carv_alloc_time_end = Mod->getOrInsertFunction(get_link_name("__carv_alloc_end"),
-    VoidTy);
-  carv_dealloc_time_begin = Mod->getOrInsertFunction(get_link_name("__carv_dealloc_begin"),
-    VoidTy);
-  carv_dealloc_time_end = Mod->getOrInsertFunction(get_link_name("__carv_dealloc_end"),
-    VoidTy);
+  carv_time_begin = Mod->getOrInsertFunction(
+    get_link_name("__carv_time_begin"), VoidTy);
+  carv_time_end = Mod->getOrInsertFunction(get_link_name("__carv_time_end"),
+    VoidTy, Int32Ty);
 }
 
 std::vector<AllocaInst *> tracking_allocas;
@@ -381,7 +390,7 @@ void Insert_alloca_probe(BasicBlock& entry_block) {
 
   if (alloca_instr != NULL) {
     IRB->SetInsertPoint(alloca_instr->getNextNonDebugInstruction());
-    IRB->CreateCall(carv_alloc_time_begin, {});
+    IRB->CreateCall(carv_time_begin, {});
     for (auto iter = allocas.begin(); iter != allocas.end(); iter++) {
       AllocaInst * alloc_instr = *iter;
       Type * allocated_type = alloc_instr->getAllocatedType();
@@ -397,7 +406,7 @@ void Insert_alloca_probe(BasicBlock& entry_block) {
       Constant * type_name_const = Constant::getNullValue(Int8PtrTy);
 
       if (allocated_type->isStructTy()) {
-        std::string typestr = allocated_type->getStructName().str();       
+        std::string typestr = allocated_type->getStructName().str();
         type_name_const = gen_new_string_constant(typestr, IRB);
       }
 
@@ -405,7 +414,7 @@ void Insert_alloca_probe(BasicBlock& entry_block) {
       IRB->CreateCall(mem_allocated_probe, {casted_ptr, size_const, type_name_const});
       tracking_allocas.push_back(alloc_instr);
     }
-    IRB->CreateCall(carv_alloc_time_end, {});
+    IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
   }
 }
 
@@ -440,22 +449,26 @@ bool Insert_mem_func_call_probe(Instruction * IN, std::string callee_name) {
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
+    IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
+    IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
     return true;
   } else if (callee_name == "realloc") {
     //Track realloc
     Constant * type_name_const = get_mem_alloc_type(IN);
-
-    std::vector<Value *> args0 {IN->getOperand(0)};
-    IRB->CreateCall(remove_probe, args0);
+    IRB->CreateCall(carv_time_begin, {});
+    IRB->CreateCall(remove_probe, {IN->getOperand(0)});
     Value * size = IN->getOperand(1);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
     IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
+    IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
     return true;
   } else if (callee_name == "free") {
+    IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(remove_probe, {IN->getOperand(0)});
+    IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
     return true;
   } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
     //Get some hint from memory related functions
@@ -495,26 +508,44 @@ bool Insert_mem_func_call_probe(Instruction * IN, std::string callee_name) {
     //new operator
     Constant * type_name_const = get_mem_alloc_type(IN);
 
+    IRB->CreateCall(carv_time_begin, {});
     Value * size = IN->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
     IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
+    IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
     return true;
   } else if ((callee_name == "_ZdlPv") || (callee_name == "_ZdaPv")) {
     //delete operator
+    IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(remove_probe, {IN->getOperand(0)});
+    IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
     return true;
   }
 
   return false;
 }
 
-unsigned int num_global_tracked = 0;
+static void Insert_glob_mem_alloc_probe(GlobalVariable * gv) {  
+  Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, gv, Int8PtrTy);
+  Type * gv_type = gv->getValueType();
+  unsigned int size = DL->getTypeAllocSize(gv_type);
+
+  Constant * type_name_const = Constant::getNullValue(Int8PtrTy);
+
+  if (gv_type->isStructTy()) {
+    std::string type_name = gv_type->getStructName().str();
+    type_name_const = gen_new_string_constant(type_name, IRB);
+  }
+
+  Value * size_const = ConstantInt::get(Int32Ty, size);
+  IRB->CreateCall(mem_allocated_probe, {casted_ptr, size_const, type_name_const});
+}
+
 unsigned int num_func_tracked = 0;
 
-void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
-    , global_range globals) {
+void Insert_carving_main_probe(BasicBlock & entry_block, Function & F) {
 
   IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());  
 
@@ -553,31 +584,17 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
     std::abort();
   }
 
+  auto globals = Mod->global_values();
   //Global variables memory probing
   for (auto global_iter = globals.begin(); global_iter != globals.end(); global_iter++) {
 
     if (!isa<GlobalVariable>(*global_iter)) { continue; }
-    
-    GlobalVariable * global_v = dyn_cast<GlobalVariable>(&(*global_iter));
+
+    GlobalValue * global_v1 = &(*global_iter);
+    GlobalVariable * global_v = dyn_cast<GlobalVariable>(global_v1);
     if (global_v->getName().str().find("llvm.") != std::string::npos) { continue; }
-    
-    Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, &(*global_iter), Int8PtrTy);
-    Type * gv_type = (*global_iter).getValueType();
-    unsigned int size = 8;
-    if (isa<GlobalVariable>(*global_iter)) {
-      size = DL->getTypeAllocSize(gv_type);
-    }
 
-    Constant * type_name_const = Constant::getNullValue(Int8PtrTy);
-
-    if (gv_type->isStructTy()) {
-      std::string type_name = gv_type->getStructName().str();
-      type_name_const = gen_new_string_constant(type_name, IRB);
-    }
-
-    Value * size_const = ConstantInt::get(Int32Ty, size);
-    IRB->CreateCall(mem_allocated_probe, {casted_ptr, size_const, type_name_const});
-    num_global_tracked++;
+    Insert_glob_mem_alloc_probe(global_v);
   }
 
   //Record func ptr
@@ -597,14 +614,100 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F
       , {iter.first, ConstantInt::get(Int32Ty, iter.second)});
   }
 
-  Constant * ready = Mod->getOrInsertGlobal(get_link_name("__carv_ready"), Int8Ty);
-  IRB->CreateStore(ConstantInt::get(Int8Ty, 1), ready);
-
   return;
+}
+
+BasicBlock * insert_array_carve_probe(Value * arr_ptr_val, BasicBlock * cur_block) {
+  Type * arr_ptr_type = arr_ptr_val->getType();
+  assert(arr_ptr_type->isPointerTy());
+  PointerType * arr_ptr_type_2 = dyn_cast<PointerType>(arr_ptr_type);
+
+  Type * arr_type = arr_ptr_type_2->getElementType();
+  assert(arr_type->isArrayTy());
+
+  ArrayType * arr_type_2 = dyn_cast<ArrayType>(arr_type);
+  Type * arr_elem_type = arr_type_2->getElementType();
+
+  unsigned int arr_size = arr_type_2->getNumElements();
+
+  //Make loop block
+  BasicBlock * loopblock = cur_block->splitBasicBlock(&(*IRB->GetInsertPoint()));
+  BasicBlock * const loopblock_start = loopblock;
+
+  IRB->SetInsertPoint(loopblock->getFirstNonPHIOrDbgOrLifetime());
+  PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
+  index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), cur_block);
+
+  Value * getelem_instr = IRB->CreateInBoundsGEP(arr_type
+    , arr_ptr_val, {ConstantInt::get(Int32Ty, 0), index_phi});
+
+  IRB->CreateCall(carv_ptr_name_update, {index_phi});
+
+  loopblock = insert_gep_carve_probe(getelem_instr, loopblock);
+
+  IRB->CreateCall(carv_name_pop, {});
+
+  Value * index_update_instr
+    = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
+  index_phi->addIncoming(index_update_instr, loopblock);
+
+  Value * cmp_instr2
+    = IRB->CreateICmpSLT(index_update_instr, ConstantInt::get(Int32Ty, arr_size));
+
+  Instruction * cur_ip = &(*IRB->GetInsertPoint());
+
+  BasicBlock * endblock
+    = loopblock->splitBasicBlock(cur_ip);
+
+  IRB->SetInsertPoint(cur_ip);
+
+  Instruction * BB_term = IRB->CreateBr(loopblock_start);
+  BB_term->removeFromParent();
+  
+  //remove old terminator
+  Instruction * old_term = cur_block->getTerminator();
+  ReplaceInstWithInst(old_term, BB_term);
+
+  IRB->SetInsertPoint(cur_ip);
+
+  Instruction * loopblock_term
+    = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
+
+  loopblock_term->removeFromParent();
+
+  //remove old terminator
+  old_term = loopblock->getTerminator();
+  ReplaceInstWithInst(old_term, loopblock_term);
+
+  IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
+
+  return endblock;
+}
+
+BasicBlock * insert_gep_carve_probe(Value * gep_val, BasicBlock * cur_block) {
+
+  PointerType* gep_type = dyn_cast<PointerType>(gep_val->getType());
+  Type * gep_pointee_type = gep_type->getPointerElementType();
+
+  if (gep_pointee_type->isStructTy()) {
+    insert_struct_carve_probe(gep_val, gep_pointee_type);
+  } else if (gep_pointee_type->isArrayTy()) {
+    cur_block = insert_array_carve_probe(gep_val, cur_block);
+  } else if (is_func_ptr_type(gep_pointee_type)) {
+    Value * load_ptr = IRB->CreateLoad(gep_pointee_type, gep_val);
+    Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
+    IRB->CreateCall(carv_func_ptr, {cast_ptr});
+  } else {
+    Value * loadval = IRB->CreateLoad(gep_pointee_type, gep_val);
+    cur_block = insert_carve_probe(loadval, cur_block);
+  }
+
+  return cur_block;
 }
 
 BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
   Type * val_type = val->getType();
+  BasicBlock * cur_block = BB;
 
   if (val_type == Int1Ty) {
     Value * cast_val = IRB->CreateZExt(val, Int8Ty);
@@ -631,8 +734,6 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
     StructType * struct_type = dyn_cast<StructType>(val_type);
     const StructLayout * SL = DL->getStructLayout(struct_type);
 
-    BasicBlock * cur_block = BB;
-
     auto memberoffsets = SL->getMemberOffsets();
     int idx = 0;
     for (auto _iter : memberoffsets) {
@@ -644,220 +745,129 @@ BasicBlock * insert_carve_probe(Value * val, BasicBlock * BB) {
       idx++;
     }
 
-    return cur_block;
   } else if (is_func_ptr_type(val_type)) {
     Value * ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
-    std::vector<Value *> probe_args {ptrval};
-    IRB->CreateCall(carv_func_ptr, probe_args);
+    IRB->CreateCall(carv_func_ptr, {ptrval});
   } else if (val_type->isFunctionTy() || val_type->isArrayTy()) {
     //Is it possible to reach here?
   } else if (val_type->isPointerTy()) {
     PointerType * ptrtype = dyn_cast<PointerType>(val_type);
     //type that we don't know.
-    if (ptrtype->isOpaque() || ptrtype->isOpaquePointerTy()) { return BB; }
+    if (ptrtype->isOpaque() || ptrtype->isOpaquePointerTy()) { return cur_block; }
     Type * pointee_type = ptrtype->getPointerElementType();
 
     if (isa<StructType> (pointee_type)) {
       StructType * tmptype = dyn_cast<StructType>(pointee_type);
-      if (tmptype->isOpaque()) { return BB; }
+      if (tmptype->isOpaque()) { return cur_block; }
     }
 
     unsigned int pointee_size = DL->getTypeAllocSize(pointee_type);
-    if (pointee_size == 0) { return BB; }
+    if (pointee_size == 0) { return cur_block; }
 
-    if (pointee_type->isArrayTy()) {
-      unsigned array_size = pointee_size;
-      //TODO : pointee type == class type
-
-      ArrayType * arrtype = dyn_cast<ArrayType>(pointee_type);
-      Type * array_elem_type = arrtype->getArrayElementType();
-      val_type = PointerType::get(array_elem_type, 0);
-      Instruction * casted_val
-        = (Instruction *) IRB->CreateCast(Instruction::CastOps::BitCast, val, val_type);
-      pointee_size = DL->getTypeAllocSize(array_elem_type);
-      
-      Value * pointer_size = ConstantInt::get(Int32Ty, array_size / pointee_size);
-      //Make loop block
-      BasicBlock * loopblock = BB->splitBasicBlock(casted_val->getNextNonDebugInstruction());
-      BasicBlock * const loopblock_start = loopblock;
-
-      IRB->SetInsertPoint(loopblock->getFirstNonPHIOrDbgOrLifetime());
-      PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
-      index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), BB);
-
-      Value * getelem_instr = IRB->CreateGEP(array_elem_type, casted_val, index_phi);
-
-      std::vector<Value *> probe_args2 {index_phi};
-      IRB->CreateCall(carv_ptr_name_update, probe_args2);
-
-      if (array_elem_type->isStructTy()) {
-        insert_struct_carve_probe(getelem_instr, array_elem_type);
-        IRB->CreateCall(carv_name_pop, {});
-      } else if (is_func_ptr_type(array_elem_type)) {
-        Value * ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, casted_val, Int8PtrTy);
-        std::vector<Value *> probe_args {ptrval};
-        IRB->CreateCall(carv_func_ptr, probe_args);
-        IRB->CreateCall(carv_name_pop, {});
-      } else {
-        Value * load_ptr = IRB->CreateLoad(array_elem_type, getelem_instr);
-        loopblock = insert_carve_probe(load_ptr, loopblock);
-        IRB->CreateCall(carv_name_pop, {});
-      }
-
-      Value * index_update_instr
-        = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
-      index_phi->addIncoming(index_update_instr, loopblock);
-
-      Instruction * cmp_instr2
-        = (Instruction *) IRB->CreateICmpSLT(index_update_instr, pointer_size);
-
-      BasicBlock * endblock
-        = loopblock->splitBasicBlock(cmp_instr2->getNextNonDebugInstruction());
-
-      IRB->SetInsertPoint(casted_val->getNextNonDebugInstruction());
-
-      Instruction * BB_term = IRB->CreateBr(loopblock_start);
-      BB_term->removeFromParent();
-      
-      //remove old terminator
-      Instruction * old_term = BB->getTerminator();
-      ReplaceInstWithInst(old_term, BB_term);
-
-      IRB->SetInsertPoint(cmp_instr2->getNextNonDebugInstruction());
-
-      Instruction * loopblock_term
-        = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
-
-      loopblock_term->removeFromParent();
-
-      //remove old terminator
-      old_term = loopblock->getTerminator();
-      ReplaceInstWithInst(old_term, loopblock_term);
-
-      IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
-
-      return endblock;
-
-    } else {
-      Value * ptrval = val;
-      if (val_type != Int8PtrTy) {
-        ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
-      }
-
-      bool is_class_type = false;
-      Value * default_class_idx = ConstantInt::get(Int32Ty, -1);
-      if (pointee_type->isStructTy()) {
-        StructType * struct_type = dyn_cast<StructType> (pointee_type);
-        auto search = class_name_map.find(struct_type);
-        if (search != class_name_map.end()) {
-          is_class_type = true;
-          default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
-        }
-      } else if (pointee_type == Int8Ty) {
-        //check
-        is_class_type = true;
-        default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
-      }
-
-      Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
-
-      std::string typestr = get_type_str(pointee_type);
-      Constant * typestr_const = gen_new_string_constant(typestr, IRB);
-      //Call Carv_pointer
-      std::vector<Value *> probe_args {ptrval, typestr_const, default_class_idx, pointee_size_val};
-      Value * end_size = IRB->CreateCall(carv_ptr_func, probe_args);
-      
-      Value * class_idx = NULL;
-      if (is_class_type) {
-        pointee_size_val = IRB->CreateCall(get_class_size, {});
-        class_idx = IRB->CreateCall(get_class_idx, {});
-      }
-
-      Instruction * pointer_size = (Instruction *)
-        IRB->CreateSDiv(end_size, pointee_size_val);
-
-      //Make loop block
-      BasicBlock * loopblock = BB->splitBasicBlock(pointer_size->getNextNonDebugInstruction());
-      BasicBlock * const loopblock_start = loopblock;
-
-      IRB->SetInsertPoint(pointer_size->getNextNonDebugInstruction());
-      
-      Instruction * cmp_instr1 = (Instruction *)
-        IRB->CreateICmpEQ(pointer_size, ConstantInt::get(Int32Ty, 0));
-
-      IRB->SetInsertPoint(loopblock->getFirstNonPHI());
-      PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
-      index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), BB);
-
-      std::vector<Value *> probe_args2 {index_phi};
-      IRB->CreateCall(carv_ptr_name_update, probe_args2);
-
-      if (is_class_type) {
-        std::vector<Value *> args1 {ptrval, index_phi, pointee_size_val};
-        Value * elem_ptr = IRB->CreateCall(update_class_ptr, args1);
-        std::vector<Value *> args {elem_ptr, class_idx};
-        IRB->CreateCall(class_carver, args);
-        IRB->CreateCall(carv_name_pop, {});
-      } else {
-        Value * getelem_instr = IRB->CreateGEP(pointee_type, val, index_phi);
-
-        if (pointee_type->isStructTy()) {
-          insert_struct_carve_probe(getelem_instr, pointee_type);
-          IRB->CreateCall(carv_name_pop, {});
-        } else if (is_func_ptr_type(pointee_type)) {
-          Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
-          Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
-          std::vector<Value *> probe_args {cast_ptr};
-          IRB->CreateCall(carv_func_ptr, probe_args);
-          IRB->CreateCall(carv_name_pop, {});
-        } else {
-          Value * load_ptr = IRB->CreateLoad(pointee_type, getelem_instr);
-          loopblock = insert_carve_probe(load_ptr, loopblock);
-          IRB->CreateCall(carv_name_pop, {});
-        }
-      }
-
-      Value * index_update_instr
-        = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
-      index_phi->addIncoming(index_update_instr, loopblock);
-
-      Instruction * cmp_instr2
-        = (Instruction *) IRB->CreateICmpSLT(index_update_instr, pointer_size);
-
-      BasicBlock * endblock
-        = loopblock->splitBasicBlock(cmp_instr2->getNextNonDebugInstruction());
-
-      IRB->SetInsertPoint(pointer_size->getNextNonDebugInstruction());
-
-      Instruction * BB_term
-        = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
-      BB_term->removeFromParent();
-      
-      //remove old terminator
-      Instruction * old_term = BB->getTerminator();
-      ReplaceInstWithInst(old_term, BB_term);
-
-      IRB->SetInsertPoint(cmp_instr2->getNextNonDebugInstruction());
-
-      Instruction * loopblock_term
-        = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
-
-      loopblock_term->removeFromParent();
-
-      //remove old terminator
-      old_term = loopblock->getTerminator();
-      ReplaceInstWithInst(old_term, loopblock_term);
-
-      IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
-
-      return endblock;
+    Value * ptrval = val;
+    if (val_type != Int8PtrTy) {
+      ptrval = IRB->CreateCast(Instruction::CastOps::BitCast, val, Int8PtrTy);
     }
+
+    bool is_class_type = false;
+    Value * default_class_idx = ConstantInt::get(Int32Ty, -1);
+    if (pointee_type->isStructTy()) {
+      StructType * struct_type = dyn_cast<StructType> (pointee_type);
+      auto search = class_name_map.find(struct_type);
+      if (search != class_name_map.end()) {
+        is_class_type = true;
+        default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
+        
+      }
+    } else if (pointee_type == Int8Ty) {
+      //check
+      is_class_type = true;
+      default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
+    }
+
+    Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
+
+    std::string typestr = get_type_str(pointee_type);
+    Constant * typestr_const = gen_new_string_constant(typestr, IRB);
+
+    //Call Carv_pointer
+    Value * end_size = IRB->CreateCall(carv_ptr_func
+      , {ptrval, typestr_const, default_class_idx, pointee_size_val});
+    
+    Value * class_idx = NULL;
+    if (is_class_type) {
+      pointee_size_val = IRB->CreateCall(get_class_size, {});
+      class_idx = IRB->CreateCall(get_class_idx, {});
+    }
+
+    Value * pointer_size = IRB->CreateSDiv(end_size, pointee_size_val);
+
+    Value * cmp_instr1 = IRB->CreateICmpEQ(pointer_size, ConstantInt::get(Int32Ty, 0));
+
+    Instruction * split_point = &(*IRB->GetInsertPoint());
+
+    //Make loop block
+    BasicBlock * loopblock = BB->splitBasicBlock(split_point);
+    BasicBlock * const loopblock_start = loopblock;
+
+    IRB->SetInsertPoint(loopblock->getFirstNonPHI());
+    PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
+    index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), BB);
+
+    IRB->CreateCall(carv_ptr_name_update, {index_phi});
+
+    Value * elem_ptr = IRB->CreateInBoundsGEP(pointee_type, val, index_phi);
+
+    if (is_class_type) {
+      Value * casted_elem_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, elem_ptr, Int8PtrTy);
+      IRB->CreateCall(class_carver, {casted_elem_ptr, class_idx});
+    } else {
+      loopblock = insert_gep_carve_probe(elem_ptr, loopblock);
+    }
+
+    IRB->CreateCall(carv_name_pop, {});
+
+    Value * index_update_instr
+      = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
+    index_phi->addIncoming(index_update_instr, loopblock);
+
+    
+    Value * cmp_instr2
+      = IRB->CreateICmpSLT(index_update_instr, pointer_size);
+
+    BasicBlock * endblock
+      = loopblock->splitBasicBlock(&(*IRB->GetInsertPoint()));
+
+    IRB->SetInsertPoint(BB->getTerminator());
+
+    Instruction * BB_term
+      = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
+    BB_term->removeFromParent();
+    
+    //remove old terminator
+    Instruction * old_term = BB->getTerminator();
+    ReplaceInstWithInst(old_term, BB_term);
+
+    IRB->SetInsertPoint(loopblock->getTerminator());
+
+    Instruction * loopblock_term
+      = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
+
+    loopblock_term->removeFromParent();
+
+    //remove old terminator
+    old_term = loopblock->getTerminator();
+    ReplaceInstWithInst(old_term, loopblock_term);
+
+    IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
+
+    cur_block = endblock;
   } else {
     DEBUG0("Unknown type input : \n");
     DEBUGDUMP(val);
   }
 
-  return BB;
+  return cur_block;
 }
 
 std::set<std::string> struct_carvers;
@@ -987,26 +997,10 @@ void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
       IRB->CreateCall(struct_name_func, {field_name_const});
 
       Value * gep = IRB->CreateStructGEP(struct_type, carver_param, elem_idx);
-      PointerType* gep_type = dyn_cast<PointerType>(gep->getType());
-      Type * gep_pointee_type = gep_type->getPointerElementType();
 
-      if (gep_pointee_type->isStructTy()) {
-        insert_struct_carve_probe(gep, gep_pointee_type);
-        IRB->CreateCall(carv_name_pop, {});
-      } else if (gep_pointee_type->isArrayTy()) {
-        cur_block = insert_carve_probe(gep, cur_block);
-        IRB->CreateCall(carv_name_pop, {});
-      } else if (is_func_ptr_type(gep_pointee_type)) {
-        Value * load_ptr = IRB->CreateLoad(gep_pointee_type, gep);
-        Value * cast_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, load_ptr, Int8PtrTy);
-        std::vector<Value *> probe_args {cast_ptr};
-        IRB->CreateCall(carv_func_ptr, probe_args);
-        IRB->CreateCall(carv_name_pop, {});
-      } else {
-        Value * loadval = IRB->CreateLoad(gep_pointee_type, gep);
-        cur_block = insert_carve_probe(loadval, cur_block);
-        IRB->CreateCall(carv_name_pop, {});
-      }
+      cur_block = insert_gep_carve_probe(gep, cur_block);
+
+      IRB->CreateCall(carv_name_pop, {});
       elem_idx ++;
     }
   }
@@ -1016,3 +1010,56 @@ void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
   IRB->CreateCall(struct_carver, carver_args);
   return;
 }
+
+void insert_check_carve_ready() {
+  BasicBlock * cur_block = IRB->GetInsertBlock();
+
+  BasicBlock * new_end_block = cur_block->splitBasicBlock(&(*IRB->GetInsertPoint()));
+   
+  BasicBlock * carve_block = BasicBlock::Create(*Context, "carve_block"
+    , cur_block->getParent(), new_end_block);
+
+  Constant * carve_ready
+    = Mod->getOrInsertGlobal(get_link_name("__carv_ready"), Int8Ty);
+
+  IRB->SetInsertPoint(cur_block->getTerminator());
+
+  Instruction * ready_load_instr = IRB->CreateLoad(Int8Ty, carve_ready);
+  Value * ready_cmp = IRB->CreateICmpEQ(ready_load_instr, ConstantInt::get(Int8Ty, 1));
+
+  Instruction * ready_br = IRB->CreateCondBr(ready_cmp, carve_block, new_end_block);
+  ready_br->removeFromParent();
+  ReplaceInstWithInst(cur_block->getTerminator(), ready_br);
+
+  IRB->SetInsertPoint(carve_block);
+
+  Instruction * br_instr = IRB->CreateBr(new_end_block);
+
+  IRB->SetInsertPoint(new_end_block->getFirstNonPHIOrDbgOrLifetime());
+  IRB->CreateStore(ConstantInt::get(Int8Ty, 1), const_carve_ready);
+
+  IRB->SetInsertPoint(br_instr);
+}
+
+//Remove alloca (local variable) memory tracking info.
+void insert_dealloc_probes() {
+  for (auto iter = tracking_allocas.begin();
+    iter != tracking_allocas.end(); iter++) {
+
+    AllocaInst * alloc_instr = *iter;
+    Value * casted_ptr
+      = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
+    IRB->CreateCall(remove_probe, {casted_ptr});          
+  }
+}
+
+std::set<std::string> no_carve_funcs {
+  "_start_c", "__init_libc",
+  "__libc_csu_init", "__libc_csu_fini",
+  "__libc_start_main",
+  "__libc_start_main_stage2",
+  "libc_start_init",
+  "exit",
+  "libc_exit_fini",
+  "_Exit",
+};

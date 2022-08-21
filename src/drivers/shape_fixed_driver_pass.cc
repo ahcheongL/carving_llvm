@@ -139,15 +139,6 @@ bool driver_pass::hookInstrs(Module &M) {
     return true;
   }
 
-  //Set dummy insertlocation...
-  for (auto &F : Mod->functions()) {
-    std::string func_name = F.getName().str();
-    if (func_name == "main") {
-      IRB->SetInsertPoint(F.getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
-      break;
-    }
-  }
-
   get_class_type_info();
 
   gen_class_replay();

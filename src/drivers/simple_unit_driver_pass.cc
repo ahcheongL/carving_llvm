@@ -16,7 +16,7 @@ class driver_pass : public ModulePass {
 #else
   const char *getPassName() const override {
 #endif
-    return "instrumenting to make driver for binary fuzz";
+    return "instrumenting to make replay driver";
   }
 
  private:
@@ -24,11 +24,13 @@ class driver_pass : public ModulePass {
 
   std::string target_name;
   Function * target_func;
-  Function * main_func;
+  Function * main_func = NULL;
 
   bool get_target_func();
 
   std::pair<BasicBlock *, Value *> insert_replay_probe(Type *, BasicBlock *);
+
+  BasicBlock * insert_gep_replay_probe(Value *, BasicBlock *);
 
   std::set<std::string> struct_replayes;
   void insert_struct_replay_probe_inner(Value*, Type *);
@@ -37,8 +39,6 @@ class driver_pass : public ModulePass {
   void make_stub(Function * F);
 
   void gen_class_replay();
-
-  std::set<BasicBlock *> replay_BBs;
 
   std::set<Function *> probe_funcs;
   
@@ -126,20 +126,10 @@ bool driver_pass::hookInstrs(Module &M) {
 
   __replay_fini = M.getOrInsertFunction(get_link_name("__replay_fini"), VoidTy);
 
-
   bool res = get_target_func();
   if (res == false) {
     DEBUG0("get_target_func failed\n");
     return true;
-  }
-
-  //Set dummy insertlocation...
-  for (auto &F : Mod->functions()) {
-    std::string func_name = F.getName().str();
-    if (func_name == "main") {
-      IRB->SetInsertPoint(F.getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
-      break;
-    }
   }
 
   get_class_type_info();
@@ -154,8 +144,9 @@ bool driver_pass::hookInstrs(Module &M) {
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();
 
-    if (func_name == "_GLOBAL__sub_I_main.cc") { continue;}
+    if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
     if (func_name == "__cxx_global_var_init") { continue; }
+
     if (probe_funcs.find(&F) != probe_funcs.end()) { continue; }
 
     if (func_name == "main") {
@@ -170,10 +161,28 @@ bool driver_pass::hookInstrs(Module &M) {
     return false;
   }
 
+  if (main_func == NULL) {
+    DEBUG0("FATAL : main function not found.\n");
+    return false;
+  }
+
+  //remove other BB
+  std::vector<BasicBlock *> BBs;
+  for (auto &BB: main_func->getBasicBlockList()) {
+    BBs.push_back(&BB);
+  }
+
+  for (auto BB: BBs) {
+    BB->dropAllReferences();
+  }
+
+  for (auto BB: BBs) {
+    BB->eraseFromParent();
+  }
+
   BasicBlock * new_entry_block = BasicBlock::Create(*Context, "new_entry_block", main_func);
 
   BasicBlock * cur_block = new_entry_block;
-  replay_BBs.insert(cur_block);
 
   IRB->SetInsertPoint(cur_block);
 
@@ -183,14 +192,12 @@ bool driver_pass::hookInstrs(Module &M) {
     Constant * func_name_const = gen_new_string_constant(Func.getName().str(), IRB);
     Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
       , (Value *) &Func, Int8PtrTy);
-    std::vector<Value *> probe_args {cast_val, func_name_const};
-    IRB->CreateCall(record_func_ptr, probe_args);
+    IRB->CreateCall(record_func_ptr, {cast_val, func_name_const});
   }
 
   //Record class type string constants
   for (auto iter : class_name_map) {
     unsigned int class_size = DL->getTypeAllocSize(iter.first);
-    llvm::errs() << "class name : " << iter.first->getName().str() << ", idx : " << iter.second.first << ", size : " << class_size << "\n";
     IRB->CreateCall(keep_class_info, {iter.second.second
       , ConstantInt::get(Int32Ty, class_size)
       , ConstantInt::get(Int32Ty, iter.second.first)});
@@ -210,13 +217,16 @@ bool driver_pass::hookInstrs(Module &M) {
   auto search = global_var_uses.find(target_func);
   if (search != global_var_uses.end()) {
     for (auto glob_iter : search->second) {
-      llvm::errs() << "target function using glob : " << glob_iter->getName().str() << "\n";
-      Type * val_type = glob_iter->getType();
-      auto replay_res = insert_replay_probe(val_type, cur_block);
+      PointerType * val_type = dyn_cast<PointerType>(glob_iter->getType());
+      Type * glob_pointee_type = val_type->getPointerElementType();
+      
+      auto replay_res = insert_replay_probe(glob_pointee_type, cur_block);
       cur_block = replay_res.first;
       
       Value * glob_val = replay_res.second;
-      IRB->CreateStore(glob_val, glob_iter);
+      if (glob_val != NULL) {
+        IRB->CreateStore(glob_val, glob_iter);
+      }
     }
   }
 
@@ -227,23 +237,6 @@ bool driver_pass::hookInstrs(Module &M) {
   IRB->CreateCall(__replay_fini, {});
 
   IRB->CreateRet(ConstantInt::get(Int32Ty, 0));
-
-  //remove other BB
-  std::vector<BasicBlock *> BBs;
-  for (auto &BB: main_func->getBasicBlockList()) {
-    if (replay_BBs.find(&BB) == replay_BBs.end()) {
-      BBs.push_back(&BB);
-    }
-  }
-
-  for (auto BB: BBs) {
-    BB->dropAllReferences();
-  }
-
-  for (auto BB: BBs) {
-    BB->eraseFromParent();
-  }
-
 
   char * tmp = getenv("DUMP_IR");
   if (tmp) {
@@ -287,11 +280,15 @@ std::pair<BasicBlock *, Value *>
     for (idx = 0; idx < num_elem; idx ++) {
       auto carved_val = insert_replay_probe(struct_type->getTypeAtIndex(idx), cur_block);
       cur_block = carved_val.first;
+      if (carved_val.second == NULL) {
+        return std::make_pair(cur_block, result);
+      }
       result = IRB->CreateInsertValue(UndefValue::get(typeptr), carved_val.second, idx);
     }
   } else if (is_func_ptr_type(typeptr)) {
     result = IRB->CreateCall(replay_func_ptr, {});
     result = IRB->CreateBitCast(result, typeptr);
+    result = NULL; //TODO
   } else if (typeptr->isFunctionTy() || typeptr->isArrayTy()) {
     //Is it possible to reach here?
   } else if (typeptr->isPointerTy()) {
@@ -311,188 +308,99 @@ std::pair<BasicBlock *, Value *>
     unsigned pointee_size = DL->getTypeAllocSize(pointee_type);
     if (pointee_size == 0) { return std::make_pair(cur_block , result); }
 
-    if (pointee_type->isArrayTy()) {
-      unsigned array_size = pointee_size;
-
-      ArrayType * arrtype = dyn_cast<ArrayType>(pointee_type);
-      Type * array_elem_type = arrtype->getArrayElementType();
-
-      pointee_size = DL->getTypeAllocSize(array_elem_type);
-      Value * pointer_size = ConstantInt::get(Int32Ty, array_size / pointee_size);
-
-      //Make loop block
-      BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_block->getParent());
-      BasicBlock * const loopblock_start = loopblock;
-      replay_BBs.insert(loopblock);
-      
-      Value * cmp_instr1 = IRB->CreateICmpEQ(pointer_size, ConstantInt::get(Int32Ty, 0));
-      
-      Instruction * temp_br_instr = IRB->CreateBr(loopblock);
-
-      IRB->SetInsertPoint(loopblock);
-      PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
-      index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), cur_block);
-
-      Value * getelem_instr = IRB->CreateGEP(pointee_type, result, index_phi);
-
-      if (pointee_type->isStructTy()) {
-        insert_struct_replay_probe_inner(getelem_instr, pointee_type);
-      }  else if (is_func_ptr_type(pointee_type)) {
-        Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
-        Value * casted_val = IRB->CreateBitCast(func_ptr_val, pointee_type);
-        IRB->CreateStore(casted_val, getelem_instr);
-      } else {
-        auto ptr_result = insert_replay_probe(pointee_type, loopblock);
-        loopblock = ptr_result.first;
-        Value * ptr_replay_res = ptr_result.second;
-        if (ptr_replay_res != NULL) {
-          Value * casted_val = IRB->CreateBitCast(ptr_replay_res, pointee_type);
-          IRB->CreateStore(casted_val, getelem_instr);
-        }
-      }
-
-      Value * index_update_instr
-        = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
-      index_phi->addIncoming(index_update_instr, loopblock);
-
-      Instruction * cmp_instr2
-        = (Instruction *) IRB->CreateICmpSLT(index_update_instr, pointer_size);
-      
-      Instruction * temp_br_instr2 = IRB->CreateBr(loopblock);
-
-      BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_block->getParent());
-      replay_BBs.insert(endblock);
-
-      IRB->SetInsertPoint(temp_br_instr);
-
-      Instruction * BB_term
-        = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
-      BB_term->removeFromParent();
-      ReplaceInstWithInst(temp_br_instr, BB_term);
-      
-      IRB->SetInsertPoint(temp_br_instr2);
-
-      Instruction * loopblock_term
-        = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
-      loopblock_term->removeFromParent();
-      ReplaceInstWithInst(temp_br_instr2, loopblock_term);
-
-      IRB->SetInsertPoint(endblock);
-
-      cur_block = endblock;
-
-    } else {
-      bool is_class_type = false;
-      Value * default_class_idx = NULL;
-      Constant * class_name_const = NULL;
-      if (pointee_type->isStructTy()) {
-        StructType * struct_type = dyn_cast<StructType> (pointee_type);
-        auto search = class_name_map.find(struct_type);
-        if (search != class_name_map.end()) {
-          is_class_type = true;
-          default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
-          std::string struct_name = struct_type->getName().str();
-          class_name_const = gen_new_string_constant(struct_name, IRB);
-        }
-      } else if (pointee_type == Int8Ty) {
+    bool is_class_type = false;
+    Value * default_class_idx = NULL;
+    Constant * class_name_const = NULL;
+    if (pointee_type->isStructTy()) {
+      StructType * struct_type = dyn_cast<StructType> (pointee_type);
+      auto search = class_name_map.find(struct_type);
+      if (search != class_name_map.end()) {
         is_class_type = true;
-        default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
-        class_name_const = gen_new_string_constant("i8*", IRB);
+        default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
+        std::string struct_name = struct_type->getName().str();
+        class_name_const = gen_new_string_constant(struct_name, IRB);
       }
-
-      if (is_class_type) {
-        result = IRB->CreateCall(replay_ptr_func
-          , {default_class_idx, ConstantInt::get(Int32Ty, pointee_size)
-            , class_name_const});
-      } else {
-        result = IRB->CreateCall(replay_ptr_func
-          , {ConstantInt::get(Int32Ty, 0)
-              , ConstantInt::get(Int32Ty, pointee_size)
-              , ConstantPointerNull::get(Int8PtrTy)});
-      }
-      
-      result = IRB->CreatePointerCast(result, typeptr);
-
-      Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
-
-      Value * class_idx = NULL;
-      if (is_class_type) {
-        pointee_size_val = IRB->CreateCall(replay_ptr_pointee_size, {});
-        class_idx = IRB->CreateCall(replay_ptr_class_index, {});
-      }
-      
-      Instruction * ptr_bytesize = IRB->CreateCall(replay_ptr_alloc_size, {});
-      Value * ptr_size = IRB->CreateSDiv(ptr_bytesize, pointee_size_val);
-      
-      //Make loop block
-      BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_block->getParent());
-      BasicBlock * const loopblock_start = loopblock;
-      replay_BBs.insert(loopblock);
-      
-      Value * cmp_instr1 = IRB->CreateICmpEQ(ptr_size, ConstantInt::get(Int32Ty, 0));
-      
-      Instruction * temp_br_instr = IRB->CreateBr(loopblock);
-
-      IRB->SetInsertPoint(loopblock);
-      PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
-      index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), cur_block);
-
-      if (is_class_type) {
-        Value * casted_result = IRB->CreateBitCast(result, Int8PtrTy);
-        std::vector<Value *> args1 {casted_result, index_phi, pointee_size_val};
-        Value * elem_ptr = IRB->CreateCall(update_class_ptr, args1);
-        std::vector<Value *> args {elem_ptr, class_idx};
-        IRB->CreateCall(class_replay, args);
-      } else {
-        Value * getelem_instr = IRB->CreateGEP(pointee_type, result, index_phi);
-
-        if (pointee_type->isStructTy()) {
-          insert_struct_replay_probe_inner(getelem_instr, pointee_type);
-        }  else if (is_func_ptr_type(pointee_type)) {
-          Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
-          Value * casted_val = IRB->CreateBitCast(func_ptr_val, pointee_type);
-          IRB->CreateStore(casted_val, getelem_instr);
-        } else {
-          auto ptr_result = insert_replay_probe(pointee_type, loopblock);
-          loopblock = ptr_result.first;
-          Value * ptr_replay_res = ptr_result.second;
-          if (ptr_replay_res != NULL) {
-            Value * casted_val = IRB->CreateBitCast(ptr_replay_res, pointee_type);
-            IRB->CreateStore(casted_val, getelem_instr);
-          }
-        }
-      }
-
-      Value * index_update_instr
-        = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
-      index_phi->addIncoming(index_update_instr, loopblock);
-
-      Instruction * cmp_instr2
-        = (Instruction *) IRB->CreateICmpSLT(index_update_instr, ptr_size);
-      
-      Instruction * temp_br_instr2 = IRB->CreateBr(loopblock);
-
-      BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_block->getParent());
-      replay_BBs.insert(endblock);
-
-      IRB->SetInsertPoint(temp_br_instr);
-
-      Instruction * BB_term
-        = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
-      BB_term->removeFromParent();
-      ReplaceInstWithInst(temp_br_instr, BB_term);
-      
-      IRB->SetInsertPoint(temp_br_instr2);
-
-      Instruction * loopblock_term
-        = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
-      loopblock_term->removeFromParent();
-      ReplaceInstWithInst(temp_br_instr2, loopblock_term);
-
-      IRB->SetInsertPoint(endblock);
-
-      cur_block = endblock;
+    } else if (pointee_type == Int8Ty) {
+      is_class_type = true;
+      default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
+      class_name_const = gen_new_string_constant("i8*", IRB);
     }
+
+    if (is_class_type) {
+      result = IRB->CreateCall(replay_ptr_func
+        , {default_class_idx, ConstantInt::get(Int32Ty, pointee_size)
+          , class_name_const});
+    } else {
+      result = IRB->CreateCall(replay_ptr_func
+        , {ConstantInt::get(Int32Ty, 0)
+            , ConstantInt::get(Int32Ty, pointee_size)
+            , ConstantPointerNull::get(Int8PtrTy)});
+    }
+    
+    result = IRB->CreatePointerCast(result, typeptr);
+
+    Value * pointee_size_val = ConstantInt::get(Int32Ty, pointee_size);
+
+    Value * class_idx = NULL;
+    if (is_class_type) {
+      pointee_size_val = IRB->CreateCall(replay_ptr_pointee_size, {});
+      class_idx = IRB->CreateCall(replay_ptr_class_index, {});
+    }
+    
+    Instruction * ptr_bytesize = IRB->CreateCall(replay_ptr_alloc_size, {});
+    Value * ptr_size = IRB->CreateSDiv(ptr_bytesize, pointee_size_val);
+    
+    //Make loop block
+    BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_block->getParent());
+    BasicBlock * const loopblock_start = loopblock;
+    
+    Value * cmp_instr1 = IRB->CreateICmpEQ(ptr_size, ConstantInt::get(Int32Ty, 0));
+    
+    Instruction * temp_br_instr = IRB->CreateBr(loopblock);
+
+    IRB->SetInsertPoint(loopblock);
+    PHINode * index_phi = IRB->CreatePHI(Int32Ty, 2);
+    index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), cur_block);
+
+    if (is_class_type) {
+      Value * casted_result = IRB->CreateBitCast(result, Int8PtrTy);
+      std::vector<Value *> args1 {casted_result, index_phi, pointee_size_val};
+      Value * elem_ptr = IRB->CreateCall(update_class_ptr, args1);
+      std::vector<Value *> args {elem_ptr, class_idx};
+      IRB->CreateCall(class_replay, args);
+    } else {
+      Value * getelem_instr = IRB->CreateGEP(pointee_type, result, index_phi);
+      loopblock = insert_gep_replay_probe(getelem_instr, loopblock);
+    }
+
+    Value * index_update_instr
+      = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
+    index_phi->addIncoming(index_update_instr, loopblock);
+
+    Instruction * cmp_instr2
+      = (Instruction *) IRB->CreateICmpSLT(index_update_instr, ptr_size);
+    
+    Instruction * temp_br_instr2 = IRB->CreateBr(loopblock);
+
+    BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_block->getParent());
+
+    IRB->SetInsertPoint(temp_br_instr);
+
+    Instruction * BB_term
+      = IRB->CreateCondBr(cmp_instr1, endblock, loopblock_start);
+    BB_term->removeFromParent();
+    ReplaceInstWithInst(temp_br_instr, BB_term);
+    
+    IRB->SetInsertPoint(temp_br_instr2);
+
+    Instruction * loopblock_term
+      = IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
+    loopblock_term->removeFromParent();
+    ReplaceInstWithInst(temp_br_instr2, loopblock_term);
+
+    IRB->SetInsertPoint(endblock);
+
+    cur_block = endblock;
     
   } else if(typeptr->isX86_FP80Ty()) {
     result = IRB->CreateCall(replay_double_func, {});
@@ -502,6 +410,47 @@ std::pair<BasicBlock *, Value *>
     DEBUG0("Warning : Unknown type\n");
   }
   return std::make_pair(cur_block , result);
+}
+
+BasicBlock * driver_pass::insert_gep_replay_probe(Value * gep_val, BasicBlock * cur_block) {
+  PointerType * gep_type = dyn_cast<PointerType>(gep_val->getType());
+  Type * gep_pointee_type = gep_type->getElementType();
+
+  if (gep_pointee_type->isStructTy()) {
+    insert_struct_replay_probe(gep_val, gep_pointee_type);
+  } else if (is_func_ptr_type(gep_pointee_type)) {
+    Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
+    Value * casted_val = IRB->CreateBitCast(func_ptr_val, gep_pointee_type);
+    IRB->CreateStore(casted_val, gep_val);
+  } else if (gep_pointee_type->isArrayTy()) {
+    ArrayType * array_type = dyn_cast<ArrayType>(gep_pointee_type);
+    Type * array_elem_type = array_type->getArrayElementType();
+
+    unsigned int array_size = array_type->getNumElements();
+    unsigned int elem_size = DL->getTypeAllocSize(array_elem_type);
+    int idx = 0;
+    for (idx = 0; idx < array_size; idx++) {
+      auto ptr_result = insert_replay_probe(array_elem_type, cur_block);
+      cur_block = ptr_result.first;
+
+      Value * ptr_replay_res = ptr_result.second;
+
+      if (ptr_replay_res != NULL) {
+        Value * array_gep = IRB->CreateInBoundsGEP(array_type, gep_val, {ConstantInt::get(Int32Ty, 0), ConstantInt::get(Int32Ty, idx)});
+       IRB->CreateStore(ptr_replay_res, array_gep);
+      }
+    }
+  } else {
+    auto ptr_result = insert_replay_probe(gep_pointee_type, cur_block);
+    cur_block = ptr_result.first;
+    Value * ptr_replay_res = ptr_result.second;
+    if (ptr_replay_res != NULL) {
+      Value * casted_val = IRB->CreateBitCast(ptr_replay_res, gep_pointee_type);      
+      IRB->CreateStore(casted_val, gep_val);
+    }
+  }
+
+  return cur_block;
 }
 
 void driver_pass::insert_struct_replay_probe_inner(Value * struct_ptr
@@ -542,37 +491,7 @@ void driver_pass::insert_struct_replay_probe_inner(Value * struct_ptr
     for (unsigned elem_idx = 0; elem_idx < num_fields; elem_idx++) {
       Value * gep = IRB->CreateStructGEP(struct_type, replay_param, elem_idx);
       Type * field_type = struct_type->getElementType(elem_idx);
-
-      if (field_type->isStructTy()) {
-        insert_struct_replay_probe(gep, field_type);
-      } else if (is_func_ptr_type(field_type)) {
-        Value * func_ptr_val = IRB->CreateCall(replay_func_ptr, {});
-        Value * casted_val = IRB->CreateBitCast(func_ptr_val, field_type);
-        IRB->CreateStore(casted_val, gep);
-      } else if (field_type->isArrayTy()) {
-        ArrayType * array_type = dyn_cast<ArrayType>(field_type);
-        Type * array_elem_type = array_type->getArrayElementType();
-
-        unsigned int array_size = array_type->getNumElements();
-        unsigned int elem_size = DL->getTypeAllocSize(array_elem_type);
-        int idx = 0;
-        for (idx = 0; idx < array_size; idx++) {
-          auto ptr_result = insert_replay_probe(array_elem_type, cur_block);
-          cur_block = ptr_result.first;
-
-          Value * ptr_replay_res = ptr_result.second;
-          Value * array_gep = IRB->CreateGEP(array_elem_type, gep, ConstantInt::get(Int32Ty, idx));
-          IRB->CreateStore(ptr_replay_res, array_gep);
-        }
-      } else {
-        auto ptr_result = insert_replay_probe(field_type, cur_block);
-        cur_block = ptr_result.first;
-        Value * ptr_replay_res = ptr_result.second;
-        if (ptr_replay_res != NULL) {
-          Value * casted_val = IRB->CreateBitCast(ptr_replay_res, field_type);      
-          IRB->CreateStore(casted_val, gep);
-        }
-      }
+      cur_block = insert_gep_replay_probe(gep, cur_block);
     }
 
     IRB->CreateRetVoid();
@@ -629,6 +548,8 @@ bool driver_pass::get_target_func() {
     return false;
   }
 
+  target_func = NULL;
+
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();    
@@ -650,8 +571,6 @@ void driver_pass::make_stub(Function * F) {
 
   BasicBlock * entry_block = BasicBlock::Create(*Context, "entry", F, &F->getEntryBlock());
   IRB->SetInsertPoint(entry_block);
-
-  replay_BBs.insert(entry_block);
 
   Type * return_type = F->getReturnType();
   if (return_type == VoidTy) {
@@ -677,18 +596,11 @@ void driver_pass::make_stub(Function * F) {
 
   std::vector<BasicBlock *> BBs;
   for (auto &BB : F->getBasicBlockList()) {
-    if (replay_BBs.find(&BB) == replay_BBs.end()) {
-      BBs.push_back(&BB);
-    }
+    BBs.push_back(&BB);
   }
 
   for (auto BB : BBs) {
     BB->dropAllReferences();
-
-    /*for (auto &IN : BB->getInstList()) {
-      IN.dropAllReferences();
-    }
-    */
   }
 
   for (auto BB : BBs) {

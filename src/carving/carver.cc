@@ -4,13 +4,11 @@
 #include "utils.hpp"
 #include <errno.h>
 #include <unistd.h>
+#include "time.h"
 
-#include <chrono>
-
-#define MAX_NUM_FILE 32
-#define MINSIZE 1
+#define MAX_NUM_FILE 64
+#define MINSIZE 2
 #define MAXSIZE 24
-#define MAX_INPUTS (((long) 1) << MAXSIZE)
 #define CARV_PROB 100
 #define CARV_PROB_TYPE 100
 
@@ -35,7 +33,7 @@ static map<void *, char *> func_ptrs;
 
 //inputs, work as similar as function call stack
 static vector<FUNC_CONTEXT> inputs;
-static vector<IVAR *> * cur_inputs = NULL;
+vector<IVAR *> * __carve_cur_inputs = NULL;
 static vector<PTR> * cur_carved_ptrs = NULL;
 
 //memory info
@@ -53,72 +51,63 @@ static int cur_class_size = -1;
 bool __carv_ready = false;
 char __carv_depth = 0;
 
+static clock_t carv_begin;
+static clock_t carv_end;
+
+static double alloc_total_time = 0;
+static double dealloc_total_time = 0;
+static double carv_total_time = 0;
+static double param_carv_total_time = 0;
+static double end_total_time = 0;
+
 void Carv_char(char input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
   VAR<char> * inputv = new VAR<char>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::CHAR);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_short(short input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   VAR<short> * inputv = new VAR<short>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::SHORT);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_int(int input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   VAR<int> * inputv = new VAR<int>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::INT);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_longtype(long input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   VAR<long> * inputv = new VAR<long>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::LONG);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_longlong(long long input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   VAR<long long> * inputv = new VAR<long long>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::LONGLONG);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_float(float input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   VAR<float> * inputv = new VAR<float>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::FLOAT);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 void Carv_double(double input) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   VAR<double> * inputv = new VAR<double>(input
     , strdup(*__carv_base_names.back()), INPUT_TYPE::DOUBLE);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
 }
 
 int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size) {
-  if (!__carv_ready) { return 0; }
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) {
-    return 0;
-  }
-
   char * updated_name = strdup(*(__carv_base_names.back()));
 
   if (ptr == NULL) {
     VAR<void *> * inputv = new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
-    cur_inputs->push_back((IVAR *) inputv);
+    __carve_cur_inputs->push_back((IVAR *) inputv);
     return 0;
   }
 
@@ -134,7 +123,7 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
       int offset = ((char *) ptr) - carved_addr;
       VAR<int> * inputv = new VAR<int>(
         index, updated_name, offset, INPUT_TYPE::POINTER);
-      cur_inputs->push_back((IVAR *) inputv);
+      __carve_cur_inputs->push_back((IVAR *) inputv);
       //Won't carve again.
       return 0;
     }
@@ -168,7 +157,7 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
 
       VAR<int> * inputv = new VAR<int>(
         new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
-      cur_inputs->push_back((IVAR *) inputv);
+      __carve_cur_inputs->push_back((IVAR *) inputv);
 
       return size;
     }
@@ -177,7 +166,7 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
 
   VAR<void *> * inputv = new VAR<void *>(
         ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
   return 0;
 }
 
@@ -186,8 +175,6 @@ void __record_func_ptr(void * ptr, char * name) {
 }
 
 void __Carv_func_ptr(void * ptr) {
-  if ((cur_inputs == NULL) || (cur_inputs->size() > MAX_INPUTS)) { return; }
-
   char * updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
@@ -196,19 +183,17 @@ void __Carv_func_ptr(void * ptr) {
     }
     VAR<void *> * inputv = new VAR<void *>(NULL
       , updated_name, INPUT_TYPE::NULLPTR);
-    cur_inputs->push_back((IVAR *) inputv);
+    __carve_cur_inputs->push_back((IVAR *) inputv);
     return;
   }
 
   VAR<char *> * inputv = new VAR<char *> (*search
     , updated_name, INPUT_TYPE::FUNCPTR);
-  cur_inputs->push_back((IVAR *) inputv);
+  __carve_cur_inputs->push_back((IVAR *) inputv);
   return;
 }
 
 void __carv_ptr_name_update(int idx) {
-  if (!__carv_ready) { return; }
-
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s[%d]",base_name, idx);
@@ -235,14 +220,12 @@ int __get_class_size() {
 }
 
 void __carv_name_push(char * name) {
-  if (!__carv_ready) { return; }
   __carv_base_names.push_back(name);
   __need_to_free_carv_base_names.push_back(false);
   return;
 }
 
 void __carv_name_pop() {
-  if (!__carv_ready) { return; }
   if (*__need_to_free_carv_base_names.back()) {
     free(*__carv_base_names.back());
   }
@@ -252,7 +235,6 @@ void __carv_name_pop() {
 }
 
 void __carv_struct_name_update(char * field_name) {
-  if (!__carv_ready) { return; }
   char * base_name = *(__carv_base_names.back());
   char * update_name = (char *) malloc(sizeof(char) * 512);
   snprintf(update_name, 512, "%s.%s",base_name, field_name);
@@ -262,9 +244,11 @@ void __carv_struct_name_update(char * field_name) {
 }
 
 void __mem_allocated_probe(void * ptr, int size, char * type_name) {
+
   if (!__carv_ready) { return; }
   struct typeinfo tmp {type_name, size};
   alloced_ptrs.insert(ptr, tmp);
+
   return;
 }
 
@@ -302,17 +286,18 @@ void __carv_func_call_probe(int func_id) {
   inputs.push_back(new_ctx);
 
   if ((rand() % 100) < CARV_PROB) {
-    cur_inputs = &(inputs.back()->inputs);
+    __carve_cur_inputs = &(inputs.back()->inputs);
     cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+    __carv_ready = true;
   } else {
     inputs.back()->is_carved = false;
-    cur_inputs = NULL;
+    __carve_cur_inputs = NULL;
+    __carv_ready = false;
   }
   return;
 }
 
 void __update_carved_ptr_idx() {
-  if (!__carv_ready) { return; }
   inputs.back()->update_carved_ptr_begin_idx();
 }
 
@@ -358,9 +343,9 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
         if (offset != -1) {
           //remove remove_ptr in inputs;
           int idx3 = 0;
-          int num_inputs = cur_inputs->size();
+          int num_inputs = __carve_cur_inputs->size();
           while (idx3 < num_inputs) {
-            IVAR * tmp_input = *(cur_inputs->get(idx3));
+            IVAR * tmp_input = *(__carve_cur_inputs->get(idx3));
             if (tmp_input->type == INPUT_TYPE::POINTER) {
               VAR<int> * tmp_inputt = (VAR<int> *) tmp_input;
               if (tmp_inputt->input == remove_ptr_idx) {
@@ -377,7 +362,7 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
                   check_name[var_name_len + 1] = 0;
                   int idx4 = idx3 + 1;
                   while (idx4 < num_inputs) {
-                    IVAR * next_input = *(cur_inputs->get(idx4));
+                    IVAR * next_input = *(__carve_cur_inputs->get(idx4));
                     if (strncmp(check_name, next_input->name, var_name_len + 1) != 0) {
                       break;
                     }
@@ -386,11 +371,11 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
                   free(check_name);
                   int idx5 = idx3 + 1;
                   while (idx5 < idx4) {
-                    delete *(cur_inputs->get(idx3 + 1));
-                    cur_inputs->remove(idx3 + 1);
+                    delete *(__carve_cur_inputs->get(idx3 + 1));
+                    __carve_cur_inputs->remove(idx3 + 1);
                     idx5++;
                   }
-                  num_inputs = cur_inputs->size();
+                  num_inputs = __carve_cur_inputs->size();
                 }
               }
             }
@@ -413,21 +398,23 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
 static int num_excluded = 0;
 
 void __carv_func_ret_probe(char * func_name, int func_id) {
-  if (!__carv_ready) { return; }
+  if (__carv_ready == false) { return; }
 
-  if (cur_inputs == NULL) {
+  if (__carve_cur_inputs == NULL) {
     inputs.pop_back();
 
     class FUNC_CONTEXT * next_ctx = inputs.back();
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
-      cur_inputs = NULL;
+      __carve_cur_inputs = NULL;
       cur_carved_ptrs = NULL;
     } else {
-      cur_inputs = &(next_ctx->inputs);
+      __carve_cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
     }
     return;
   }
+
+  carv_begin = clock();
 
   class FUNC_CONTEXT * cur_context = inputs.back();
   inputs.pop_back();
@@ -449,7 +436,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   //carved_ptr_postprocessing(0, carved_ptrs_init_idx);
   //carved_ptr_postprocessing(carved_ptrs_init_idx, num_carved_ptrs);
   //std::cerr << "Processing done\n";
-  const int num_inputs = cur_inputs->size();
+  const int num_inputs = __carve_cur_inputs->size();
 
   bool skip_write = false;
 
@@ -473,22 +460,37 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       func_carved_filesize[func_id][index] += 1;
     }
   }
+
   skip_write = false;
 
   if (skip_write) {
     idx = 0;
     while (idx < num_inputs) {
-      delete *(cur_inputs->get(idx));
+      delete *(__carve_cur_inputs->get(idx));
       idx++;
     }
 
     class FUNC_CONTEXT * next_ctx = inputs.back();
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
-      cur_inputs = NULL;
+      __carve_cur_inputs = NULL;
       cur_carved_ptrs = NULL;
     } else {
-      cur_inputs = &(next_ctx->inputs);
+      __carve_cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
+    }
+
+    carv_end = clock();
+
+    double curtime = ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC;
+
+    carv_total_time += curtime;
+
+    if (curtime > 1.0) {
+      fprintf(stderr, "****Skipping returning function %s, # of inputs : %d, time : %0.4fs\n"
+        , func_name, num_inputs, curtime);
+    } else {
+      fprintf(stderr, "Skipping Returning function %s, # of inputs : %d, time : %0.4fs\n"
+        , func_name, num_inputs, curtime);
     }
 
     num_excluded++;
@@ -507,16 +509,16 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   
     idx = 0;
     while (idx < num_inputs) {
-      delete *(cur_inputs->get(idx));
+      delete *(__carve_cur_inputs->get(idx));
       idx++;
     }
 
     class FUNC_CONTEXT * next_ctx = inputs.back();
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
-      cur_inputs = NULL;
+      __carve_cur_inputs = NULL;
       cur_carved_ptrs = NULL;
     } else {
-      cur_inputs = &(next_ctx->inputs);
+      __carve_cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
     }
     return;
@@ -535,7 +537,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
 
   idx = 0;
   while (idx < num_inputs) {
-    IVAR * elem = *(cur_inputs->get(idx));
+    IVAR * elem = *(__carve_cur_inputs->get(idx));
     if (elem->type == INPUT_TYPE::CHAR) {
       fprintf(outfile, "%s:CHAR:%d\n", elem->name, (int) (((VAR<char>*) elem)->input));
     } else if (elem->type == INPUT_TYPE::SHORT) {
@@ -588,18 +590,29 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     idx++;
   }
 
-  std::cerr << "Returning function " << func_name << ", # of inputs : "
-    << num_inputs << "\n";
-
   fclose(outfile);
 
   class FUNC_CONTEXT * next_ctx = inputs.back();
   if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
-    cur_inputs = NULL;
+    __carve_cur_inputs = NULL;
     cur_carved_ptrs = NULL;
   } else {
-    cur_inputs = &(next_ctx->inputs);
+    __carve_cur_inputs = &(next_ctx->inputs);
     cur_carved_ptrs = &(next_ctx->carved_ptrs);
+  }
+
+  carv_end = clock();
+
+  double curtime = ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC;
+
+  carv_total_time += curtime;
+
+  if (curtime > 1.0) {
+    fprintf(stderr, "****Returning function %s, # of inputs : %d, time : %0.4fs\n"
+      , func_name, num_inputs, curtime);
+  } else {
+    fprintf(stderr, "Returning function %s, # of inputs : %d, time : %0.4fs\n"
+      , func_name, num_inputs, curtime);
   }
   
   return;
@@ -643,14 +656,9 @@ void __carver_argv_modifier(int * argcptr, char *** argvptr) {
 
   //Write argc, argv values, TODO
 
-  srand(time(NULL));
+  __carv_ready = true;
   return;
 }
-
-static int64_t alloc_total_time = 0;
-static int64_t dealloc_total_time = 0;
-static int64_t carv_total_time = 0;
-
 
 void __carv_FINI() {
   char buffer[256];
@@ -684,21 +692,18 @@ void __carv_FINI() {
   __carv_ready = false;
 }
 
-
-static std::chrono::steady_clock::time_point carv_begin;
-
 void __carv_open() {
   if (!__carv_ready) { return; }
 
   if ((rand() % 100) < CARV_PROB_TYPE) {
     FUNC_CONTEXT new_ctx = FUNC_CONTEXT(carved_index++, 0, 0);
     inputs.push_back(new_ctx);
-    cur_inputs = &(inputs.back()->inputs);
+    __carve_cur_inputs = &(inputs.back()->inputs);
     cur_carved_ptrs = &(inputs.back()->carved_ptrs);
-    carv_begin = std::chrono::steady_clock::now();
+    carv_begin = clock();
     return;
   } else {
-    cur_inputs = NULL;
+    __carve_cur_inputs = NULL;
   }
 }
 
@@ -707,14 +712,14 @@ static map<const char *, unsigned int> type_idx;
 static unsigned int max_type_idx = 0;
 
 void __carv_close(const char * type_name, const char * func_name) {
-  if (cur_inputs == NULL) { return; }
+  if (__carve_cur_inputs == NULL) { return; }
 
   FUNC_CONTEXT * cur_context = inputs.back();
   inputs.pop_back();
 
   int idx = 0;
   const int num_carved_ptrs = cur_carved_ptrs->size();
-  const int num_inputs = cur_inputs->size();
+  const int num_inputs = __carve_cur_inputs->size();
 
   bool skip_write = false;
 
@@ -762,7 +767,7 @@ void __carv_close(const char * type_name, const char * func_name) {
   if (skip_write) {
     idx = 0;
     while (idx < num_inputs) {
-      delete *(cur_inputs->get(idx));
+      delete *(__carve_cur_inputs->get(idx));
       idx++;
     }
 
@@ -785,7 +790,7 @@ void __carv_close(const char * type_name, const char * func_name) {
   if (outfile == NULL) {
     idx = 0;
     while (idx < num_inputs) {
-      delete *(cur_inputs->get(idx));
+      delete *(__carve_cur_inputs->get(idx));
       idx++;
     }
     return;
@@ -803,7 +808,7 @@ void __carv_close(const char * type_name, const char * func_name) {
 
   idx = 0;
   while (idx < num_inputs) {
-    IVAR * elem = *(cur_inputs->get(idx));
+    IVAR * elem = *(__carve_cur_inputs->get(idx));
     if (elem->type == INPUT_TYPE::CHAR) {
       fprintf(outfile, "%s:CHAR:%d\n", elem->name, (int) (((VAR<char>*) elem)->input));
     } else if (elem->type == INPUT_TYPE::SHORT) {
@@ -858,40 +863,38 @@ void __carv_close(const char * type_name, const char * func_name) {
 
   fclose(outfile);
 
-  std::chrono::steady_clock::time_point carv_close_end = std::chrono::steady_clock::now();
+  carv_end = clock();
 
-  carv_total_time += 
-    std::chrono::duration_cast<std::chrono::microseconds>(carv_close_end - carv_begin).count();
-  
+  carv_total_time += ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC;  
+
+  fprintf(stderr, "Carving time : %0.4fs\n", ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC);
   return;
 }
 
+static clock_t time_begin;
 
-static std::chrono::steady_clock::time_point alloc_begin;
-static std::chrono::steady_clock::time_point alloc_end;
-
-void __carv_alloc_begin() {
-  alloc_begin = std::chrono::steady_clock::now();
+void __carv_time_begin() {
+  time_begin = clock();
 }
 
-void __carv_alloc_end() {
-  alloc_end = std::chrono::steady_clock::now();
-  alloc_total_time +=
-    std::chrono::duration_cast<std::chrono::microseconds>(alloc_end - alloc_begin).count();
-}
+void __carv_time_end(int type) {
+  clock_t time_end = clock();
+  double curtime = ((double) (time_end - time_begin)) / CLOCKS_PER_SEC;
+  if (type == 0) {
+    param_carv_total_time += curtime;
+  } else if (type == 1) {
+    alloc_total_time += curtime;
+  } else if (type == 2) {
+    dealloc_total_time += curtime;
+  } else if (type == 3) {
+    end_total_time += curtime;
+  } else {
+    fprintf(stderr, "Warning : unknown time type : %d\n", type);
+  }
 
-
-static std::chrono::steady_clock::time_point dealloc_begin;
-static std::chrono::steady_clock::time_point dealloc_end;
-
-void __carv_dealloc_begin() {
-  dealloc_begin = std::chrono::steady_clock::now();
-}
-
-void __carv_dealloc_end() {
-  dealloc_end = std::chrono::steady_clock::now();
-  dealloc_total_time += 
-    std::chrono::duration_cast<std::chrono::microseconds>(dealloc_end - dealloc_begin).count();
+  if (curtime > 1.0) {
+    fprintf(stderr, "time : %0.4fs, type : %d\n", curtime, type);
+  }
 }
 
 #endif

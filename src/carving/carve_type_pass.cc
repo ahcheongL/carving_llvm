@@ -71,15 +71,6 @@ bool carver_pass::hookInstrs(Module &M) {
   carv_open = M.getOrInsertFunction(get_link_name("__carv_open"), VoidTy);
   carv_close = M.getOrInsertFunction(get_link_name("__carv_close"), VoidTy, Int8PtrTy, Int8PtrTy);
 
-  //Set dummy insertlocation...
-  for (auto &F : Mod->functions()) {
-    std::string func_name = F.getName().str();
-    if (func_name == "main") {
-      IRB->SetInsertPoint(F.getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
-      break;
-    }
-  }
-
   size_t num_funcs = 0;
   size_t num_instrs = 0;
   for (auto &F : M) {
@@ -139,7 +130,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
     //Main argc argv handling
     if (func_name == "main") {
-      Insert_carving_main_probe(entry_block, F, M.global_values());
+      Insert_carving_main_probe(entry_block, F);
       main_func = &F;
     }
 
@@ -212,7 +203,7 @@ bool carver_pass::hookInstrs(Module &M) {
     for (auto ret_instr : ret_instrs) {
       IRB->SetInsertPoint(ret_instr);
 
-      IRB->CreateCall(carv_dealloc_time_begin, {});
+      //IRB->CreateCall(carv_dealloc_time_begin, {});
       //Remove alloca (local variable) memory tracking info.
       for (auto iter = tracking_allocas.begin();
         iter != tracking_allocas.end(); iter++) {
@@ -222,7 +213,7 @@ bool carver_pass::hookInstrs(Module &M) {
         std::vector<Value *> args {casted_ptr};
         IRB->CreateCall(remove_probe, args);
       }
-      IRB->CreateCall(carv_dealloc_time_end, {});
+      //IRB->CreateCall(carv_dealloc_time_end, {});
 
       //Insert fini
       if (func_name == "main") {
@@ -240,7 +231,6 @@ bool carver_pass::hookInstrs(Module &M) {
     M.dump();
   }
 
-  DEBUG0("# of global tracked : " << num_global_tracked << "\n");
   DEBUG0("# of func tracked : " << num_func_tracked << "\n");
 
   num_instrs = 0;

@@ -36,13 +36,17 @@ outname = ".".join(inputbc.split(".")[:-1]) + ".carv"
 
 cmd = ["clang++", "--ld-path=" + ld_path
   , "-fno-experimental-new-pass-manager"
-#  , "-stdlib=libc++"
-#  , "-ggdb", "-O0"
+  #, "-ggdb", "-O0"
 #  , "-fsanitize=address"
   , "-O2"
+#  , "-static-libgcc", "-nostdinc", "-L", "/home/cheong/carving_exp/musl-1.2.3/gclang_install/lib"
+#  , "-I", "/home/cheong/carving_exp/musl-1.2.3/gclang_install/include"
+#  , "-isystem" , "/home/cheong/carving_exp/musl-1.2.3/gclang_install"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
   , "-I", source_dir + "/include", "-o", outname
   , "-L", source_dir + "/lib", inputbc, "-l:carver.a" ] + compile_args
+
+#opt  -enable-new-pm=0  -load ../../lib/carve_func_args_pass.so --carve < main.bc -o out.bc
 
 env=os.environ.copy()
 #env["DUMP_IR"] = "1"

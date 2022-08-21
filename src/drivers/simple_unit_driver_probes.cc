@@ -14,7 +14,7 @@ void __driver_inputf_open(char ** argv) {
   char * inputfilename = argv[1];
   FILE * input_fp = fopen(inputfilename, "r");
   if (input_fp == NULL) {
-    fprintf(stderr, "Can't read input file\n");
+    //fprintf(stderr, "Can't read input file\n");
     std::abort();
   }
 
@@ -29,18 +29,18 @@ void __driver_inputf_open(char ** argv) {
       } else {
         char * addr_str = strchr(line, ':');
         if (addr_str == NULL) { 
-          fprintf(stderr, "Invalid input file\n");
-          std::abort();
+          //fprintf(stderr, "Invalid input file\n");
+          //std::abort();
         }
         char * size_str = strchr(addr_str + 1, ':');
         if (size_str == NULL) { 
-          fprintf(stderr, "Invalid input file\n");
-          std::abort();
+          //fprintf(stderr, "Invalid input file\n");
+          //std::abort();
         }
         char * type_str = strchr(size_str + 1, ':');
         if (type_str == NULL) { 
-          fprintf(stderr, "Invalid input file\n");
-          std::abort();
+          //fprintf(stderr, "Invalid input file\n");
+          //std::abort();
         }
 
         *type_str = 0;
@@ -55,13 +55,13 @@ void __driver_inputf_open(char ** argv) {
     } else {
       char * type_str = strchr(line, ':');
       if (type_str == NULL) { 
-        fprintf(stderr, "Invalid input file\n");
-        std::abort();
+        //fprintf(stderr, "Invalid input file\n");
+        //std::abort();
       }
       char * value_str = strchr(type_str + 1, ':');
       if (value_str == NULL) { 
-        fprintf(stderr, "Invalid input file\n");
-        std::abort();
+        //fprintf(stderr, "Invalid input file\n");
+        //std::abort();
       }
       char * index_str = strchr(value_str + 1, ':');
 
@@ -114,14 +114,14 @@ void __driver_inputf_open(char ** argv) {
         }
 
         if (idx == num_funcs) {
-          fprintf(stderr, "Replay error : Can't get function name : %s\n", func_name);
+          //fprintf(stderr, "Replay error : Can't get function name : %s\n", func_name);
           VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::FUNCPTR);
           inputs.push_back((IVAR *) inputv);
         }
       } else if (!strncmp(type_str, "PTR", 3)) {
         if (index_str == NULL) {
-          fprintf(stderr, "Invalid input file\n");
-          std::abort();
+          //fprintf(stderr, "Invalid input file\n");
+          //std::abort();
         }
 
         int ptr_index = atoi(value_str + 1);
@@ -132,8 +132,8 @@ void __driver_inputf_open(char ** argv) {
         VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
         inputs.push_back((IVAR *) inputv);
       } else {
-        fprintf(stderr, "Invalid input file\n");
-        std::abort();
+        //fprintf(stderr, "Invalid input file\n");
+        //std::abort();
       }
     }
   }
@@ -149,14 +149,12 @@ char Replay_char() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::CHAR)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
-
-  std::cerr << "Replay_char : " << ((VAR<char> *) elem_ptr)->input << std::endl;
-
   
   return ((VAR<char> *) elem_ptr)->input;
 }
@@ -165,8 +163,9 @@ short Replay_short() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::SHORT)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
@@ -177,8 +176,9 @@ int Replay_int() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::INT)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
@@ -189,13 +189,12 @@ long Replay_longtype() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::LONG)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
-
-  std::cerr << "Replay_longtype : " << ((VAR<long> *) elem_ptr)->input << std::endl;
 
   return ((VAR<long> *) elem_ptr)->input;
 }
@@ -204,8 +203,9 @@ long long Replay_longlong() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::LONGLONG)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
@@ -216,8 +216,9 @@ float Replay_float() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::FLOAT)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
@@ -228,8 +229,9 @@ double Replay_double() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::DOUBLE)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
@@ -244,15 +246,14 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
 
   auto elem = inputs[cur_input_idx++];
   if (elem == NULL) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    //std::abort();
+    cur_alloc_size = 0;
+    cur_pointee_size = -1;
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;
-
-    std::cerr << "Replay_pointer : idx " << default_idx << ", size " << default_pointee_size << ", pointee name :  " << pointee_type_name << std::endl;
-
-    std::cerr << "elem_type : " << elem_ptr->type << std::endl;
 
   if (elem_ptr->type == INPUT_TYPE::NULLPTR) {
     cur_alloc_size = 0;
@@ -267,8 +268,11 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   }
 
   if (elem_ptr->type != INPUT_TYPE::POINTER) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    cur_alloc_size = 0;
+    cur_pointee_size = -1;
+    return 0;
+    //std::abort();
   }
 
   VAR<int> * elem_v = (VAR<int> *) elem_ptr;
@@ -329,8 +333,9 @@ void * Replay_func_ptr() {
   auto elem = inputs[cur_input_idx++];
 
   if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::FUNCPTR)) {
-    fprintf(stderr, "Replay error : Invalid input type\n");
-    std::abort();
+    //fprintf(stderr, "Replay error : Invalid input type\n");
+    return 0;
+    //std::abort();
   }
 
   IVAR * elem_ptr = *elem;

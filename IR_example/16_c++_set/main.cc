@@ -1,7 +1,7 @@
 #include<set>
 
-int foo(std::set<int>) {
-    return 0;
+int foo(std::set<int> aset) {
+    return aset.size();
 }
 
 int main(int argc, char * argv[]) {
