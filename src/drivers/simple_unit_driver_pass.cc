@@ -38,6 +38,9 @@ bool driver_pass::hookInstrs(Module &M) {
 
   get_driver_func_callees();
 
+  global_cur_class_index = M.getOrInsertGlobal("__replay_cur_class_index", Int32Ty);
+  global_cur_class_size = M.getOrInsertGlobal("__replay_cur_pointee_size", Int32Ty);
+
   bool res = get_target_func();
   if (res == false) {
     DEBUG0("get_target_func failed\n");
@@ -117,8 +120,11 @@ void driver_pass::instrument_main_func(Function * main_func) {
 
   //Record func ptr
   for (auto &Func : Mod->functions()) {
-    if (Func.size() == 0) { continue; }
-    Constant * func_name_const = gen_new_string_constant(Func.getName().str(), IRB);
+    if (Func.isIntrinsic()) { continue; }
+    std::string func_name = Func.getName().str();
+    if (func_name.find("__Replay__") != std::string::npos) { continue; }
+
+    Constant * func_name_const = gen_new_string_constant(func_name, IRB);
     Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
       , &Func, Int8PtrTy);
     IRB->CreateCall(record_func_ptr, {cast_val, func_name_const});

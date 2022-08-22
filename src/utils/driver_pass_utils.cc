@@ -16,8 +16,6 @@ FunctionCallee replay_func_ptr;
 FunctionCallee record_func_ptr;
 
 FunctionCallee replay_ptr_alloc_size;
-FunctionCallee replay_ptr_class_index;
-FunctionCallee replay_ptr_pointee_size;
 
 FunctionCallee update_class_ptr;
 
@@ -26,6 +24,9 @@ FunctionCallee keep_class_info;
 FunctionCallee __replay_fini;
 
 FunctionCallee class_replay;
+
+Constant * global_cur_class_index = NULL;
+Constant * global_cur_class_size = NULL;
 
 void make_stub(Function * F) {
   std::vector<BasicBlock *> BBs;
@@ -139,7 +140,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
     } else if (pointee_type == Int8Ty) {
       is_class_type = true;
       default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
-      class_name_const = gen_new_string_constant("i8*", IRB);
+      class_name_const = gen_new_string_constant("i8", IRB);
     }
 
     if (is_class_type) {
@@ -159,8 +160,8 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
 
     Value * class_idx = NULL;
     if (is_class_type) {
-      pointee_size_val = IRB->CreateCall(replay_ptr_pointee_size, {});
-      class_idx = IRB->CreateCall(replay_ptr_class_index, {});
+      pointee_size_val = IRB->CreateLoad(Int32Ty, global_cur_class_size);
+      class_idx = IRB->CreateLoad(Int32Ty, global_cur_class_index);
     }
     
     Instruction * ptr_bytesize = IRB->CreateCall(replay_ptr_alloc_size, {});
@@ -185,10 +186,9 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
 
     if (is_class_type) {
       Value * casted_result = IRB->CreateBitCast(result, Int8PtrTy);
-      std::vector<Value *> args1 {casted_result, index_phi, pointee_size_val};
-      Value * elem_ptr = IRB->CreateCall(update_class_ptr, args1);
-      std::vector<Value *> args {elem_ptr, class_idx};
-      IRB->CreateCall(class_replay, args);
+      Value * elem_ptr = IRB->CreateCall(update_class_ptr
+        , {casted_result, index_phi, pointee_size_val});
+      IRB->CreateCall(class_replay, {elem_ptr, class_idx});
     } else {
       Value * getelem_instr = IRB->CreateGEP(pointee_type, result, index_phi);
       insert_gep_replay_probe(getelem_instr);
@@ -312,8 +312,7 @@ void insert_struct_replay_probe_inner(Value * struct_ptr
   }
 
   IRB->restoreIP(cur_ip);
-  std::vector<Value *> replay_args {struct_ptr};
-  IRB->CreateCall(struct_replay, replay_args);
+  IRB->CreateCall(struct_replay, {struct_ptr});
 } 
 
 void insert_struct_replay_probe(Value * ptr, Type * typeptr) {
@@ -325,8 +324,8 @@ void insert_struct_replay_probe(Value * ptr, Type * typeptr) {
   } else {
     Value * casted
       = IRB->CreateCast(Instruction::CastOps::BitCast, ptr, Int8PtrTy);
-    std::vector<Value *> args { casted, ConstantInt::get(Int32Ty, search2->second.first)};
-    IRB->CreateCall(class_replay, args);
+    IRB->CreateCall(class_replay, {casted
+      , ConstantInt::get(Int32Ty, search2->second.first)});
   }
 
   return;
@@ -408,11 +407,6 @@ void get_driver_func_callees() {
 
   replay_ptr_alloc_size = Mod->getOrInsertFunction(get_link_name("Replay_ptr_alloc_size")
     , Int32Ty);
-
-  replay_ptr_class_index = Mod->getOrInsertFunction(
-    get_link_name("Replay_ptr_class_index"), Int32Ty);
-  replay_ptr_pointee_size = Mod->getOrInsertFunction(
-    get_link_name("Replay_ptr_pointee_size"), Int32Ty);
 
   replay_func_ptr = Mod->getOrInsertFunction(get_link_name("Replay_func_ptr")
     , Int8PtrTy);

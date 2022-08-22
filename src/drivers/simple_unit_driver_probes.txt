@@ -10,8 +10,6 @@ Replay_pointer
 Replay_ptr_alloc_size
 __record_func_ptr
 Replay_func_ptr
-Replay_ptr_class_index
-Replay_ptr_pointee_size
 __update_class_ptr
 __keep_class_info
 __replay_fini

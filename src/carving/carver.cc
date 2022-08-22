@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include "time.h"
 
-#define MAX_NUM_FILE 64
+#define MAX_NUM_FILE 32
 #define MINSIZE 3
 #define MAXSIZE 24
 #define CARV_PROB 100
@@ -30,6 +30,8 @@ static int carved_index = 0;
 
 //Function pointer names
 static map<void *, char *> func_ptrs;
+
+static map<void *, char> no_stub_funcs;
 
 //inputs, work as similar as function call stack
 static vector<FUNC_CONTEXT> inputs;
@@ -175,6 +177,14 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
 
 void __record_func_ptr(void * ptr, char * name) {
   func_ptrs.insert(ptr, name);
+}
+
+void __add_no_stub_func(void * ptr) {
+  no_stub_funcs.insert(ptr, 0);
+}
+
+bool __is_no_stub_func(void * ptr) {
+  return no_stub_funcs.find(ptr) != NULL;
 }
 
 void __Carv_func_ptr(void * ptr) {
@@ -462,7 +472,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
   }
 
-  skip_write = false;
+  //skip_write = false;
 
   if (skip_write) {
     idx = 0;

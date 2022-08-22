@@ -153,8 +153,7 @@ bool carver_pass::hookInstrs(Module &M) {
           AllocaInst * alloc_instr = *iter;
 
           Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
-          std::vector<Value *> args {casted_ptr};
-          IRB->CreateCall(remove_probe, args);          
+          IRB->CreateCall(remove_probe, {casted_ptr});          
         }
 
         //Insert fini
@@ -210,8 +209,7 @@ bool carver_pass::hookInstrs(Module &M) {
         AllocaInst * alloc_instr = *iter;
 
         Value * casted_ptr = IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
-        std::vector<Value *> args {casted_ptr};
-        IRB->CreateCall(remove_probe, args);
+        IRB->CreateCall(remove_probe, {casted_ptr});
       }
       //IRB->CreateCall(carv_dealloc_time_end, {});
 

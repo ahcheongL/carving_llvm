@@ -10,6 +10,8 @@ static map<void *, char *> func_ptrs;
 static vector<IVAR *> inputs;
 static vector<PTR> carved_ptrs;
 
+static map<int, char> replayed_ptr;
+
 void __driver_inputf_open(char ** argv) {
   char * inputfilename = argv[1];
   FILE * input_fp = fopen(inputfilename, "r");
@@ -44,7 +46,8 @@ void __driver_inputf_open(char ** argv) {
         }
 
         *type_str = 0;
-        line[len - 1] = 0;
+        len = strlen(type_str + 1);
+        type_str[len] = 0;
 
         int ptr_size = atoi(size_str + 1);
 
@@ -66,9 +69,8 @@ void __driver_inputf_open(char ** argv) {
       char * index_str = strchr(value_str + 1, ':');
 
       *value_str = 0;
-      line[len - 1] = 0;
 
-      type_str ++;
+      type_str += 1;
       if (!strncmp(type_str, "CHAR", 4)) {
         char value = atoi(value_str + 1);
         VAR<char> * inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);
@@ -102,6 +104,8 @@ void __driver_inputf_open(char ** argv) {
         inputs.push_back((IVAR *) inputv);
       } else if (!strncmp(type_str, "FUNCPTR", 7)) {
         char * func_name = value_str + 1;
+        len = strlen(func_name);
+        func_name[len - 1] = 0;
         int idx = 0;
         int num_funcs = func_ptrs.size();
         for (idx = 0; idx < num_funcs; idx++) {
@@ -239,8 +243,8 @@ double Replay_double() {
 }
 
 static int cur_alloc_size = 0;
-static int cur_class_index = -1;
-static int cur_pointee_size = -1;
+int __replay_cur_class_index = -1;
+int __replay_cur_pointee_size = -1;
 
 void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee_type_name) {
 
@@ -249,7 +253,7 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
     //fprintf(stderr, "Replay error : Invalid input type\n");
     //std::abort();
     cur_alloc_size = 0;
-    cur_pointee_size = -1;
+    __replay_cur_pointee_size = -1;
     return 0;
   }
 
@@ -257,20 +261,20 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
 
   if (elem_ptr->type == INPUT_TYPE::NULLPTR) {
     cur_alloc_size = 0;
-    cur_pointee_size = -1;
+    __replay_cur_pointee_size = -1;
     return 0;
   }
 
   if (elem_ptr->type == INPUT_TYPE::UNKNOWN_PTR) {
     cur_alloc_size = 0;
-    cur_pointee_size = -1;
+    __replay_cur_pointee_size = -1;
     return 0;
   }
 
   if (elem_ptr->type != INPUT_TYPE::POINTER) {
     //fprintf(stderr, "Replay error : Invalid input type\n");
     cur_alloc_size = 0;
-    cur_pointee_size = -1;
+    __replay_cur_pointee_size = -1;
     return 0;
     //std::abort();
   }
@@ -283,9 +287,17 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
 
   if (ptr_offset != 0) {
     cur_alloc_size = 0;
-    cur_pointee_size = -1;
+    __replay_cur_pointee_size = -1;
     return (char *) carved_ptr->addr + ptr_offset;
   }
+
+  char * search = replayed_ptr.find(ptr_index);
+  if (search != NULL) {
+    cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return (char *) carved_ptr->addr;
+  }
+  replayed_ptr.insert(ptr_index, 0);
 
   cur_alloc_size = carved_ptr->alloc_size;
 
@@ -295,8 +307,8 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
 
   const char * type_name = carved_ptr->pointee_type;
 
-  cur_pointee_size = default_pointee_size;
-  cur_class_index = default_idx;
+  __replay_cur_pointee_size = default_pointee_size;
+  __replay_cur_class_index = default_idx;
 
   if (!strcmp(type_name, pointee_type_name)) {
     return carved_ptr->addr;
@@ -308,8 +320,8 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   for (idx = 0; idx < num_class_info; idx++) {
     auto class_info_elem = class_info.get_by_idx(idx);
     if (!strcmp(type_name, class_info_elem->key)) {
-      cur_pointee_size = class_info_elem->elem.size;
-      cur_class_index = class_info_elem->elem.class_index;
+      __replay_cur_pointee_size = class_info_elem->elem.size;
+      __replay_cur_class_index = class_info_elem->elem.class_index;
       break;
     }
   }
@@ -321,21 +333,15 @@ int Replay_ptr_alloc_size() {
   return cur_alloc_size;
 }
 
-int Replay_ptr_class_index() {
-  return cur_class_index;
-}
-
-int Replay_ptr_pointee_size() {
-  return cur_pointee_size;
-}
-
 void * Replay_func_ptr() {
   auto elem = inputs[cur_input_idx++];
 
-  if ((elem == NULL) || ((*elem)->type != INPUT_TYPE::FUNCPTR)) {
+  if ((elem == NULL)
+    || (((*elem)->type != INPUT_TYPE::FUNCPTR)
+        &&  ((*elem)->type != INPUT_TYPE::NULLPTR))) {
     //fprintf(stderr, "Replay error : Invalid input type\n");
-    return 0;
     //std::abort();
+    return 0;
   }
 
   IVAR * elem_ptr = *elem;

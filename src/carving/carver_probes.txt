@@ -26,3 +26,5 @@ __carv_ready
 __carv_depth
 __carv_time_begin
 __carv_time_end
+__add_no_stub_func
+__is_no_stub_func

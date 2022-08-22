@@ -19,8 +19,6 @@ extern FunctionCallee replay_func_ptr;
 extern FunctionCallee record_func_ptr;
 
 extern FunctionCallee replay_ptr_alloc_size;
-extern FunctionCallee replay_ptr_class_index;
-extern FunctionCallee replay_ptr_pointee_size;
 
 extern FunctionCallee update_class_ptr;
 
@@ -42,4 +40,7 @@ void insert_struct_replay_probe_inner(Value*, Type *);
 void insert_struct_replay_probe(Value*, Type *);
 
 void gen_class_replay();
+
+extern Constant * global_cur_class_index;
+extern Constant * global_cur_class_size;
 #endif

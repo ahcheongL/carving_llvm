@@ -25,7 +25,7 @@ class carver_pass : public ModulePass {
   std::set<std::string> instrument_func_set;
   void get_instrument_func_set();
   
-  void Insert_return_val_probe(Instruction *, std::string);
+  void Insert_return_val_probe(Instruction *, Function *);
   
   void insert_global_carve_probe(Function * F, BasicBlock * BB);
 
@@ -91,11 +91,49 @@ void carver_pass::gen_class_carver() {
   return;
 }
 
-void carver_pass::Insert_return_val_probe(Instruction * IN, std::string callee_name) {
+void carver_pass::Insert_return_val_probe(Instruction * IN, Function * callee) {
+  std::string callee_name;
+  if (callee != NULL) {
+    if (callee->isDebugInfoForProfiling()) { return; }
+    callee_name = callee->getName().str();
+    if (callee_name == "cxa_allocate_exception") { return; }
+    if (callee_name == "cxa_throw") { return; }
+    if (callee_name == "main") { return; }
+    if (callee_name == "__cxx_global_var_init") { return; }
+    if (callee_name.find("_GLOBAL__sub_I_") != std::string::npos) { return; }
+    if (callee->isIntrinsic()) { return; }
+    if (callee->size() == 0) { return; }
+  }
+
   IRB->SetInsertPoint(IN->getNextNonDebugInstruction());
   
   Type * ret_type = IN->getType();
   if (ret_type != VoidTy) {
+    if (callee == NULL) {
+      //function ptr call, need to check if it will be a stub or not.
+      BasicBlock * cur_block = IRB->GetInsertBlock();
+      BasicBlock * new_end_block = cur_block->splitBasicBlock(&(*IRB->GetInsertPoint()));
+
+      BasicBlock * check_carve_block = BasicBlock::Create(*Context, "check_carve", cur_block->getParent(), new_end_block);
+      IRB->SetInsertPoint(check_carve_block);
+      IRB->CreateBr(new_end_block);
+      
+      IRB->SetInsertPoint(cur_block->getTerminator());
+
+      CallInst * call_inst = dyn_cast<CallInst>(IN);
+      Value * callee_val = call_inst->getCalledOperand();
+
+      Value * casted_callee = IRB->CreateCast(Instruction::CastOps::BitCast
+        , callee_val, Int8PtrTy);
+      Value * is_no_stub_val = IRB->CreateCall(is_no_stub, {casted_callee});
+      Value * is_no_stub_bool = IRB->CreateICmpEQ(is_no_stub_val, ConstantInt::get(Int8Ty, 1));
+      Instruction * to_check_br = IRB->CreateCondBr(is_no_stub_bool, new_end_block, check_carve_block);
+      to_check_br->removeFromParent();
+      ReplaceInstWithInst(cur_block->getTerminator(), to_check_br);
+
+      IRB->SetInsertPoint(check_carve_block->getTerminator());
+    }
+
     insert_check_carve_ready();
 
     Constant * name_const = gen_new_string_constant("\"" + callee_name + "\"_ret", IRB);
@@ -116,10 +154,12 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
 
       Type * const_type = glob_iter->getType();
       assert(const_type->isPointerTy());
+      PointerType * ptr_type = dyn_cast<PointerType>(const_type);
+      Type * pointee_type = ptr_type->getPointerElementType();
       Constant * glob_name_const = gen_new_string_constant(glob_name, IRB);
+      Value * glob_val = IRB->CreateLoad(pointee_type, glob_iter);
       IRB->CreateCall(carv_name_push, {glob_name_const});
-
-      cur_block = insert_carve_probe(glob_iter, cur_block);
+      cur_block = insert_carve_probe(glob_val, cur_block);
       IRB->CreateCall(carv_name_pop, {});
     }
   }
@@ -189,7 +229,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
           //Insert fini
           if (func_name == "main") {
-            IRB->CreateCall(__carv_fini, std::vector<Value *>());
+            IRB->CreateCall(__carv_fini, {});
           }
         }
         Insert_mem_func_call_probe(call_instr, callee_name);
@@ -300,29 +340,31 @@ bool carver_pass::hookInstrs(Module &M) {
     for (auto call_instr : call_instrs) {
       //insert new/free probe, return value probe
       Function * callee = call_instr->getCalledFunction();
-      if ((callee == NULL) || (callee->isDebugInfoForProfiling())) { continue; }
+      Insert_return_val_probe(call_instr, callee);
+      if (callee != NULL) {
+        if (callee->isDebugInfoForProfiling()) { continue; }
 
-      std::string callee_name = callee->getName().str();
-      if (callee_name == "__cxa_allocate_exception") { continue; }
+        std::string callee_name = callee->getName().str();
+        if (callee_name == "__cxa_allocate_exception") { continue; }
 
-      if (callee_name == "__cxa_throw") {
-        //exception handling
-        IRB->SetInsertPoint(call_instr);
+        if (callee_name == "__cxa_throw") {
+          //exception handling
+          IRB->SetInsertPoint(call_instr);
 
-        Constant * func_name_const = gen_new_string_constant(func_name, IRB);
-        IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});    
+          Constant * func_name_const = gen_new_string_constant(func_name, IRB);
+          IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});    
 
-        //IRB->CreateCall(carv_time_begin, {});
-        insert_dealloc_probes();
-        //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
+          //IRB->CreateCall(carv_time_begin, {});
+          insert_dealloc_probes();
+          //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
 
-        //Insert fini
-        if (func_name == "main") {
-          IRB->CreateCall(__carv_fini, std::vector<Value *>());
+          //Insert fini
+          if (func_name == "main") {
+            IRB->CreateCall(__carv_fini, {});
+          }
+        } else {
+          Insert_mem_func_call_probe(call_instr, callee_name);
         }
-      } else {
-        Insert_return_val_probe(call_instr, callee_name);
-        Insert_mem_func_call_probe(call_instr, callee_name);
       }
     }
 
@@ -343,7 +385,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
       //Insert fini
       if (func_name == "main") {
-        IRB->CreateCall(__carv_fini, std::vector<Value *>());
+        IRB->CreateCall(__carv_fini, {});
       }
     }
 
@@ -414,7 +456,7 @@ void carver_pass::get_instrument_func_set() {
     //TODO
     if (F.isVarArg()) { continue; }
 
-    //if (func_name.find("ares") == std::string::npos) { continue; }
+    if (func_name.find("ares") == std::string::npos) { continue; }
     
     instrument_func_set.insert(func_name);
     outfile << func_name << "\n";

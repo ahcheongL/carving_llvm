@@ -9,6 +9,9 @@ extern FunctionCallee mem_allocated_probe;
 extern FunctionCallee remove_probe;
 
 extern FunctionCallee record_func_ptr;
+extern FunctionCallee add_no_stub_func;
+extern FunctionCallee is_no_stub;
+
 extern FunctionCallee argv_modifier;
 extern FunctionCallee __carv_fini;
 

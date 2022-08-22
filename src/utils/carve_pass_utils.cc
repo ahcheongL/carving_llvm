@@ -3,7 +3,11 @@
 
 FunctionCallee mem_allocated_probe;
 FunctionCallee remove_probe;
+
 FunctionCallee record_func_ptr;
+FunctionCallee add_no_stub_func;
+FunctionCallee is_no_stub;
+
 FunctionCallee argv_modifier;
 FunctionCallee __carv_fini;
 FunctionCallee carv_char_func;
@@ -38,8 +42,14 @@ void get_carving_func_callees() {
     get_link_name("__mem_allocated_probe"), VoidTy, Int8PtrTy, Int32Ty, Int8PtrTy);
   remove_probe = Mod->getOrInsertFunction(get_link_name("__remove_mem_allocated_probe")
     , VoidTy, Int8PtrTy);
+
   record_func_ptr = Mod->getOrInsertFunction(get_link_name("__record_func_ptr"),
     VoidTy, Int8PtrTy, Int8PtrTy);
+  add_no_stub_func = Mod->getOrInsertFunction(get_link_name("__add_no_stub_func"),
+    VoidTy, Int8PtrTy);
+  is_no_stub = Mod->getOrInsertFunction(get_link_name("__is_no_stub_func"),
+    Int8Ty, Int8PtrTy);
+
   argv_modifier = Mod->getOrInsertFunction(get_link_name("__carver_argv_modifier")
     , VoidTy, Int32PtrTy, Int8PtrPtrPtrTy);
   __carv_fini = Mod->getOrInsertFunction(get_link_name("__carv_FINI")
@@ -271,10 +281,6 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F) {
     AllocaInst * argc_ptr = IRB->CreateAlloca(Int32Ty);
     AllocaInst * argv_ptr = IRB->CreateAlloca(Int8PtrPtrTy);
 
-    std::vector<Value *> argv_modifier_args;
-    argv_modifier_args.push_back(argc_ptr);
-    argv_modifier_args.push_back(argv_ptr);
-
     new_argc = IRB->CreateLoad(Int32Ty, argc_ptr);
     new_argv = IRB->CreateLoad(Int8PtrPtrTy, argv_ptr);
 
@@ -286,7 +292,7 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F) {
     IRB->CreateStore(argc, argc_ptr);
     IRB->CreateStore(argv, argv_ptr);
 
-    IRB->CreateCall(argv_modifier, argv_modifier_args);
+    IRB->CreateCall(argv_modifier, {argc_ptr, argv_ptr});
 
     Instruction * new_argv_load_instr = dyn_cast<Instruction>(new_argv);
 
@@ -312,12 +318,23 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F) {
 
   //Record func ptr
   for (auto &Func : Mod->functions()) {
-    if (Func.size() == 0) { continue; }
-    Constant * func_name_const = gen_new_string_constant(Func.getName().str(), IRB);
+    bool is_no_stub = false;
+    if (Func.isIntrinsic()) { continue; }
+    if (!Func.size()) { is_no_stub = true; }
+    
+    std::string func_name = Func.getName().str();
+    Constant * func_name_const = gen_new_string_constant(func_name, IRB);
     Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
-      , (Value *) &Func, Int8PtrTy);
-    std::vector<Value *> probe_args {cast_val, func_name_const};
-    IRB->CreateCall(record_func_ptr, probe_args);
+      , &Func, Int8PtrTy);
+    IRB->CreateCall(record_func_ptr, {cast_val, func_name_const});
+
+    if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { is_no_stub = true; }
+    if (func_name == "__cxx_global_var_init") { is_no_stub = true; }
+    if (func_name == "main") { is_no_stub = true; }
+
+    if (!is_no_stub) { continue; }
+
+    IRB->CreateCall(add_no_stub_func, {cast_val});
   }
 
   //Record class type string constants
@@ -597,8 +614,8 @@ void insert_struct_carve_probe(Value * struct_ptr, Type * type) {
   } else {
     Value * casted
       = IRB->CreateCast(Instruction::CastOps::BitCast, struct_ptr, Int8PtrTy);
-    std::vector<Value *> args { casted, ConstantInt::get(Int32Ty, search2->second.first)};
-    IRB->CreateCall(class_carver, args);
+    IRB->CreateCall(class_carver, {casted
+      , ConstantInt::get(Int32Ty, search2->second.first)});
   }
 
   return;
@@ -722,8 +739,7 @@ void insert_struct_carve_probe_inner(Value * struct_ptr, Type * type) {
   }
 
   IRB->restoreIP(cur_ip);
-  std::vector<Value *> carver_args {struct_ptr};
-  IRB->CreateCall(struct_carver, carver_args);
+  IRB->CreateCall(struct_carver, {struct_ptr});
   return;
 }
 

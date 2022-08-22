@@ -27,7 +27,7 @@ with open ("make_driver.sh", "w") as f:
   f.write("#!/bin/bash\n")
   idx = 0
   for fn in funcs:
-    f.write("/home/cheong/carving_llvm/bin/simple_unit_driver_pass.py arestest.bc {} -lstdc++ -lm -lpthread &\n".format(fn))
+    f.write("/home/cheong/carving_llvm/bin/simple_unit_driver_pass.py curl.bc {} -lssl -lcrypto -lz -lpthread -ldl &\n".format(fn))
     idx += 1
 
     if idx == 10:
@@ -42,7 +42,7 @@ with open ("run_tests.sh", "w") as f:
     if "call_seq" in fn:
       continue
     func = "_".join(fn.split("/")[-1].split("_")[:-2])
-    f.write("./arestest.{}.driver {} &\n".format(func, fn))
+    f.write("./curl.{}.driver {} &\n".format(func, fn))
 
     idx += 1
 
