@@ -2,8 +2,12 @@
 #include<stdlib.h>
 
 
+int goo (int * ptr);
+
 int foo (int a , int b) {
-  return a + b;
+  int arr[5];
+  arr[4] = 30;
+  return a + b + goo(arr);
 }
 
 int goo (int * ptr) {

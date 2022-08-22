@@ -40,7 +40,7 @@
 #define DEBUGDUMP(x)
 #endif
 
-#define STRUCT_CARV_DEPTH 5
+#define STRUCT_CARV_DEPTH 100
 
 using namespace llvm;
 

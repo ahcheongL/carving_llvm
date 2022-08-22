@@ -27,8 +27,6 @@ all: lib/simple_unit_driver_pass.so lib/simple_unit_driver.a lib/simple_unit_dri
 all: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 all: lib/carve_type_pass.so
 
-
-
 lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@

@@ -28,6 +28,19 @@ FunctionCallee __replay_fini;
 FunctionCallee class_replay;
 
 void make_stub(Function * F) {
+  std::vector<BasicBlock *> BBs;
+  for (auto &BB : F->getBasicBlockList()) {
+    BBs.push_back(&BB);
+  }
+
+  for (auto BB : BBs) {
+    BB->dropAllReferences();
+  }
+
+  for (auto BB : BBs) {
+    BB->eraseFromParent();
+  }
+  
   BasicBlock * entry_block = BasicBlock::Create(*Context, "entry", F, &F->getEntryBlock());
   IRB->SetInsertPoint(entry_block);
 
@@ -52,19 +65,6 @@ void make_stub(Function * F) {
       IRB->CreateRet(replay_res);
     }
   }
-
-  std::vector<BasicBlock *> BBs;
-  for (auto &BB : F->getBasicBlockList()) {
-    BBs.push_back(&BB);
-  }
-
-  for (auto BB : BBs) {
-    BB->dropAllReferences();
-  }
-
-  for (auto BB : BBs) {
-    BB->eraseFromParent();
-  }
 }
 
 Value * insert_replay_probe (Type * typeptr, Value * ptr) {
@@ -83,6 +83,9 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
     result = IRB->CreateCall(replay_long_func, {});
   } else if (typeptr == Int128Ty) {
     result = IRB->CreateCall(replay_longlong_func, {});
+  } else if (typeptr->isIntegerTy()) {
+    result = IRB->CreateCall(replay_longlong_func, {});
+    result = IRB->CreateCast(Instruction::CastOps::Trunc, result, typeptr);
   } else if (typeptr == FloatTy) {
     result = IRB->CreateCall(replay_float_func, {});
   } else if (typeptr == DoubleTy) {
@@ -193,7 +196,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
 
     Value * index_update_instr
       = IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
-    index_phi->addIncoming(index_update_instr, loopblock);
+    index_phi->addIncoming(index_update_instr, IRB->GetInsertBlock());
 
     Value * cmp_instr2 = IRB->CreateICmpSLT(index_update_instr, ptr_size);
     

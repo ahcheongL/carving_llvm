@@ -36,7 +36,7 @@ outname = ".".join(inputbc.split(".")[:-1]) + ".carv"
 
 cmd = ["clang++", "--ld-path=" + ld_path
   , "-fno-experimental-new-pass-manager"
-  #, "-ggdb", "-O0"
+#  , "-ggdb", "-O0"
 #  , "-fsanitize=address"
   , "-O2"
 #  , "-static-libgcc", "-nostdinc", "-L", "/home/cheong/carving_exp/musl-1.2.3/gclang_install/lib"

@@ -222,3 +222,5 @@ static void registerPass(const PassManagerBuilder &,
 static RegisterStandardPasses RegisterPass(
     PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
+static RegisterStandardPasses RegisterPassO0(
+    PassManagerBuilder::EP_EnabledOnOptLevel0, registerPass);

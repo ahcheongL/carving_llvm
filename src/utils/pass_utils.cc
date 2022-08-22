@@ -7,8 +7,6 @@ const DataLayout * DL;
 IRBuilder<> *IRB;
 DebugInfoFinder DbgFinder;
 
-Constant * const_carve_ready = NULL;
-
 void initialize_pass_contexts(Module &M) {
   LLVMContext &              C = M.getContext();
   const DataLayout & dataLayout = M.getDataLayout();
@@ -35,6 +33,9 @@ static std::map<std::string, Constant *> new_string_globals;
 static std::map<std::string, std::string> probe_link_names;
 
 std::string get_type_str(Type * type) {
+  if (type->isStructTy()) {
+    return type->getStructName().str();
+  }
   std::string typestr;
   raw_string_ostream typestr_stream(typestr);
   type->print(typestr_stream);
@@ -199,7 +200,6 @@ static void add_global_use(Use & op
     std::string glob_name = global->getName().str();
     if (glob_name.size() == 0) { return; }
 
-    llvm::errs() << "Found global variable " << glob_name << "\n";
     global_var_uses[F].push_back(global);
     inserted->insert(global);
   } else if (isa<ConstantExpr>(op)) {

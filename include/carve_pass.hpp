@@ -32,8 +32,6 @@ extern FunctionCallee carv_func_ret;
 
 extern FunctionCallee update_carved_ptr_idx;
 extern FunctionCallee keep_class_name;
-extern FunctionCallee get_class_idx;
-extern FunctionCallee get_class_size;
 extern FunctionCallee class_carver;
 
 extern FunctionCallee carv_time_begin;
@@ -59,6 +57,8 @@ BasicBlock * insert_array_carve_probe(Value * arr_ptr_val, BasicBlock * cur_bloc
 
 void insert_check_carve_ready();
 
-extern Constant * const_carve_ready;
+extern Constant * global_carve_ready;
+extern Constant * global_cur_class_idx;
+extern Constant * global_cur_class_size;
 
 #endif

@@ -212,7 +212,6 @@ bool driver_pass::hookInstrs(Module &M) {
   auto search = global_var_uses.find(target_func);
   if (search != global_var_uses.end()) {
     for (auto glob_iter : search->second) {
-      llvm::errs() << "target function using glob : " << glob_iter->getName().str() << "\n";
       Type * val_type = glob_iter->getType();
       auto replay_res = insert_replay_probe(val_type, cur_block);
       cur_block = replay_res.first;

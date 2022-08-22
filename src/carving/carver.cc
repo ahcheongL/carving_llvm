@@ -7,7 +7,7 @@
 #include "time.h"
 
 #define MAX_NUM_FILE 64
-#define MINSIZE 2
+#define MINSIZE 3
 #define MAXSIZE 24
 #define CARV_PROB 100
 #define CARV_PROB_TYPE 100
@@ -38,21 +38,21 @@ static vector<PTR> * cur_carved_ptrs = NULL;
 
 //memory info
 static map<void *, struct typeinfo> alloced_ptrs;
-static vector<char *> class_names;
-static map<char *, int> class_size;
 
 //variable naming
 static vector<char * > __carv_base_names;
 static vector<bool> __need_to_free_carv_base_names;
 
-static int cur_class_index = -1;
-static int cur_class_size = -1;
+int __carv_cur_class_index = -1;
+int __carv_cur_class_size = -1;
 
 bool __carv_ready = false;
 char __carv_depth = 0;
 
 static clock_t carv_begin;
 static clock_t carv_end;
+
+static map<char *, classinfo> class_info;
 
 static double alloc_total_time = 0;
 static double dealloc_total_time = 0;
@@ -142,15 +142,18 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
     if ((alloced_addr <= ptr) && (ptr < alloced_addr_end)) {
       int size = alloced_addr_end - ((char *) ptr);
       int new_carved_ptr_index = cur_carved_ptrs->size();
+
+      __carv_cur_class_index = default_idx;
+      __carv_cur_class_size = default_size;
       
       char * name_ptr = alloced_type->type_name;
       if (name_ptr != NULL) {
-        cur_class_index = class_names.get_idx(name_ptr);
-        cur_class_size = *class_size.find(name_ptr);
-        type_name = name_ptr;
-      } else {
-        cur_class_index = default_idx;
-        cur_class_size = default_size;
+        auto search = class_info.find(name_ptr);
+        if ((search != NULL) && ((size % search->size) == 0)) {
+          __carv_cur_class_index = search->class_index;
+          __carv_cur_class_size = search->size;
+          type_name = name_ptr;
+        }
       }
 
       cur_carved_ptrs->push_back(PTR(ptr, type_name, size));
@@ -202,17 +205,17 @@ void __carv_ptr_name_update(int idx) {
   return;
 }
 
-void __keep_class_name(char * name, int size) {
-  class_names.push_back(name);
-  class_size.insert(name, size);
+void __keep_class_info(char * class_name, int size, int index) {
+  classinfo tmp(index, size);
+  class_info.insert(class_name, tmp);
 }
 
 int __get_class_idx() {
-  return cur_class_index;
+  return __carv_cur_class_index;
 }
 
 int __get_class_size() {
-  return cur_class_size;
+  return __carv_cur_class_size;
 }
 
 void __carv_name_push(char * name) {
@@ -403,9 +406,11 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
       __carve_cur_inputs = NULL;
       cur_carved_ptrs = NULL;
+      __carv_ready = false;
     } else {
       __carve_cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
+      __carv_ready = true;
     }
     return;
   }
@@ -470,9 +475,11 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
       __carve_cur_inputs = NULL;
       cur_carved_ptrs = NULL;
+      __carv_ready = false;
     } else {
       __carve_cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
+      __carv_ready = true;
     }
 
     carv_end = clock();
@@ -481,6 +488,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
 
     carv_total_time += curtime;
 
+    /*
     if (curtime > 1.0) {
       fprintf(stderr, "****Skipping returning function %s, # of inputs : %d, time : %0.4fs\n"
         , func_name, num_inputs, curtime);
@@ -488,6 +496,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       fprintf(stderr, "Skipping Returning function %s, # of inputs : %d, time : %0.4fs\n"
         , func_name, num_inputs, curtime);
     }
+    */
 
     num_excluded++;
     return;
@@ -513,9 +522,11 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
       __carve_cur_inputs = NULL;
       cur_carved_ptrs = NULL;
+      __carv_ready = false;
     } else {
       __carve_cur_inputs = &(next_ctx->inputs);
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
+      __carv_ready = true;
     }
     return;
   }
@@ -592,9 +603,11 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
   if ((next_ctx == NULL) || (!next_ctx->is_carved)) {
     __carve_cur_inputs = NULL;
     cur_carved_ptrs = NULL;
+    __carv_ready = false;
   } else {
     __carve_cur_inputs = &(next_ctx->inputs);
     cur_carved_ptrs = &(next_ctx->carved_ptrs);
+    __carv_ready = true;
   }
 
   carv_end = clock();
@@ -603,6 +616,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
 
   carv_total_time += curtime;
 
+  /*
   if (curtime > 1.0) {
     fprintf(stderr, "****Returning function %s, # of inputs : %d, time : %0.4fs\n"
       , func_name, num_inputs, curtime);
@@ -610,6 +624,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     fprintf(stderr, "Returning function %s, # of inputs : %d, time : %0.4fs\n"
       , func_name, num_inputs, curtime);
   }
+  */
   
   return;
 }

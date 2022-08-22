@@ -3,7 +3,7 @@
 
 class Person {
 public :
-   Person() {}
+   Person(): width(128) {}
    int getWidth() { return 0;}
    void setWidth(int w) { return; }
 protected:
@@ -44,6 +44,8 @@ int main(int argc, char * argv[]) {
    Ma mom;
    Child child;
    person_ptr = &mom;
+
+   fprintf(stderr, "mon ptr : %p, person_ptr : %p\n", &mom, person_ptr);
    person_ptr->setWidth(40);
    child.getHeight();
    int width1 = foo (person_ptr);

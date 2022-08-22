@@ -133,7 +133,9 @@ bool carver_pass::hookInstrs(Module &M) {
   get_llvm_types();
   get_carving_func_callees();
 
-  const_carve_ready = Mod->getOrInsertGlobal("__carv_ready", Int8Ty);
+  global_carve_ready = Mod->getOrInsertGlobal("__carv_ready", Int8Ty);
+  global_cur_class_idx = Mod->getOrInsertGlobal("__carv_cur_class_index", Int32Ty);
+  global_cur_class_size = Mod->getOrInsertGlobal("__carv_cur_class_size", Int32Ty);
 
   get_class_type_info();
 
@@ -150,6 +152,8 @@ bool carver_pass::hookInstrs(Module &M) {
     if (&F == class_carver.getCallee()) { continue; }
 
     std::string func_name = F.getName().str();
+    if (func_name.find("__Carv_") != std::string::npos) { continue; }
+
     if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
       //Just insert memory tracking probes
       std::vector<CallInst *> call_instrs;
@@ -179,9 +183,9 @@ bool carver_pass::hookInstrs(Module &M) {
           //exception handling
           IRB->SetInsertPoint(call_instr);
 
-          IRB->CreateCall(carv_time_begin, {});
+          //IRB->CreateCall(carv_time_begin, {});
           insert_dealloc_probes();
-          IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
+          //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
 
           //Insert fini
           if (func_name == "main") {
@@ -194,9 +198,9 @@ bool carver_pass::hookInstrs(Module &M) {
       for (auto ret_instr : ret_instrs) {
         IRB->SetInsertPoint(ret_instr);
 
-        IRB->CreateCall(carv_time_begin, {});
+        //IRB->CreateCall(carv_time_begin, {});
         insert_dealloc_probes();
-        IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
+        //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
       }
 
       tracking_allocas.clear();
@@ -248,9 +252,9 @@ bool carver_pass::hookInstrs(Module &M) {
       for (auto ret_instr : ret_instrs) {
         IRB->SetInsertPoint(ret_instr);
 
-        IRB->CreateCall(carv_time_begin, {});
+        //IRB->CreateCall(carv_time_begin, {});
         insert_dealloc_probes();
-        IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
+        //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
       }
 
       tracking_allocas.clear();
@@ -263,7 +267,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
       BasicBlock * insert_block = IRB->GetInsertBlock();
 
-      IRB->CreateCall(carv_time_begin, {});
+      //IRB->CreateCall(carv_time_begin, {});
 
       for (auto &arg_iter : F.args()) {
         Value * func_arg = &arg_iter;
@@ -285,7 +289,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
       insert_global_carve_probe(&F, insert_block);
 
-      IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 0)});
+      //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 0)});
     }
 
     IRB->CreateCall(update_carved_ptr_idx, {});
@@ -308,9 +312,9 @@ bool carver_pass::hookInstrs(Module &M) {
         Constant * func_name_const = gen_new_string_constant(func_name, IRB);
         IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});    
 
-        IRB->CreateCall(carv_time_begin, {});
+        //IRB->CreateCall(carv_time_begin, {});
         insert_dealloc_probes();
-        IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
+        //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
 
         //Insert fini
         if (func_name == "main") {
@@ -329,13 +333,13 @@ bool carver_pass::hookInstrs(Module &M) {
       //Write carved result
       Constant * func_name_const = gen_new_string_constant(func_name, IRB);
 
-      IRB->CreateCall(carv_time_begin, {});
+      //IRB->CreateCall(carv_time_begin, {});
       IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});
-      IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 3)});
+      //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 3)});
 
-      IRB->CreateCall(carv_time_begin, {});
+      //IRB->CreateCall(carv_time_begin, {});
       insert_dealloc_probes();
-      IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
+      //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
 
       //Insert fini
       if (func_name == "main") {
@@ -402,8 +406,6 @@ void carver_pass::get_instrument_func_set() {
 
   for (auto &F : Mod->functions()) {
 
-    llvm::errs() << "Function: " << F.getName() << ", size : " << F.size() << "\n";
-
     if (F.isIntrinsic() || !F.size()) { continue; }
     std::string func_name = F.getName().str();
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue;}
@@ -428,24 +430,17 @@ void carver_pass::get_instrument_func_set() {
 
 // static RegisterPass<carver_pass> X("carve", "Carve pass", false , false);
 
-// static RegisterStandardPasses Y(
-//     PassManagerBuilder::EP_EarlyAsPossible,
-//     [](const PassManagerBuilder &,
-//        legacy::PassManagerBase &PM) { PM.add(new carver_pass()); });
-
-
 static void registerPass(const PassManagerBuilder &,
     legacy::PassManagerBase &PM) {
 
   auto p = new carver_pass();
   PM.add(p);
-
 }
 
 static RegisterStandardPasses RegisterPass(
     PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
-// static RegisterStandardPasses RegisterPass0(
+// static RegisterStandardPasses RegisterPassO0(
 //     PassManagerBuilder::EP_EnabledOnOptLevel0, registerPass);
 
 // static RegisterStandardPasses RegisterPassLTO(
