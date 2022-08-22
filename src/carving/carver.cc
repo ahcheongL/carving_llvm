@@ -207,10 +207,6 @@ void __keep_class_name(char * name, int size) {
   class_size.insert(name, size);
 }
 
-char * __update_class_ptr(char * ptr, int idx, int size) {
-  return ptr + (idx * size);
-}
-
 int __get_class_idx() {
   return cur_class_index;
 }

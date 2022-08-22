@@ -87,49 +87,6 @@ extern PointerType *DoublePtrTy;
 
 void get_llvm_types();
 
-extern FunctionCallee mem_allocated_probe;
-extern FunctionCallee remove_probe;
-extern FunctionCallee record_func_ptr;
-extern FunctionCallee argv_modifier;
-extern FunctionCallee __carv_fini;
-extern FunctionCallee strlen_callee;
-extern FunctionCallee carv_char_func;
-extern FunctionCallee carv_short_func;
-extern FunctionCallee carv_int_func;
-extern FunctionCallee carv_long_func;
-extern FunctionCallee carv_longlong_func;
-extern FunctionCallee carv_float_func;
-extern FunctionCallee carv_double_func;
-extern FunctionCallee carv_ptr_func;
-extern FunctionCallee carv_ptr_name_update;
-extern FunctionCallee struct_name_func;
-extern FunctionCallee carv_name_push;
-extern FunctionCallee carv_name_pop;
-extern FunctionCallee carv_func_ptr;
-extern FunctionCallee carv_func_call;
-extern FunctionCallee carv_func_ret;
-extern FunctionCallee update_carved_ptr_idx;
-extern FunctionCallee keep_class_name;
-extern FunctionCallee get_class_idx;
-extern FunctionCallee get_class_size;
-extern FunctionCallee class_carver;
-extern FunctionCallee update_class_ptr;
-extern FunctionCallee carv_time_begin;
-extern FunctionCallee carv_time_end;
-
-void get_carving_func_callees();
-
-extern std::vector<AllocaInst *> tracking_allocas;
-void Insert_alloca_probe(BasicBlock &);
-bool Insert_mem_func_call_probe(Instruction *, std::string);
-void Insert_carving_main_probe(BasicBlock &, Function &);
-
-BasicBlock * insert_carve_probe(Value *, BasicBlock *);
-
-extern std::set<std::string> struct_carvers;
-void insert_struct_carve_probe(Value *, Type *);
-void insert_struct_carve_probe_inner(Value *, Type *);
-
 extern Module * Mod;
 extern LLVMContext * Context;
 extern const DataLayout * DL;
@@ -139,19 +96,5 @@ extern DebugInfoFinder DbgFinder;
 void initialize_pass_contexts(Module &);
 
 void construct_ditype_map();
-
-extern unsigned int num_func_tracked;
-
-BasicBlock * insert_gep_carve_probe(Value * gep_val, BasicBlock * cur_block);
-BasicBlock * insert_array_carve_probe(Value * arr_ptr_val, BasicBlock * cur_block);
-
-extern std::set<std::string> no_carve_funcs;
-extern std::set<std::string> no_instrument_funcs;
-
-void insert_check_carve_ready();
-
-void insert_dealloc_probes();
-
-extern Constant * const_carve_ready;
 
 #endif

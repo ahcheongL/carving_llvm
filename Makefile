@@ -27,9 +27,11 @@ all: lib/simple_unit_driver_pass.so lib/simple_unit_driver.a lib/simple_unit_dri
 all: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 all: lib/carve_type_pass.so
 
-lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/pass.hpp src/utils/pass_utils.o
+
+
+lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
 src/carving/carver.o: src/carving/carver.cc include/utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c src/carving/carver.cc -o $@
@@ -38,9 +40,9 @@ lib/carver.a: src/carving/carver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-lib/shape_fixed_driver_pass.so: src/drivers/shape_fixed_driver_pass.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+lib/shape_fixed_driver_pass.so: src/drivers/shape_fixed_driver_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
 src/drivers/shape_fixed_driver.o: src/drivers/shape_fixed_driver_probes.cc include/utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c src/drivers/shape_fixed_driver_probes.cc -o $@
@@ -49,9 +51,9 @@ lib/shape_fixed_driver.a: src/drivers/shape_fixed_driver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-lib/simple_unit_driver_pass.so: src/drivers/simple_unit_driver_pass.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+lib/simple_unit_driver_pass.so: src/drivers/simple_unit_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
 src/drivers/simple_unit_driver.o: src/drivers/simple_unit_driver_probes.cc include/utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c src/drivers/simple_unit_driver_probes.cc -o $@
@@ -72,28 +74,34 @@ lib/simple_unit_driver_probe_names.txt: src/drivers/simple_unit_driver.o src/dri
 	mkdir -p lib
 	python3 bin/get_probe_names.py src/drivers/simple_unit_driver.o src/drivers/simple_unit_driver_probes.txt $@
 
-lib/extract_info_pass.so: src/tools/extract_info_pass.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+lib/extract_info_pass.so: src/tools/extract_info_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
-lib/read_gtest.so: src/tools/read_gtest.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+lib/read_gtest.so: src/tools/read_gtest.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
-src/utils/pass_utils.o: src/utils/pass_utils.cc include/pass.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/pass_utils.cc -o $@
+src/utils/carve_pass_utils.o: src/utils/carve_pass_utils.cc include/carve_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/carve_pass_utils.cc -o $@
 
-lib/get_call_seq.so: src/tools/get_call_seq.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+lib/get_call_seq.so: src/tools/get_call_seq.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
 lib/call_seq.a: src/tools/call_seq.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-lib/carve_type_pass.so: src/carving/carve_type_pass.cc include/pass.hpp src/utils/pass_utils.o include/utils.hpp
+lib/carve_type_pass.so: src/carving/carve_type_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+
+src/utils/driver_pass_utils.o: src/utils/driver_pass_utils.cc include/driver_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/driver_pass_utils.cc -o $@
+
+src/utils/pass_utils.o: src/utils/pass_utils.cc include/pass.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/pass_utils.cc -o $@
 
 clean:
 	rm -f lib/carve_func_args_pass.so
@@ -112,5 +120,7 @@ clean:
 	rm -f lib/read_gtest.so
 	rm -f lib/get_call_seq.so
 	rm -f lib/call_seq.a
-	rm -f src/utils/pass_utils.o
+	rm -f src/utils/carve_pass_utils.o
 	rm -f lib/carve_type_pass.so
+	rm -f src/utils/driver_pass_utils.o
+	rm -f src/utils/pass_utils.o

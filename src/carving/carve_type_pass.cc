@@ -1,4 +1,4 @@
-#include"pass.hpp"
+#include"carve_pass.hpp"
 
 #define FIELD_THRESHOLD 10
 
@@ -230,8 +230,6 @@ bool carver_pass::hookInstrs(Module &M) {
   if (tmp) {
     M.dump();
   }
-
-  DEBUG0("# of func tracked : " << num_func_tracked << "\n");
 
   num_instrs = 0;
   num_funcs = 0;
