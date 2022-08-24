@@ -17,6 +17,9 @@ types = ["char", "short", "int", "long", "longlong", "float", "double", "func_pt
 for ty in types:
   entities[ty] = 0
 
+line_sum = 0
+line_graph = []
+
 for fn in glob.glob("{}/*".format(carved_dir)):
   if "call_seq" in fn:
     continue
@@ -52,8 +55,12 @@ for fn in glob.glob("{}/*".format(carved_dir)):
       else:
         if line[0] == "#":
           is_carved_entity = True
-      line_count.append((num_line, fn))
-
+    line_count.append((num_line, fn))
+    line_sum += num_line
+    graph_idx = int(num_line / 10000)
+    while graph_idx >= len(line_graph):
+      line_graph.append(0)
+    line_graph[graph_idx] += 1
 
 for ty in types:
   print("{} : {}".format(ty, entities[ty]))
@@ -62,3 +69,8 @@ line_count.sort(key=lambda x: x[0])
 
 for fn in line_count:
   print("{} : {}".format(fn[0], fn[1]))
+
+
+print("line_sum : {}, Avg. line : {}".format(line_sum, line_sum / len(line_count)))
+
+print(line_graph)

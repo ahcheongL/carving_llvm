@@ -268,40 +268,56 @@ static void Insert_glob_mem_alloc_probe(GlobalVariable * gv) {
   IRB->CreateCall(mem_allocated_probe, {casted_ptr, size_const, type_name_const});
 }
 
-void Insert_carving_main_probe(BasicBlock & entry_block, Function & F) {
 
-  IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());  
+static bool instrumented = false;
+void Insert_carving_main_probe(BasicBlock * entry_block, Function * F) {
+
+  if (instrumented) { return; }
+  instrumented = true;
+
+  IRB->SetInsertPoint(entry_block->getFirstNonPHIOrDbgOrLifetime());  
 
   Value * new_argc = NULL;
   Value * new_argv = NULL;
 
-  if (F.arg_size() == 2) {
-    Value * argc = F.getArg(0);
-    Value * argv = F.getArg(1);
-    AllocaInst * argc_ptr = IRB->CreateAlloca(Int32Ty);
-    AllocaInst * argv_ptr = IRB->CreateAlloca(Int8PtrPtrTy);
+  size_t num_main_args = F->arg_size();
+  assert(num_main_args == 0 || num_main_args == 2);
 
-    new_argc = IRB->CreateLoad(Int32Ty, argc_ptr);
-    new_argv = IRB->CreateLoad(Int8PtrPtrTy, argv_ptr);
+  if (F->arg_size() == 0) {
+    F->setName("__old_main");
+    //Make another copy of main that has argc and argv...
+    FunctionType * new_func_type = FunctionType::get(Int32Ty, {Int32Ty, Int8PtrPtrTy}, false);
+    Function * new_func = Function::Create(new_func_type, Function::ExternalLinkage, "main", Mod);
+    BasicBlock * new_func_entry = BasicBlock::Create(*Context, "entry", new_func);
+    IRB->SetInsertPoint(new_func_entry);
+    Instruction * call_old_main = IRB->CreateCall(F, {});
+    IRB->CreateRet(call_old_main);
 
-    argc->replaceAllUsesWith(new_argc);
-    argv->replaceAllUsesWith(new_argv);
-
-    IRB->SetInsertPoint((Instruction *) new_argc);
-
-    IRB->CreateStore(argc, argc_ptr);
-    IRB->CreateStore(argv, argv_ptr);
-
-    IRB->CreateCall(argv_modifier, {argc_ptr, argv_ptr});
-
-    Instruction * new_argv_load_instr = dyn_cast<Instruction>(new_argv);
-
-    IRB->SetInsertPoint(new_argv_load_instr->getNextNonDebugInstruction());
-  } else {
-    DEBUG0("This pass requires a main function" 
-     << " which has argc, argv arguments\n");
-    std::abort();
+    IRB->SetInsertPoint(call_old_main);
+    F = new_func;
   }
+
+  Value * argc = F->getArg(0);
+  Value * argv = F->getArg(1);
+  AllocaInst * argc_ptr = IRB->CreateAlloca(Int32Ty);
+  AllocaInst * argv_ptr = IRB->CreateAlloca(Int8PtrPtrTy);
+
+  new_argc = IRB->CreateLoad(Int32Ty, argc_ptr);
+  new_argv = IRB->CreateLoad(Int8PtrPtrTy, argv_ptr);
+
+  argc->replaceAllUsesWith(new_argc);
+  argv->replaceAllUsesWith(new_argv);
+
+  IRB->SetInsertPoint((Instruction *) new_argc);
+
+  IRB->CreateStore(argc, argc_ptr);
+  IRB->CreateStore(argv, argv_ptr);
+
+  IRB->CreateCall(argv_modifier, {argc_ptr, argv_ptr});
+
+  Instruction * new_argv_load_instr = dyn_cast<Instruction>(new_argv);
+
+  IRB->SetInsertPoint(new_argv_load_instr->getNextNonDebugInstruction());
 
   auto globals = Mod->global_values();
   //Global variables memory probing
@@ -343,6 +359,15 @@ void Insert_carving_main_probe(BasicBlock & entry_block, Function & F) {
     IRB->CreateCall(keep_class_info, {iter.second.second
       , ConstantInt::get(Int32Ty, class_size)
       , ConstantInt::get(Int32Ty, iter.second.first)});
+  }
+
+  for (auto &BB : F->getBasicBlockList()) {
+    for (auto &IN : BB) {
+      if (isa<ReturnInst>(IN)) {
+        IRB->SetInsertPoint(&IN);
+        IRB->CreateCall(__carv_fini, {});
+      }
+    }
   }
 
   return;

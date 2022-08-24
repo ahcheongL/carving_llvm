@@ -274,8 +274,8 @@ bool carver_pass::hookInstrs(Module &M) {
 
     //Main argc argv handling
     if (func_name == "main") {
-      Insert_carving_main_probe(entry_block, F);
-      IRB->SetInsertPoint(init_probe->getNextNonDebugInstruction());
+      Insert_carving_main_probe(&entry_block, &F);
+      continue;
     } else if (F.isVarArg()) {
       //TODO
       BasicBlock& entry_block = F.getEntryBlock();
@@ -382,11 +382,6 @@ bool carver_pass::hookInstrs(Module &M) {
       //IRB->CreateCall(carv_time_begin, {});
       insert_dealloc_probes();
       //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
-
-      //Insert fini
-      if (func_name == "main") {
-        IRB->CreateCall(__carv_fini, {});
-      }
     }
 
     tracking_allocas.clear();
@@ -456,11 +451,13 @@ void carver_pass::get_instrument_func_set() {
     //TODO
     if (F.isVarArg()) { continue; }
 
-    if (func_name.find("ares") == std::string::npos) { continue; }
+    //if (func_name.find("ares") == std::string::npos) { continue; }
     
     instrument_func_set.insert(func_name);
     outfile << func_name << "\n";
   }
+
+  llvm::errs() << "# of instrument functions : " << instrument_func_set.size() << "\n";
 
   instrument_func_set.insert("main");
 

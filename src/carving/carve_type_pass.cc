@@ -130,7 +130,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
     //Main argc argv handling
     if (func_name == "main") {
-      Insert_carving_main_probe(entry_block, F);
+      Insert_carving_main_probe(&entry_block, &F);
       main_func = &F;
     }
 

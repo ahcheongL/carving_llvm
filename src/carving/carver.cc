@@ -472,7 +472,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
   }
 
-  //skip_write = false;
+  skip_write = false;
 
   if (skip_write) {
     idx = 0;
@@ -640,6 +640,10 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
 }
 
 void __carver_argv_modifier(int * argcptr, char *** argvptr) {
+
+  std::cerr << "given argc : " << *argcptr << "\n";
+  std::cerr << "given argv : " << argvptr[0][0] << "\n";
+
   int argc = (*argcptr) - 1;
   *argcptr = argc;
 

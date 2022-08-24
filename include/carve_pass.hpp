@@ -47,7 +47,7 @@ void insert_dealloc_probes();
 bool Insert_mem_func_call_probe(Instruction *, std::string);
 
 
-void Insert_carving_main_probe(BasicBlock &, Function &);
+void Insert_carving_main_probe(BasicBlock *, Function *);
 
 BasicBlock * insert_carve_probe(Value *, BasicBlock *);
 
