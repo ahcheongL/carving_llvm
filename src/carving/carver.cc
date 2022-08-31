@@ -4,9 +4,8 @@
 #include "utils.hpp"
 #include <errno.h>
 #include <unistd.h>
-#include "time.h"
 
-#define MAX_NUM_FILE 32
+#define MAX_NUM_FILE 8
 #define MINSIZE 3
 #define MAXSIZE 24
 #define CARV_PROB 100
@@ -48,19 +47,11 @@ static vector<bool> __need_to_free_carv_base_names;
 int __carv_cur_class_index = -1;
 int __carv_cur_class_size = -1;
 
+bool __carv_ready0 = false;
 bool __carv_ready = false;
 char __carv_depth = 0;
 
-static clock_t carv_begin;
-static clock_t carv_end;
-
 static map<char *, classinfo> class_info;
-
-static double alloc_total_time = 0;
-static double dealloc_total_time = 0;
-static double carv_total_time = 0;
-static double param_carv_total_time = 0;
-static double end_total_time = 0;
 
 void Carv_char(char input) {
   VAR<char> * inputv = new VAR<char>(input
@@ -254,7 +245,7 @@ void __carv_struct_name_update(char * field_name) {
 
 void __mem_allocated_probe(void * ptr, int size, char * type_name) {
 
-  if (!__carv_ready) { return; }
+  if (!__carv_ready0) { return; }
   struct typeinfo tmp {type_name, size};
   alloced_ptrs.insert(ptr, tmp);
 
@@ -262,12 +253,12 @@ void __mem_allocated_probe(void * ptr, int size, char * type_name) {
 }
 
 void __remove_mem_allocated_probe(void * ptr) { 
-  if (!__carv_ready) { return; }
+  if (!__carv_ready0) { return; }
   alloced_ptrs.remove(ptr);
 }
 
 void __carv_func_call_probe(int func_id) {
-  if (!__carv_ready) { return; }
+  if (!__carv_ready0) { return; }
 
   //Write call sequence
   callseq[callseq_index++] = func_id;
@@ -407,7 +398,7 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
 static int num_excluded = 0;
 
 void __carv_func_ret_probe(char * func_name, int func_id) {
-  if (__carv_ready == false) { return; }
+  if (__carv_ready0 == false) { return; }
 
   if (__carve_cur_inputs == NULL) {
     inputs.pop_back();
@@ -424,8 +415,6 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
     return;
   }
-
-  carv_begin = clock();
 
   class FUNC_CONTEXT * cur_context = inputs.back();
   inputs.pop_back();
@@ -472,7 +461,7 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     }
   }
 
-  skip_write = false;
+  //skip_write = false;
 
   if (skip_write) {
     idx = 0;
@@ -491,22 +480,6 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
       cur_carved_ptrs = &(next_ctx->carved_ptrs);
       __carv_ready = true;
     }
-
-    carv_end = clock();
-
-    double curtime = ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC;
-
-    carv_total_time += curtime;
-
-    /*
-    if (curtime > 1.0) {
-      fprintf(stderr, "****Skipping returning function %s, # of inputs : %d, time : %0.4fs\n"
-        , func_name, num_inputs, curtime);
-    } else {
-      fprintf(stderr, "Skipping Returning function %s, # of inputs : %d, time : %0.4fs\n"
-        , func_name, num_inputs, curtime);
-    }
-    */
 
     num_excluded++;
     return;
@@ -619,30 +592,11 @@ void __carv_func_ret_probe(char * func_name, int func_id) {
     cur_carved_ptrs = &(next_ctx->carved_ptrs);
     __carv_ready = true;
   }
-
-  carv_end = clock();
-
-  double curtime = ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC;
-
-  carv_total_time += curtime;
-
-  /*
-  if (curtime > 1.0) {
-    fprintf(stderr, "****Returning function %s, # of inputs : %d, time : %0.4fs\n"
-      , func_name, num_inputs, curtime);
-  } else {
-    fprintf(stderr, "Returning function %s, # of inputs : %d, time : %0.4fs\n"
-      , func_name, num_inputs, curtime);
-  }
-  */
   
   return;
 }
 
 void __carver_argv_modifier(int * argcptr, char *** argvptr) {
-
-  std::cerr << "given argc : " << *argcptr << "\n";
-  std::cerr << "given argv : " << argvptr[0][0] << "\n";
 
   int argc = (*argcptr) - 1;
   *argcptr = argc;
@@ -681,7 +635,7 @@ void __carver_argv_modifier(int * argcptr, char *** argvptr) {
 
   //Write argc, argv values, TODO
 
-  __carv_ready = true;
+  __carv_ready0 = true;
   return;
 }
 
@@ -709,11 +663,6 @@ void __carv_FINI() {
   free(type_carved_inputssize);
   free(outdir_name);
 
-  std::cerr << "Total alloc time : " << alloc_total_time << "\n";
-  std::cerr << "Total dealloc time : " << dealloc_total_time << "\n";
-  std::cerr << "Total carv time : " << carv_total_time << "\n";
-  std::cerr << "Total excluded : " << num_excluded << "\n";
-
   __carv_ready = false;
 }
 
@@ -725,7 +674,6 @@ void __carv_open() {
     inputs.push_back(new_ctx);
     __carve_cur_inputs = &(inputs.back()->inputs);
     cur_carved_ptrs = &(inputs.back()->carved_ptrs);
-    carv_begin = clock();
     return;
   } else {
     __carve_cur_inputs = NULL;
@@ -887,39 +835,7 @@ void __carv_close(const char * type_name, const char * func_name) {
   }
 
   fclose(outfile);
-
-  carv_end = clock();
-
-  carv_total_time += ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC;  
-
-  fprintf(stderr, "Carving time : %0.4fs\n", ((double) (carv_end - carv_begin)) / CLOCKS_PER_SEC);
   return;
-}
-
-static clock_t time_begin;
-
-void __carv_time_begin() {
-  time_begin = clock();
-}
-
-void __carv_time_end(int type) {
-  clock_t time_end = clock();
-  double curtime = ((double) (time_end - time_begin)) / CLOCKS_PER_SEC;
-  if (type == 0) {
-    param_carv_total_time += curtime;
-  } else if (type == 1) {
-    alloc_total_time += curtime;
-  } else if (type == 2) {
-    dealloc_total_time += curtime;
-  } else if (type == 3) {
-    end_total_time += curtime;
-  } else {
-    fprintf(stderr, "Warning : unknown time type : %d\n", type);
-  }
-
-  if (curtime > 1.0) {
-    fprintf(stderr, "time : %0.4fs, type : %d\n", curtime, type);
-  }
 }
 
 #endif

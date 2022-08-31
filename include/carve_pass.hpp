@@ -37,9 +37,6 @@ extern FunctionCallee update_carved_ptr_idx;
 extern FunctionCallee keep_class_name;
 extern FunctionCallee class_carver;
 
-extern FunctionCallee carv_time_begin;
-extern FunctionCallee carv_time_end;
-
 //Memory tracking
 extern std::vector<AllocaInst *> tracking_allocas;
 void Insert_alloca_probe(BasicBlock &);

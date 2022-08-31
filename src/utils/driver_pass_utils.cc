@@ -421,4 +421,5 @@ void get_driver_func_callees() {
     Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
 
   __replay_fini = Mod->getOrInsertFunction(get_link_name("__replay_fini"), VoidTy);
+
 }

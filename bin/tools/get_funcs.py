@@ -3,9 +3,14 @@
 import sys
 import glob
 
-if len(sys.argv) != 2:
-  print("usage : {} <carved_dir>".format(sys.argv[0]))
+from utils import read_carved_func_type
+
+
+if len(sys.argv) != 4:
+  print("usage : {} <carved_dir> <carved_types.txt> <target_funcs.txt>".format(sys.argv[0]))
   exit()
+
+type_info, types = read_carved_func_type(sys.argv[2])
 
 funcs = set()
 for fn in glob.glob("{}/*".format(sys.argv[1])):
@@ -18,10 +23,16 @@ for fn in glob.glob("{}/*".format(sys.argv[1])):
 
 print("# of funcs : {}".format(len(funcs)))
 
-with open ("carved_funcs.txt", "w") as f:
+with open (sys.argv[3], "w") as f:
   for fn in funcs:
     f.write("{}\n".format(fn))
 
+for funcname in type_info:
+  funcs.add(funcname)
+
+
+#llvm-cov
+#-L /usr/lib/llvm-13/lib/clang/13.0.1/lib/linux/ -l:libclang_rt.profile-x86_64.a
 
 with open ("make_driver.sh", "w") as f:
   f.write("#!/bin/bash\n")

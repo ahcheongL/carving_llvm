@@ -29,10 +29,6 @@ FunctionCallee update_carved_ptr_idx;
 FunctionCallee keep_class_info;
 FunctionCallee class_carver;
 
-FunctionCallee carv_time_begin;
-FunctionCallee carv_time_end;
-
-
 Constant * global_carve_ready = NULL;
 Constant * global_cur_class_idx = NULL;
 Constant * global_cur_class_size = NULL;
@@ -91,11 +87,6 @@ void get_carving_func_callees() {
     get_link_name("__update_carved_ptr_idx"), VoidTy);
   keep_class_info = Mod->getOrInsertFunction(
     get_link_name("__keep_class_info"), VoidTy, Int8PtrTy, Int32Ty, Int32Ty);
-
-  carv_time_begin = Mod->getOrInsertFunction(
-    get_link_name("__carv_time_begin"), VoidTy);
-  carv_time_end = Mod->getOrInsertFunction(get_link_name("__carv_time_end"),
-    VoidTy, Int32Ty);
 }
 
 std::vector<AllocaInst *> tracking_allocas;
@@ -115,7 +106,6 @@ void Insert_alloca_probe(BasicBlock& entry_block) {
 
   if (alloca_instr != NULL) {
     IRB->SetInsertPoint(alloca_instr->getNextNonDebugInstruction());
-    //IRB->CreateCall(carv_time_begin, {});
     for (auto iter = allocas.begin(); iter != allocas.end(); iter++) {
       AllocaInst * alloc_instr = *iter;
       Type * allocated_type = alloc_instr->getAllocatedType();
@@ -139,7 +129,6 @@ void Insert_alloca_probe(BasicBlock& entry_block) {
       IRB->CreateCall(mem_allocated_probe, {casted_ptr, size_const, type_name_const});
       tracking_allocas.push_back(alloc_instr);
     }
-    //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
   }
 }
 
@@ -174,26 +163,20 @@ bool Insert_mem_func_call_probe(Instruction * IN, std::string callee_name) {
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
-    //IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
-    //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
     return true;
   } else if (callee_name == "realloc") {
     //Track realloc
     Constant * type_name_const = get_mem_alloc_type(IN);
-    //IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(remove_probe, {IN->getOperand(0)});
     Value * size = IN->getOperand(1);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
     IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
-    //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
     return true;
   } else if (callee_name == "free") {
-    //IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(remove_probe, {IN->getOperand(0)});
-    //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
     return true;
   } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
     //Get some hint from memory related functions
@@ -233,19 +216,15 @@ bool Insert_mem_func_call_probe(Instruction * IN, std::string callee_name) {
     //new operator
     Constant * type_name_const = get_mem_alloc_type(IN);
 
-    //IRB->CreateCall(carv_time_begin, {});
     Value * size = IN->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
     IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
-    //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 1)});
     return true;
   } else if ((callee_name == "_ZdlPv") || (callee_name == "_ZdaPv")) {
     //delete operator
-    //IRB->CreateCall(carv_time_begin, {});
     IRB->CreateCall(remove_probe, {IN->getOperand(0)});
-    //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
     return true;
   }
 
@@ -776,12 +755,9 @@ void insert_check_carve_ready() {
   BasicBlock * carve_block = BasicBlock::Create(*Context, "carve_block"
     , cur_block->getParent(), new_end_block);
 
-  Constant * carve_ready
-    = Mod->getOrInsertGlobal(get_link_name("__carv_ready"), Int8Ty);
-
   IRB->SetInsertPoint(cur_block->getTerminator());
 
-  Instruction * ready_load_instr = IRB->CreateLoad(Int8Ty, carve_ready);
+  Instruction * ready_load_instr = IRB->CreateLoad(Int8Ty, global_carve_ready);
   Value * ready_cmp = IRB->CreateICmpEQ(ready_load_instr, ConstantInt::get(Int8Ty, 1));
 
   Instruction * ready_br = IRB->CreateCondBr(ready_cmp, carve_block, new_end_block);
@@ -793,7 +769,7 @@ void insert_check_carve_ready() {
   Instruction * br_instr = IRB->CreateBr(new_end_block);
 
   IRB->SetInsertPoint(new_end_block->getFirstNonPHIOrDbgOrLifetime());
-  IRB->CreateStore(ConstantInt::get(Int8Ty, 1), global_carve_ready);
+  //IRB->CreateStore(ConstantInt::get(Int8Ty, 1), global_carve_ready);
 
   IRB->SetInsertPoint(br_instr);
 }

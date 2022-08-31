@@ -295,14 +295,14 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   if (search != NULL) {
     cur_alloc_size = 0;
     __replay_cur_pointee_size = -1;
-    return (char *) carved_ptr->addr;
+    return (char *) carved_ptr->addr + ptr_offset;
   }
   replayed_ptr.insert(ptr_index, 0);
 
   cur_alloc_size = carved_ptr->alloc_size;
 
   if (pointee_type_name == NULL) {
-    return carved_ptr->addr;
+    return (char *) carved_ptr->addr + ptr_offset;
   }
 
   const char * type_name = carved_ptr->pointee_type;
@@ -311,7 +311,7 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   __replay_cur_class_index = default_idx;
 
   if (!strcmp(type_name, pointee_type_name)) {
-    return carved_ptr->addr;
+    return (char *) carved_ptr->addr + ptr_offset;
   }
 
   // carved ptr has different type
@@ -326,7 +326,7 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
     }
   }
 
-  return carved_ptr->addr;
+  return (char *) carved_ptr->addr + ptr_offset;
 }
 
 int Replay_ptr_alloc_size() {

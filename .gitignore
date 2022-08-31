@@ -35,3 +35,6 @@ __pycache__
 log
 
 *.bc
+
+carved_types.txt
+func_types.txt

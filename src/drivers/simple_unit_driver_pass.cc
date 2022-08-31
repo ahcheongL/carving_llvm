@@ -66,11 +66,12 @@ bool driver_pass::hookInstrs(Module &M) {
 
     if (func_name.find("__Replay__") != std::string::npos) { continue; }
     if (func_name == "__class_replay") { continue; }
+    if (func_name.find("__llvm_gcov") != std::string::npos) { continue; }
 
     if (func_name == "main") {
       main_func = &F;
     } else if (target_func != &F) {
-      make_stub(&F);
+      //make_stub(&F);
     }
   }
 
@@ -142,6 +143,7 @@ void driver_pass::instrument_main_func(Function * main_func) {
   IRB->CreateCall(__inputf_open, {argv});
 
   std::vector<Value *> target_args;
+  int arg_idx = 0;
   for (auto &arg : target_func->args()) {
     Type * arg_type = arg.getType();
     Value * replay_res = insert_replay_probe(arg_type, NULL);
@@ -212,7 +214,7 @@ bool driver_pass::get_target_func() {
   }
 
   if (target_func == NULL) {
-    DEBUG0("Can't find target\n");
+    DEBUG0("Can't find target : " << target_name << "\n");
     return false;
   }
 
@@ -225,7 +227,7 @@ static void registerPass(const PassManagerBuilder &,
   PM.add(p);
 }
 
-static RegisterStandardPasses RegisterPass(
+static RegisterStandardPasses RegisterPassOptimized(
     PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
 static RegisterStandardPasses RegisterPassO0(

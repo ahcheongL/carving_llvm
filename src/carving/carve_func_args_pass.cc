@@ -32,6 +32,8 @@ class carver_pass : public ModulePass {
   void gen_class_carver();
 
   int func_id;
+
+  std::ofstream carved_types_file;
 };
 
 }  // namespace
@@ -111,6 +113,11 @@ void carver_pass::Insert_return_val_probe(Instruction * IN, Function * callee) {
   if (ret_type != VoidTy) {
     if (callee == NULL) {
       //function ptr call, need to check if it will be a stub or not.
+      CallInst * call_inst = dyn_cast<CallInst>(IN);
+      Value * callee_val = call_inst->getCalledOperand();
+
+      if (isa<InlineAsm>(callee_val)) { return; }
+
       BasicBlock * cur_block = IRB->GetInsertBlock();
       BasicBlock * new_end_block = cur_block->splitBasicBlock(&(*IRB->GetInsertPoint()));
 
@@ -119,9 +126,6 @@ void carver_pass::Insert_return_val_probe(Instruction * IN, Function * callee) {
       IRB->CreateBr(new_end_block);
       
       IRB->SetInsertPoint(cur_block->getTerminator());
-
-      CallInst * call_inst = dyn_cast<CallInst>(IN);
-      Value * callee_val = call_inst->getCalledOperand();
 
       Value * casted_callee = IRB->CreateCast(Instruction::CastOps::BitCast
         , callee_val, Int8PtrTy);
@@ -161,6 +165,8 @@ void carver_pass::insert_global_carve_probe(Function * F, BasicBlock * BB) {
       IRB->CreateCall(carv_name_push, {glob_name_const});
       cur_block = insert_carve_probe(glob_val, cur_block);
       IRB->CreateCall(carv_name_pop, {});
+
+      carved_types_file << "**" << glob_name << " : " << get_type_str(pointee_type) << "\n";
     }
   }
 
@@ -184,6 +190,8 @@ bool carver_pass::hookInstrs(Module &M) {
   find_global_var_uses();
 
   gen_class_carver();
+
+  carved_types_file.open("carved_types.txt");
 
   DEBUG0("Iterating functions...\n");
 
@@ -223,9 +231,7 @@ bool carver_pass::hookInstrs(Module &M) {
           //exception handling
           IRB->SetInsertPoint(call_instr);
 
-          //IRB->CreateCall(carv_time_begin, {});
           insert_dealloc_probes();
-          //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
 
           //Insert fini
           if (func_name == "main") {
@@ -237,10 +243,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
       for (auto ret_instr : ret_instrs) {
         IRB->SetInsertPoint(ret_instr);
-
-        //IRB->CreateCall(carv_time_begin, {});
         insert_dealloc_probes();
-        //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
       }
 
       tracking_allocas.clear();
@@ -248,6 +251,8 @@ bool carver_pass::hookInstrs(Module &M) {
     }
 
     DEBUG0("Inserting probe in " << func_name << "\n");
+
+    carved_types_file << "##" << func_name << "\n";
 
     std::vector<Instruction *> cast_instrs;
     std::vector<CallInst *> call_instrs;
@@ -275,29 +280,10 @@ bool carver_pass::hookInstrs(Module &M) {
     //Main argc argv handling
     if (func_name == "main") {
       Insert_carving_main_probe(&entry_block, &F);
+      tracking_allocas.clear();
       continue;
     } else if (F.isVarArg()) {
-      //TODO
-      BasicBlock& entry_block = F.getEntryBlock();
-      Insert_alloca_probe(entry_block);
-
-      //Perform memory tracking
-      for (auto call_instr : call_instrs) {
-        Function * callee = call_instr->getCalledFunction();
-        if ((callee == NULL) || (callee->isDebugInfoForProfiling())) { continue; }
-        std::string callee_name = callee->getName().str();
-        Insert_mem_func_call_probe(call_instr, callee_name);
-      }
-
-      for (auto ret_instr : ret_instrs) {
-        IRB->SetInsertPoint(ret_instr);
-
-        //IRB->CreateCall(carv_time_begin, {});
-        insert_dealloc_probes();
-        //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
-      }
-
-      tracking_allocas.clear();
+      //TODO, unreachable
     } else {
 
       //Insert input carving probes
@@ -307,8 +293,6 @@ bool carver_pass::hookInstrs(Module &M) {
 
       BasicBlock * insert_block = IRB->GetInsertBlock();
 
-      //IRB->CreateCall(carv_time_begin, {});
-
       for (auto &arg_iter : F.args()) {
         Value * func_arg = &arg_iter;
 
@@ -317,6 +301,8 @@ bool carver_pass::hookInstrs(Module &M) {
         if (param_name == "") {
           param_name = "parm_" + std::to_string(param_idx);
         }
+
+        carved_types_file << "**" << param_name << " : " << get_type_str(func_arg->getType()) << "\n";
 
         Constant * param_name_const = gen_new_string_constant(param_name, IRB);
         IRB->CreateCall(carv_name_push, {param_name_const});
@@ -328,8 +314,6 @@ bool carver_pass::hookInstrs(Module &M) {
       }
 
       insert_global_carve_probe(&F, insert_block);
-
-      //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 0)});
     }
 
     IRB->CreateCall(update_carved_ptr_idx, {});
@@ -354,9 +338,7 @@ bool carver_pass::hookInstrs(Module &M) {
           Constant * func_name_const = gen_new_string_constant(func_name, IRB);
           IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});    
 
-          //IRB->CreateCall(carv_time_begin, {});
           insert_dealloc_probes();
-          //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
 
           //Insert fini
           if (func_name == "main") {
@@ -375,19 +357,17 @@ bool carver_pass::hookInstrs(Module &M) {
       //Write carved result
       Constant * func_name_const = gen_new_string_constant(func_name, IRB);
 
-      //IRB->CreateCall(carv_time_begin, {});
       IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});
-      //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 3)});
 
-      //IRB->CreateCall(carv_time_begin, {});
       insert_dealloc_probes();
-      //IRB->CreateCall(carv_time_end, {ConstantInt::get(Int32Ty, 2)});
     }
 
     tracking_allocas.clear();
 
     DEBUG0("done in " << func_name << "\n");
   }
+
+  carved_types_file.close();
 
   char * tmp = getenv("DUMP_IR");
   if (tmp) {
@@ -424,6 +404,9 @@ bool carver_pass::runOnModule(Module &M) {
 void carver_pass::get_instrument_func_set() {
 
   std::ifstream targets("targets.txt");
+  std::ofstream outfile("func_types.txt");
+  std::ofstream outfile2("target_funcs.txt");
+
   if (targets.good()) {
     DEBUG0("Reading targets from targets.txt\n");
     std::string line;
@@ -435,11 +418,23 @@ void carver_pass::get_instrument_func_set() {
 
     instrument_func_set.insert("main");
 
+    for (auto &F : Mod->functions()) {
+      std::string func_name = F.getName().str();
+      if (instrument_func_set.find(func_name) != instrument_func_set.end()) {
+        outfile << func_name;
+        std::string tmp;
+        llvm::raw_string_ostream output(tmp);
+        F.getType()->print(output);
+        outfile << " " << output.str() << "\n";
+        outfile2 << func_name << "\n";
+      }
+    }
+    DEBUG0("# of instrument functions : " << instrument_func_set.size() << "\n");
+    outfile.close();
+    outfile2.close();
+
     return;
   }
-
-  std::ofstream outfile("funcs.txt");
-  std::ofstream outfile2("funcs_size.txt");
 
   for (auto &F : Mod->functions()) {
 
@@ -454,10 +449,15 @@ void carver_pass::get_instrument_func_set() {
     //if (func_name.find("ares") == std::string::npos) { continue; }
     
     instrument_func_set.insert(func_name);
-    outfile << func_name << "\n";
+    outfile << func_name;
+    std::string tmp;
+    llvm::raw_string_ostream output(tmp);
+    F.getType()->print(output);
+    outfile << " " << output.str() << "\n";
+    outfile2 << func_name << "\n";
   }
 
-  llvm::errs() << "# of instrument functions : " << instrument_func_set.size() << "\n";
+  DEBUG0("# of instrument functions : " << instrument_func_set.size() << "\n");
 
   instrument_func_set.insert("main");
 
@@ -479,8 +479,8 @@ static void registerPass(const PassManagerBuilder &,
 static RegisterStandardPasses RegisterPass(
     PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
-// static RegisterStandardPasses RegisterPassO0(
-//     PassManagerBuilder::EP_EnabledOnOptLevel0, registerPass);
+static RegisterStandardPasses RegisterPassO0(
+    PassManagerBuilder::EP_EnabledOnOptLevel0, registerPass);
 
 // static RegisterStandardPasses RegisterPassLTO(
 //     PassManagerBuilder::EP_FullLinkTimeOptimizationLast,
