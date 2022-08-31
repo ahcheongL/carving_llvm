@@ -15,7 +15,7 @@ std::set<int> keys;
 int main(int argc, char * argv[]) {
   srand(time(NULL));
   unsigned int idx;
-  for (idx = 0; idx < 1000000; idx++) {
+  for (idx = 0; idx < 100; idx++) {
     int random_val = rand() % 2048;
     tmp.insert(random_val, random_val + 1);
     assert(*tmp.find(random_val) == random_val + 1);
@@ -49,6 +49,7 @@ int main(int argc, char * argv[]) {
 
   for (auto key : keys) {
     assert(*tmp.find(key) == key + 1);
+    std::cerr << "key: " << key << " value: " << *tmp.find(key) << std::endl;
   }
 
   for (idx = 0; idx < 1000000; idx++) {

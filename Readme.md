@@ -9,7 +9,7 @@
 2. [gllvm](https://github.com/SRI-CSL/gllvm), needed to get whole program bitcode
 
 ## Build
-    `make`
+  `make`
 
 ## 1. Target subject build
 
@@ -43,4 +43,4 @@
 3. `<target.targetfunction.driver> <carved unit state file>`
     * Use gdb to check parameter and global variables are correctly set.
 
-    
+

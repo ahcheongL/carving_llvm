@@ -39,9 +39,6 @@ cmd = ["clang++", "--ld-path=" + ld_path
 #  , "-ggdb", "-O0"
 #  , "-fsanitize=address"
   , "-O2"
-#  , "-static-libgcc", "-nostdinc", "-L", "/home/cheong/carving_exp/musl-1.2.3/gclang_install/lib"
-#  , "-I", "/home/cheong/carving_exp/musl-1.2.3/gclang_install/include"
-#  , "-isystem" , "/home/cheong/carving_exp/musl-1.2.3/gclang_install"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
   , "-I", source_dir + "/include", "-o", outname
   , "-L", source_dir + "/lib", inputbc, "-l:carver.a" ] + compile_args

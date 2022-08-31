@@ -11,6 +11,8 @@
 #include <memory>
 #include <assert.h>
 
+#include "boost/container/map.hpp"
+
 enum INPUT_TYPE {
   CHAR,
   UCHAR,
@@ -310,6 +312,27 @@ public:
       return search_node;
     }
 
+    data_node * find_small_closest_node (Key _key) {
+      data_node * search_node = this;
+      data_node * closest = NULL;
+
+      while (search_node->key != _key) {
+        if (search_node->key < _key) {
+          closest = search_node;
+          if (search_node->right == NULL) {
+            return closest;
+          }
+          search_node = search_node->right;
+        } else {
+          if (search_node->left == NULL) {
+            return closest;
+          }
+          search_node = search_node->left;
+        }
+      }
+      return search_node;
+    }
+
     data_node *left;
     data_node *right;
     data_node *parent;
@@ -396,6 +419,13 @@ public:
     data_node * search_node = root->find_node(key, NULL);
     if (search_node == NULL) { return NULL; }
     return &(search_node->elem);
+  }
+
+  data_node * find_small_closest(Key key) {
+    if (root == NULL) { return NULL; }
+    data_node * search_node = root->find_small_closest_node(key);
+    if (search_node == NULL) { return NULL; }
+    return search_node;
   }
 
   data_node * get_by_idx(int idx) {

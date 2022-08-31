@@ -32,7 +32,7 @@ lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/carve_p
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
 src/carving/carver.o: src/carving/carver.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c src/carving/carver.cc -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/carving/carver.cc -o $@
 
 lib/carver.a: src/carving/carver.o
 	mkdir -p lib
@@ -40,10 +40,10 @@ lib/carver.a: src/carving/carver.o
 
 lib/shape_fixed_driver_pass.so: src/drivers/shape_fixed_driver_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
 
 src/drivers/shape_fixed_driver.o: src/drivers/shape_fixed_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c src/drivers/shape_fixed_driver_probes.cc -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/shape_fixed_driver_probes.cc -o $@
 
 lib/shape_fixed_driver.a: src/drivers/shape_fixed_driver.o
 	mkdir -p lib
@@ -54,7 +54,7 @@ lib/simple_unit_driver_pass.so: src/drivers/simple_unit_driver_pass.cc src/utils
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
 src/drivers/simple_unit_driver.o: src/drivers/simple_unit_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c src/drivers/simple_unit_driver_probes.cc -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/simple_unit_driver_probes.cc -o $@
 
 lib/simple_unit_driver.a: src/drivers/simple_unit_driver.o
 	mkdir -p lib

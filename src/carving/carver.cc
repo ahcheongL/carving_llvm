@@ -28,7 +28,7 @@ static int callseq_index;
 static int carved_index = 0;
 
 //Function pointer names
-static map<void *, char *> func_ptrs;
+static boost::container::map<void *, char *> func_ptrs;
 
 static map<void *, char> no_stub_funcs;
 
@@ -38,7 +38,7 @@ vector<IVAR *> * __carve_cur_inputs = NULL;
 static vector<PTR> * cur_carved_ptrs = NULL;
 
 //memory info
-static map<void *, struct typeinfo> alloced_ptrs;
+static boost::container::map<void *, struct typeinfo> alloced_ptrs;
 
 //variable naming
 static vector<char * > __carv_base_names;
@@ -124,50 +124,55 @@ int Carv_pointer(void * ptr, char * type_name, int default_idx, int default_size
   }
 
   //Check whether it is alloced area
-  index = 0;
-  int num_alloced_ptrs = alloced_ptrs.size();
-  while (index < num_alloced_ptrs) {
-    auto alloced_ptr = alloced_ptrs.get_by_idx(index);
-    char * alloced_addr = (char *) alloced_ptr->key;
-    typeinfo * alloced_type = &alloced_ptr->elem;
-    int alloced_size = alloced_type->size;
-    char * alloced_addr_end = alloced_addr + alloced_size;
-    if ((alloced_addr <= ptr) && (ptr < alloced_addr_end)) {
-      int size = alloced_addr_end - ((char *) ptr);
-      int new_carved_ptr_index = cur_carved_ptrs->size();
+  //if (alloced_ptrs.size() == 0) { return 0; } // no way
 
-      __carv_cur_class_index = default_idx;
-      __carv_cur_class_size = default_size;
-      
-      char * name_ptr = alloced_type->type_name;
-      if (name_ptr != NULL) {
-        auto search = class_info.find(name_ptr);
-        if ((search != NULL) && ((size % search->size) == 0)) {
-          __carv_cur_class_index = search->class_index;
-          __carv_cur_class_size = search->size;
-          type_name = name_ptr;
-        }
-      }
-
-      cur_carved_ptrs->push_back(PTR(ptr, type_name, size));
-
-      VAR<int> * inputv = new VAR<int>(
-        new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
-      __carve_cur_inputs->push_back((IVAR *) inputv);
-
-      return size;
-    }
-    index ++;
+  auto closest_alloc = alloced_ptrs.upper_bound(ptr);
+  if (closest_alloc == alloced_ptrs.begin()) {
+    VAR<void *> * inputv = new VAR<void *>(ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
+    __carve_cur_inputs->push_back((IVAR *) inputv);
+    return 0;
   }
 
-  VAR<void *> * inputv = new VAR<void *>(
-        ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
+  closest_alloc --;
+
+  char * closest_alloc_ptr_addr = (char *) closest_alloc->first;
+  typeinfo * closest_alloced_info = &closest_alloc->second;
+
+  char * alloced_addr_end = closest_alloc_ptr_addr + closest_alloced_info->size;
+
+  if (alloced_addr_end < (char *) ptr) {
+    VAR<void *> * inputv = new VAR<void *>(ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
+    __carve_cur_inputs->push_back((IVAR *) inputv);
+    return 0;
+  }
+
+  int ptr_alloc_size = alloced_addr_end - ((char *) ptr);
+  int new_carved_ptr_index = cur_carved_ptrs->size();
+
+  __carv_cur_class_index = default_idx;
+  __carv_cur_class_size = default_size;
+
+  char * name_ptr = closest_alloced_info->type_name;
+  if (name_ptr != NULL) {
+    auto search = class_info.find(name_ptr);
+    if ((search != NULL) && ((ptr_alloc_size % search->size) == 0)) {
+      __carv_cur_class_index = search->class_index;
+      __carv_cur_class_size = search->size;
+      type_name = name_ptr;
+    }
+  }
+
+  cur_carved_ptrs->push_back(PTR(ptr, type_name, ptr_alloc_size));
+
+  VAR<int> * inputv = new VAR<int>(
+    new_carved_ptr_index, updated_name, 0, INPUT_TYPE::POINTER);
   __carve_cur_inputs->push_back((IVAR *) inputv);
-  return 0;
+
+  return ptr_alloc_size;
 }
 
 void __record_func_ptr(void * ptr, char * name) {
-  func_ptrs.insert(ptr, name);
+  func_ptrs[ptr] = name;
 }
 
 void __add_no_stub_func(void * ptr) {
@@ -181,17 +186,14 @@ bool __is_no_stub_func(void * ptr) {
 void __Carv_func_ptr(void * ptr) {
   char * updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptrs.find(ptr);
-  if ((ptr == NULL) || (search == NULL)) {
-    if (ptr != NULL) {
-      //std::cerr << "Warn : Unknown func ptr : " << updated_name << "\n";
-    }
+  if ((ptr == NULL) || (search == func_ptrs.end())) {
     VAR<void *> * inputv = new VAR<void *>(NULL
       , updated_name, INPUT_TYPE::NULLPTR);
     __carve_cur_inputs->push_back((IVAR *) inputv);
     return;
   }
 
-  VAR<char *> * inputv = new VAR<char *> (*search
+  VAR<char *> * inputv = new VAR<char *> (search->second
     , updated_name, INPUT_TYPE::FUNCPTR);
   __carve_cur_inputs->push_back((IVAR *) inputv);
   return;
@@ -247,14 +249,13 @@ void __mem_allocated_probe(void * ptr, int size, char * type_name) {
 
   if (!__carv_ready0) { return; }
   struct typeinfo tmp {type_name, size};
-  alloced_ptrs.insert(ptr, tmp);
-
+  alloced_ptrs[ptr] = tmp;
   return;
 }
 
 void __remove_mem_allocated_probe(void * ptr) { 
   if (!__carv_ready0) { return; }
-  alloced_ptrs.remove(ptr);
+  alloced_ptrs.erase(ptr);
 }
 
 void __carv_func_call_probe(int func_id) {
