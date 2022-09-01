@@ -3,9 +3,10 @@
 ## Prerequisite
 
 1. Clang/LLVM, developed on version 13.0.1, not tested on other versions.
-    * It is recommend to use apt pakcage downloader, https://apt.llvm.org/
+    * It is recommend to use apt package downloader, https://apt.llvm.org/
     * `sudo apt install llvm-13-dev clang-13 libclang-13-dev lld-13 libc++abi-13-dev`
     * It assumes `llvm-config` is on `PATH`
+
 2. [gllvm](https://github.com/SRI-CSL/gllvm), needed to get whole program bitcode
 
 ## Build
@@ -38,7 +39,7 @@
 1. If you want to enable coverage, build the subject again with `--coverage` flags.
     * It is recommend to build again on different directory; Copy the source files into different directory and build again.
     * ex. ``CC=gclang CXX=gclang++ CFLAGS="--coverage" CXXFLAGS="--coverage" ./configure --prefix=`pwd`\gclang_install --disable-shared``
-2. `./bin/simple_unit_driver-pass.py <target.bc> <target function> <compile flags>`
+2. `./bin/simple_unit_driver_pass.py <target.bc> <target function> <compile flags>`
     * It will generate a new executable named as like `target.targetfunction.driver`
 3. `<target.targetfunction.driver> <carved unit state file>`
     * Use gdb to check parameter and global variables are correctly set.
