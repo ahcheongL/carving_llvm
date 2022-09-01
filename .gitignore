@@ -38,3 +38,6 @@ log
 
 carved_types.txt
 func_types.txt
+
+*.gcno
+*.gcda
