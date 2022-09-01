@@ -35,7 +35,7 @@ cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
   #, "-fsanitize=address"
   , "-ggdb", "-O0"
   , "-L", "/usr/lib/llvm-13/lib/clang/13.0.1/lib/linux", "-lclang_rt.profile-x86_64"
-  , "-L", source_dir + "/lib", inputbc, "-l:simple_unit_driver.a", ] + compile_args
+  , "-L", source_dir + "/lib", inputbc, "-l:driver.a", ] + compile_args
 
 #env["DUMP_IR"] = "1"
 print(" ".join(cmd))

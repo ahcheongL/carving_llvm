@@ -23,7 +23,7 @@ MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: lib/carve_func_args_pass.so lib/carver.a lib/carver_probe_names.txt
 all: lib/shape_fixed_driver_pass.so lib/shape_fixed_driver.a lib/shape_fixed_driver_probe_names.txt
-all: lib/simple_unit_driver_pass.so lib/simple_unit_driver.a lib/simple_unit_driver_probe_names.txt
+all: lib/simple_unit_driver_pass.so lib/driver.a lib/driver_probe_names.txt
 all: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 all: lib/carve_type_pass.so
 
@@ -53,10 +53,10 @@ lib/simple_unit_driver_pass.so: src/drivers/simple_unit_driver_pass.cc src/utils
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
-src/drivers/simple_unit_driver.o: src/drivers/simple_unit_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/simple_unit_driver_probes.cc -o $@
+src/drivers/driver.o: src/drivers/driver.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/driver.cc -o $@
 
-lib/simple_unit_driver.a: src/drivers/simple_unit_driver.o
+lib/driver.a: src/drivers/driver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
@@ -68,9 +68,9 @@ lib/shape_fixed_driver_probe_names.txt: src/drivers/shape_fixed_driver.o src/dri
 	mkdir -p lib
 	python3 bin/get_probe_names.py src/drivers/shape_fixed_driver.o src/drivers/shape_fixed_driver_probes.txt $@
 
-lib/simple_unit_driver_probe_names.txt: src/drivers/simple_unit_driver.o src/drivers/simple_unit_driver_probes.txt
+lib/driver_probe_names.txt: src/drivers/driver.o src/drivers/driver_probe_names.txt
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/simple_unit_driver.o src/drivers/simple_unit_driver_probes.txt $@
+	python3 bin/get_probe_names.py src/drivers/driver.o src/drivers/driver_probe_names.txt $@
 
 lib/extract_info_pass.so: src/tools/extract_info_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
 	mkdir -p lib
@@ -111,9 +111,9 @@ clean:
 	rm -f src/drivers/shape_fixed_driver.o
 	rm -f lib/shape_fixed_driver_probe_names.txt
 	rm -f lib/simple_unit_driver_pass.so
-	rm -f lib/simple_unit_driver.a
-	rm -f src/drivers/simple_unit_driver.o
-	rm -f lib/simple_unit_driver_probe_names.txt
+	rm -f lib/driver.a
+	rm -f src/drivers/driver.o
+	rm -f lib/driver_probe_names.txt
 	rm -f lib/extract_info_pass.so
 	rm -f lib/read_gtest.so
 	rm -f lib/get_call_seq.so

@@ -446,7 +446,8 @@ void carver_pass::get_instrument_func_set() {
     //TODO
     if (F.isVarArg()) { continue; }
 
-    if (func_name.find("ares") == std::string::npos) { continue; }
+    //if (func_name.find("DefaultChannelTest") == std::string::npos) { continue; }
+    //if (func_name.find("TestBody") == std::string::npos) { continue; }
     
     instrument_func_set.insert(func_name);
     outfile << func_name;
