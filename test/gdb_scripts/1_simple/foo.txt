@@ -1,0 +1,5 @@
+b foo
+run
+p $rdi
+p $rsi
+quit
