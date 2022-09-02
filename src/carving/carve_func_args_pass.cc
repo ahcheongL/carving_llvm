@@ -201,22 +201,25 @@ bool carver_pass::hookInstrs(Module &M) {
 
     std::string func_name = F.getName().str();
     if (func_name.find("__Carv_") != std::string::npos) { continue; }
+    if (func_name.find("llvm_gcov") != std::string::npos) { continue; }
+
+    std::vector<Instruction *> cast_instrs;
+    std::vector<CallInst *> call_instrs;
+    std::vector<Instruction *> ret_instrs;
+    for (auto &BB : F) {
+      for (auto &IN : BB) {
+        if (isa<CastInst>(&IN)) {
+          cast_instrs.push_back(&IN);
+        } else if (isa<CallInst>(&IN)) {
+          call_instrs.push_back(dyn_cast<CallInst>(&IN));
+        } else if (isa<ReturnInst>(&IN)) {
+          ret_instrs.push_back(&IN);
+        }
+      }
+    }
 
     if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
       //Just insert memory tracking probes
-      std::vector<CallInst *> call_instrs;
-      std::vector<ReturnInst *> ret_instrs;
-
-      for (auto &BB : F) {
-        for (auto &IN : BB) {
-          if (isa<CallInst>(&IN)) {
-            call_instrs.push_back(dyn_cast<CallInst>(&IN));
-          } else if (isa<ReturnInst>(&IN)) {
-            ret_instrs.push_back(dyn_cast<ReturnInst>(&IN));
-          }
-        }
-      }
-
       BasicBlock& entry_block = F.getEntryBlock();
       Insert_alloca_probe(entry_block);
 
@@ -253,21 +256,6 @@ bool carver_pass::hookInstrs(Module &M) {
     DEBUG0("Inserting probe in " << func_name << "\n");
 
     carved_types_file << "##" << func_name << "\n";
-
-    std::vector<Instruction *> cast_instrs;
-    std::vector<CallInst *> call_instrs;
-    std::vector<Instruction *> ret_instrs;
-    for (auto &BB : F) {
-      for (auto &IN : BB) {
-        if (isa<CastInst>(&IN)) {
-          cast_instrs.push_back(&IN);
-        } else if (isa<CallInst>(&IN)) {
-          call_instrs.push_back(dyn_cast<CallInst>(&IN));
-        } else if (isa<ReturnInst>(&IN)) {
-          ret_instrs.push_back(&IN);
-        }
-      }
-    }
 
     BasicBlock& entry_block = F.getEntryBlock();
     Insert_alloca_probe(entry_block);
@@ -325,28 +313,28 @@ bool carver_pass::hookInstrs(Module &M) {
       //insert new/free probe, return value probe
       Function * callee = call_instr->getCalledFunction();
       Insert_return_val_probe(call_instr, callee);
-      if (callee != NULL) {
-        if (callee->isDebugInfoForProfiling()) { continue; }
+      if (callee == NULL) { continue; }
 
-        std::string callee_name = callee->getName().str();
-        if (callee_name == "__cxa_allocate_exception") { continue; }
+      if (callee->isDebugInfoForProfiling()) { continue; }
 
-        if (callee_name == "__cxa_throw") {
-          //exception handling
-          IRB->SetInsertPoint(call_instr);
+      std::string callee_name = callee->getName().str();
+      if (callee_name == "__cxa_allocate_exception") { continue; }
 
-          Constant * func_name_const = gen_new_string_constant(func_name, IRB);
-          IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});    
+      if (callee_name == "__cxa_throw") {
+        //exception handling
+        IRB->SetInsertPoint(call_instr);
 
-          insert_dealloc_probes();
+        Constant * func_name_const = gen_new_string_constant(func_name, IRB);
+        IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});    
 
-          //Insert fini
-          if (func_name == "main") {
-            IRB->CreateCall(__carv_fini, {});
-          }
-        } else {
-          Insert_mem_func_call_probe(call_instr, callee_name);
+        insert_dealloc_probes();
+
+        //Insert fini
+        if (func_name == "main") {
+          IRB->CreateCall(__carv_fini, {});
         }
+      } else {
+        Insert_mem_func_call_probe(call_instr, callee_name);
       }
     }
 
@@ -442,6 +430,7 @@ void carver_pass::get_instrument_func_set() {
     std::string func_name = F.getName().str();
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue;}
     if (func_name == "__cxx_global_var_init") { continue; }
+    if (func_name.find("llvm_gcov") != std::string::npos) { continue; }
 
     //TODO
     if (F.isVarArg()) { continue; }
@@ -466,9 +455,7 @@ void carver_pass::get_instrument_func_set() {
   outfile2.close();
 }
 
-
-
-// static RegisterPass<carver_pass> X("carve", "Carve pass", false , false);
+static RegisterPass<carver_pass> X("carve", "Carve pass", false , false);
 
 static void registerPass(const PassManagerBuilder &,
     legacy::PassManagerBase &PM) {
@@ -477,7 +464,7 @@ static void registerPass(const PassManagerBuilder &,
   PM.add(p);
 }
 
-static RegisterStandardPasses RegisterPass(
+static RegisterStandardPasses RegisterPassOpt(
     PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
 static RegisterStandardPasses RegisterPassO0(
