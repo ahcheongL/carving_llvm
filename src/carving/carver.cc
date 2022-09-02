@@ -246,7 +246,6 @@ void __carv_struct_name_update(char * field_name) {
 }
 
 void __mem_allocated_probe(void * ptr, int size, char * type_name) {
-
   if (!__carv_ready0) { return; }
   struct typeinfo tmp {type_name, size};
   alloced_ptrs[ptr] = tmp;

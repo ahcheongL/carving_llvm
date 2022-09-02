@@ -36,12 +36,10 @@
     * Currently it suffers heavy overhead due to naive implementation, I'm fixing it now...
 
 ## 4. Replay
-1. If you want to enable coverage, build the subject again with `--coverage` flags.
-    * It is recommend to build again on different directory; Copy the source files into different directory and build again.
-    * ex. ``CC=gclang CXX=gclang++ CFLAGS="--coverage" CXXFLAGS="--coverage" ./configure --prefix=`pwd`\gclang_install --disable-shared``
-2. `./bin/simple_unit_driver_pass.py <target.bc> <target function> <compile flags>`
+
+1. `./bin/simple_unit_driver_pass.py <target.bc> <target function> <compile flags>`
     * It will generate a new executable named as like `target.targetfunction.driver`
-3. `<target.targetfunction.driver> <carved unit state file>`
+2. `<target.targetfunction.driver> <carved unit state file>`
     * Use gdb to check parameter and global variables are correctly set.
 
-
+3. If you want to get coverage data, use `simple_unit_driver_pass_coverage.py` instead of `simple_unit_driver_pass.py`. You don't have to build the original bitcode file again with `--coverage` option.

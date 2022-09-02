@@ -53,8 +53,6 @@ bool driver_pass::hookInstrs(Module &M) {
 
   find_global_var_uses();
 
-  DEBUG0("Iterating functions...\n");
-
   Function * main_func = NULL;
 
   for (auto &F : M) {
@@ -98,6 +96,22 @@ bool driver_pass::hookInstrs(Module &M) {
 }
 
 void driver_pass::instrument_main_func(Function * main_func) {
+
+  const DebugLoc * debug_loc = NULL;
+
+  //get random debug info...
+  for (auto &BB : main_func->getBasicBlockList()) {
+    for (auto &IN : BB) {
+      if (isa<CallInst>(&IN)) {
+        CallInst * CI = cast<CallInst>(&IN);
+        const DebugLoc & DL = CI->getDebugLoc();
+        debug_loc = &DL;
+        break;
+      }
+    }
+
+    if (debug_loc != NULL) { break; }
+  }
 
   //remove all BBs
   std::vector<BasicBlock *> BBs;
@@ -163,8 +177,10 @@ void driver_pass::instrument_main_func(Function * main_func) {
     }
   }
 
-  IRB->CreateCall(
+  CallInst * target_call = IRB->CreateCall(
     target_func->getFunctionType(), target_func, target_args);
+  
+  target_call->setDebugLoc(*debug_loc);
   
   //Return
   IRB->CreateCall(__replay_fini, {});
@@ -221,13 +237,15 @@ bool driver_pass::get_target_func() {
   return true;
 }
 
+static RegisterPass<driver_pass> X("driver", "Driver pass", false , false);
+
 static void registerPass(const PassManagerBuilder &,
     legacy::PassManagerBase &PM) {
   auto p = new driver_pass();
   PM.add(p);
 }
 
-static RegisterStandardPasses RegisterPassOptimized(
+static RegisterStandardPasses RegisterPassOpt(
     PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
 static RegisterStandardPasses RegisterPassO0(

@@ -11,6 +11,7 @@ int foo (int a , int b) {
 }
 
 int goo (int * ptr) {
+  fprintf(stderr, "goo input : %p\n", ptr);
   return ptr[4];
 }
 

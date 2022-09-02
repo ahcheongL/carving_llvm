@@ -340,13 +340,30 @@ void Insert_carving_main_probe(BasicBlock * entry_block, Function * F) {
       , ConstantInt::get(Int32Ty, iter.second.first)});
   }
 
-  for (auto &BB : F->getBasicBlockList()) {
-    for (auto &IN : BB) {
-      if (isa<ReturnInst>(IN)) {
-        IRB->SetInsertPoint(&IN);
-        IRB->CreateCall(__carv_fini, {});
+  std::vector<CallInst *> call_instrs;
+  std::vector<ReturnInst *> ret_instrs;
+
+  for (auto &BB : *F) {
+    for (auto &I : BB) {
+      if (isa<CallInst>(&I)) {
+        call_instrs.push_back(dyn_cast<CallInst>(&I));
+      } else if (isa<ReturnInst>(&I)) {
+        ret_instrs.push_back(dyn_cast<ReturnInst>(&I));
       }
     }
+  }
+
+  for (auto call_instr : call_instrs) {
+    Function * callee = call_instr->getCalledFunction();
+    if (callee == NULL) { continue; }
+    if (callee->isDebugInfoForProfiling()) { continue; }
+
+    Insert_mem_func_call_probe(call_instr, callee->getName().str());
+  }
+
+  for (auto ret_instr : ret_instrs) {
+    IRB->SetInsertPoint(ret_instr);
+    IRB->CreateCall(__carv_fini, {});
   }
 
   return;
