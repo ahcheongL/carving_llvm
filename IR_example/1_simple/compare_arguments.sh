@@ -14,9 +14,7 @@ echo -e "\n"
 
 mkdir replay
 cd replay
-gclang --coverage ../main.c -g -O0 -c -o main.o
-gclang --coverage main.o -g -O0 -o main
-get-bc main
+get-bc -o main.bc ../carving/main 
 ../../../bin/simple_unit_driver_pass.py main.bc foo
 ../../../bin/simple_unit_driver_pass.py main.bc goo
 cd ..
