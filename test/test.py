@@ -39,9 +39,9 @@ def run_gdb(executable: Path, args: str, gdb_script_path: Path):
             # print(query_output)
             query_result.append(int(query_output[query_output.find(b"=") + 2 :]))
             output_index += 1
-        elif query[0:3] == b"x/d":
+        elif query[0:2] == b"x/":
             query_output = output[output_index]
-            query_result.append(int(query_output[query_output.find(b":") + 2 :]))
+            query_result.extend(map(int, query_output[query_output.find(b":") + 2 :].split()))
             output_index += 1
         elif query == b"quit":
             continue
@@ -55,9 +55,10 @@ class CarvingIR(unittest.TestCase):
     def test_1_sample_args(self):
         with tempfile.TemporaryDirectory() as fp:
             input_args = "1 2 3 4 5"
-            target_dir = project_path / "IR_example" / "1_simple"
+            target = "1_simple"
+            target_dir = project_path / "IR_example" / target
             temp_dir = Path(fp)
-            gdb_script_dir = project_path / "test" / "gdb_scripts" / "1_simple"
+            gdb_script_dir = project_path / "test" / "gdb_scripts" / target
             source_code = target_dir / "main.c"
             carve_inputs_dir = temp_dir / "carve_inputs"
             carve_inputs_dir.mkdir()
@@ -93,7 +94,70 @@ class CarvingIR(unittest.TestCase):
             ) + run_gdb(driver_goo, driver_goo_input_2, gdb_goo_replay)
             
             self.assertEqual(original_gdb_output_goo, replay_gdb_output_goo)
+    
+    def test_2_two_pointers(self):
+        with tempfile.TemporaryDirectory() as fp:
+            input_args = ""
+            target = "2_two_pointers"
+            target_dir = project_path / "IR_example" / target
+            temp_dir = Path(fp)
+            gdb_script_dir = project_path / "test" / "gdb_scripts" / target
+            source_code = target_dir / "main.c"
+            carve_inputs_dir = temp_dir / "carve_inputs"
+            carve_inputs_dir.mkdir()
 
+            binary = temp_dir / "main"
+            bitcode = temp_dir / "main.bc"
+            carve_binary = temp_dir / "main.carv"
+            
+            subprocess.run(["gclang", source_code, "-O0", "-o", binary])
+            subprocess.run(["get-bc", "-o", bitcode, binary])
+            subprocess.run([carve_pass_bin, bitcode, "func_args"])
+            subprocess.run([carve_binary, input_args, "carve_inputs"], cwd=temp_dir)
+
+            # Test foo
+            gdb_foo = gdb_script_dir / "foo.txt"
+            driver_foo = temp_dir.joinpath("main.foo.driver")
+            driver_foo_input = carve_inputs_dir / "foo_1_0"
+            subprocess.run([simple_unit_driver_bin, bitcode, "foo"])
+            
+            self.assertEqual(run_gdb(binary, input_args, gdb_foo), run_gdb(driver_foo, driver_foo_input, gdb_foo))
+
+            # Test goo
+            gdb_goo = gdb_script_dir / "goo.txt"
+            driver_goo = temp_dir.joinpath("main.goo.driver")
+            driver_goo_input = carve_inputs_dir / "goo_2_0"
+            subprocess.run([simple_unit_driver_bin, bitcode, "goo"])
+            
+            self.assertEqual(run_gdb(binary, input_args, gdb_goo), run_gdb(driver_goo, driver_goo_input, gdb_goo))
+    
+    def test_3_struct(self):
+        with tempfile.TemporaryDirectory() as fp:
+            input_args = ""
+            target = "3_struct"
+            target_dir = project_path / "IR_example" / target
+            temp_dir = Path(fp)
+            gdb_script_dir = project_path / "test" / "gdb_scripts" / target
+            source_code = target_dir / "main.c"
+            carve_inputs_dir = temp_dir / "carve_inputs"
+            carve_inputs_dir.mkdir()
+
+            binary = temp_dir / "main"
+            bitcode = temp_dir / "main.bc"
+            carve_binary = temp_dir / "main.carv"
+            
+            subprocess.run(["gclang", source_code, "-O0", "-o", binary])
+            subprocess.run(["get-bc", "-o", bitcode, binary])
+            subprocess.run([carve_pass_bin, bitcode, "func_args"])
+            subprocess.run([carve_binary, input_args, "carve_inputs"], cwd=temp_dir)
+            
+            # Test foo
+            gdb_foo = gdb_script_dir / "foo.txt"
+            driver_foo = temp_dir.joinpath("main.foo.driver")
+            driver_foo_input = carve_inputs_dir / "foo_1_0"
+            subprocess.run([simple_unit_driver_bin, bitcode, "foo"])
+            
+            self.assertEqual(run_gdb(binary, input_args, gdb_foo), run_gdb(driver_foo, driver_foo_input, gdb_foo))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,0 +1,5 @@
+b foo
+run
+x/d $rdi
+x/d $rsi
+quit
