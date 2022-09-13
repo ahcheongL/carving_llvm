@@ -13,3 +13,4 @@ Replay_func_ptr
 __update_class_ptr
 __keep_class_info
 __replay_fini
+__driver_input_modifier

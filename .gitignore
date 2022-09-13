@@ -41,3 +41,5 @@ func_types.txt
 
 *.gcno
 *.gcda
+
+target_funcs.txt

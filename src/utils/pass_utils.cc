@@ -199,6 +199,8 @@ static void add_global_use(Use & op
 
     std::string glob_name = global->getName().str();
     if (glob_name.size() == 0) { return; }
+    if (glob_name == "stdout") { return; }
+    if (glob_name == "stderr") { return; }
 
     global_var_uses[F].push_back(global);
     inserted->insert(global);
@@ -281,4 +283,17 @@ void get_llvm_types() {
   Int8PtrPtrPtrTy = PointerType::get(Int8PtrPtrTy, 0);
   FloatPtrTy = PointerType::get(FloatTy, 0);
   DoublePtrTy = PointerType::get(DoubleTy, 0);
+}
+
+bool is_inst_forbid_func(Function * F) {
+  if (F->isIntrinsic() || !F->size()) { return true; }
+  std::string name = F->getName().str();
+  if (name.find("__Carv__") != std::string::npos) { return true; }
+  if (name.find("llvm_gcov") != std::string::npos) { return true; }
+  if (name.find("_GLOBAL__sub_I_") != std::string::npos) { return true; }
+  if (name.find("__cxx_global_var_init") != std::string::npos) { return true; }
+  if (name.find("__class_replay") != std::string::npos) { return true; }
+  if (name.find("__class_carver") != std::string::npos) { return true; }
+
+  return false;
 }

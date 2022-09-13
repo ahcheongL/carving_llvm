@@ -1,5 +1,6 @@
 #include "driver_pass.hpp"
 
+FunctionCallee __inputf_modifier;
 FunctionCallee __inputf_open;
 
 FunctionCallee replay_char_func;
@@ -385,8 +386,10 @@ void gen_class_replay() {
 }
 
 void get_driver_func_callees() {
+  __inputf_modifier = Mod->getOrInsertFunction(
+    get_link_name("__driver_input_modifier"), VoidTy, Int8PtrTy, Int8PtrPtrPtrTy);
   __inputf_open = Mod->getOrInsertFunction(
-    get_link_name("__driver_inputf_open"), VoidTy, Int8PtrPtrTy);
+    get_link_name("__driver_inputf_open"), VoidTy, Int8PtrTy);
 
   replay_char_func = Mod->getOrInsertFunction(get_link_name("Replay_char")
     , Int8Ty);

@@ -14,18 +14,19 @@ endif
 CC=clang
 CXX=clang++
 CFLAGS=`llvm-config --cflags` -fPIC -O2
-#CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0
-CXXFLAGS=`llvm-config --cxxflags` -fPIC -O2
+CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0
+#CXXFLAGS=`llvm-config --cxxflags` -fPIC -O2
 AR=ar
 
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: lib/carve_func_args_pass.so lib/carver.a lib/carver_probe_names.txt
-all: lib/shape_fixed_driver_pass.so lib/shape_fixed_driver.a lib/shape_fixed_driver_probe_names.txt
 all: lib/simple_unit_driver_pass.so lib/driver.a lib/driver_probe_names.txt
 all: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
-all: lib/carve_type_pass.so
+all: lib/carve_type_pass.so 
+
+unit_test: lib/unit_test_pass.so lib/unit_test_mock.a lib/unit_test_probe_names.txt all
 
 lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
@@ -101,6 +102,22 @@ src/utils/driver_pass_utils.o: src/utils/driver_pass_utils.cc include/driver_pas
 src/utils/pass_utils.o: src/utils/pass_utils.cc include/pass.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/pass_utils.cc -o $@
 
+
+lib/unit_test_pass.so: src/drivers/unit_test_mock_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+	mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+
+lib/unit_test_mock.a: src/drivers/unit_test_mock.o
+	mkdir -p lib
+	$(AR) rsv $@ $^
+
+src/drivers/unit_test_mock.o: src/drivers/unit_test_mock_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/unit_test_mock_probes.cc -o $@
+
+lib/unit_test_probe_names.txt: src/drivers/unit_test_mock.o src/drivers/unit_test_mock_probes.txt
+	mkdir -p lib
+	python3 bin/get_probe_names.py src/drivers/unit_test_mock.o src/drivers/unit_test_mock_probes.txt $@
+
 clean:
 	rm -f lib/carve_func_args_pass.so
 	rm -f lib/carver.a
@@ -122,3 +139,7 @@ clean:
 	rm -f lib/carve_type_pass.so
 	rm -f src/utils/driver_pass_utils.o
 	rm -f src/utils/pass_utils.o
+	rm -f lib/unit_test_pass.so
+	rm -f lib/unit_test_mock.a
+	rm -f src/drivers/unit_test_mock.o
+	rm -f lib/unit_test_probe_names.txt

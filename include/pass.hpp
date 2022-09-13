@@ -97,4 +97,6 @@ void initialize_pass_contexts(Module &);
 
 void construct_ditype_map();
 
+bool is_inst_forbid_func(Function *);
+
 #endif

@@ -56,15 +56,8 @@ bool driver_pass::hookInstrs(Module &M) {
   Function * main_func = NULL;
 
   for (auto &F : M) {
-    if (F.isIntrinsic() || !F.size()) { continue; }
+    if (is_inst_forbid_func(&F)) { continue; }
     std::string func_name = F.getName().str();
-
-    if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
-    if (func_name == "__cxx_global_var_init") { continue; }
-
-    if (func_name.find("__Replay__") != std::string::npos) { continue; }
-    if (func_name == "__class_replay") { continue; }
-    if (func_name.find("__llvm_gcov") != std::string::npos) { continue; }
 
     if (func_name == "main") {
       main_func = &F;
@@ -154,7 +147,10 @@ void driver_pass::instrument_main_func(Function * main_func) {
   }
 
   Value * argv = main_func->getArg(1);
-  IRB->CreateCall(__inputf_open, {argv});
+  Value * argv_1 = IRB->CreateGEP(Int8PtrTy, argv, ConstantInt::get(Int32Ty, 1));
+  argv_1 = IRB->CreateLoad(Int8PtrTy, argv_1);
+
+  IRB->CreateCall(__inputf_open, {argv_1});
 
   std::vector<Value *> target_args;
   int arg_idx = 0;

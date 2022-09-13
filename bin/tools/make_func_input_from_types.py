@@ -21,7 +21,7 @@ try:
 except:
   pass
 
-NUM_INPUT = 1000
+NUM_INPUT = 100
 
 for func in type_info:
   try:

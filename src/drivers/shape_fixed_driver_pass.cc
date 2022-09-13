@@ -83,7 +83,7 @@ bool driver_pass::hookInstrs(Module &M) {
   get_llvm_types();
 
   __inputf_open = M.getOrInsertFunction(
-    get_link_name("__driver_inputf_open"), VoidTy, Int8PtrPtrTy);
+    get_link_name("__driver_inputf_open"), VoidTy, Int8PtrTy);
 
   replay_char_func = M.getOrInsertFunction(get_link_name("Replay_char")
     , Int8Ty);

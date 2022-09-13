@@ -5,9 +5,11 @@
 1. Clang/LLVM, developed on version 13.0.1, not tested on other versions.
     * It is recommend to use apt package downloader, https://apt.llvm.org/
     * `sudo apt install llvm-13-dev clang-13 libclang-13-dev lld-13 libc++abi-13-dev`
-    * It assumes `llvm-config` is on `PATH`
+    * It assumes `llvm-config, clang, clang++, ...` are on `PATH`
 
 2. [gllvm](https://github.com/SRI-CSL/gllvm), needed to get whole program bitcode
+
+3. Python 3.6+, make
 
 ## Build
   `make`
@@ -15,8 +17,10 @@
 ## 1. Target subject build
 
 1. Build target program using `make` or `cmake` as usual, but set `CC=gclang` and `CXX=gclang++` to let gllvm to compile the target program. It varies how to set compiler to use for different programs, but most popular open source programs support building with non-default compiler.
-    * It is recommend to use `--disable-shared` flags...
-    * Example : ``CC=gclang CXX=gclang++ ./configure --prefix=`pwd`\gclang_install --disable-shared``
+    * It is recommend to use `--disable-shared` flags.
+        * Codes that is build in shared libraries won't be instrumented for carving, so you won't able to get carved objects.
+    * It is recommend to turn on debug options, but it is not necessary.
+    * Example : ``CC=gclang CXX=gclang++ CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --prefix=`pwd`\gclang_install --disable-shared``
 2. `get-bc <target executable>` You can get bitcode of the executable file.
 3. (optional) `llvm-dis <target.bc>` will make LLVM IR code of the target program.
 
@@ -43,3 +47,5 @@
     * Use gdb to check parameter and global variables are correctly set.
 
 3. If you want to get coverage data, use `simple_unit_driver_pass_coverage.py` instead of `simple_unit_driver_pass.py`. You don't have to build the original bitcode file again with `--coverage` option.
+    * gllvm has a bug that failure on measuring coverage when you compile and link at the same time. Seperate the compile and link commands.
+        * Example : `gclang main.c --coverage -c -o main.o; gclang main.o --coverage -o main`

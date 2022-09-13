@@ -12,8 +12,21 @@ static vector<PTR> carved_ptrs;
 
 static map<int, char> replayed_ptr;
 
-void __driver_inputf_open(char ** argv) {
-  char * inputfilename = argv[1];
+void __driver_inputf_open(char * inputfilename);
+
+void __driver_input_modifier(int * argcptr, char *** argvptr) {
+
+  int argc = *argcptr - 1;
+  *argcptr = argc;
+
+  char * inputf_name = (*argvptr)[argc];
+
+  __driver_inputf_open(inputf_name);
+
+  (*argvptr)[argc] = 0;
+}
+
+void __driver_inputf_open(char * inputfilename) {
   FILE * input_fp = fopen(inputfilename, "r");
   if (input_fp == NULL) {
     //fprintf(stderr, "Can't read input file\n");
@@ -58,13 +71,13 @@ void __driver_inputf_open(char ** argv) {
     } else {
       char * type_str = strchr(line, ':');
       if (type_str == NULL) { 
-        //fprintf(stderr, "Invalid input file\n");
-        //std::abort();
+        fprintf(stderr, "Invalid input file\n");
+        std::abort();
       }
       char * value_str = strchr(type_str + 1, ':');
       if (value_str == NULL) { 
-        //fprintf(stderr, "Invalid input file\n");
-        //std::abort();
+        fprintf(stderr, "Invalid input file\n");
+        std::abort();
       }
       char * index_str = strchr(value_str + 1, ':');
 
@@ -266,9 +279,17 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   }
 
   if (elem_ptr->type == INPUT_TYPE::UNKNOWN_PTR) {
+    //alloc 1 object
+#define ALLOC_1_OBJ
+#ifdef ALLOC_1_OBJ
+    cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return malloc(default_pointee_size);
+#else
     cur_alloc_size = 0;
     __replay_cur_pointee_size = -1;
     return 0;
+#endif
   }
 
   if (elem_ptr->type != INPUT_TYPE::POINTER) {
@@ -276,7 +297,6 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
     cur_alloc_size = 0;
     __replay_cur_pointee_size = -1;
     return 0;
-    //std::abort();
   }
 
   VAR<int> * elem_v = (VAR<int> *) elem_ptr;

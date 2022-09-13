@@ -98,13 +98,15 @@ void carver_pass::Insert_return_val_probe(Instruction * IN, Function * callee) {
   if (callee != NULL) {
     if (callee->isDebugInfoForProfiling()) { return; }
     callee_name = callee->getName().str();
+    if (callee->isIntrinsic()) { return; }
+    if (callee->size() == 0) { return; }
+
     if (callee_name == "cxa_allocate_exception") { return; }
     if (callee_name == "cxa_throw") { return; }
     if (callee_name == "main") { return; }
     if (callee_name == "__cxx_global_var_init") { return; }
     if (callee_name.find("_GLOBAL__sub_I_") != std::string::npos) { return; }
-    if (callee->isIntrinsic()) { return; }
-    if (callee->size() == 0) { return; }
+
   }
 
   IRB->SetInsertPoint(IN->getNextNonDebugInstruction());
@@ -196,12 +198,9 @@ bool carver_pass::hookInstrs(Module &M) {
   DEBUG0("Iterating functions...\n");
 
   for (auto &F : M) {
-    if (F.isIntrinsic() || !F.size()) { continue; }
-    if (&F == class_carver.getCallee()) { continue; }
+    if (is_inst_forbid_func(&F)) { continue; }
 
     std::string func_name = F.getName().str();
-    if (func_name.find("__Carv_") != std::string::npos) { continue; }
-    if (func_name.find("llvm_gcov") != std::string::npos) { continue; }
 
     std::vector<Instruction *> cast_instrs;
     std::vector<CallInst *> call_instrs;
