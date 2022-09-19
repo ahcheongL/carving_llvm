@@ -49,13 +49,15 @@ void carver_pass::gen_class_carver() {
 
   BasicBlock *default_BB =
       BasicBlock::Create(*Context, "default", class_carver_func);
+
+  // Put return void ad default block
   IRB->SetInsertPoint(default_BB);
   IRB->CreateRetVoid();
 
   IRB->SetInsertPoint(entry_BB);
 
-  Value *carving_ptr = class_carver_func->getArg(0);
-  Value *class_idx = class_carver_func->getArg(1);
+  Value *carving_ptr = class_carver_func->getArg(0); // *int8
+  Value *class_idx = class_carver_func->getArg(1);   // int32
 
   SwitchInst *switch_inst =
       IRB->CreateSwitch(class_idx, default_BB, num_class_name_const + 1);
@@ -429,12 +431,15 @@ bool carver_pass::runOnModule(Module &M) {
   return true;
 }
 
+// Analyze existing functions and write on func_types.txt and target_funcs.txt.
 void carver_pass::get_instrument_func_set() {
-
+  // Control file containing the functions to carve
   std::ifstream targets("targets.txt");
+
   std::ofstream outfile("func_types.txt");
   std::ofstream outfile2("target_funcs.txt");
 
+  // If targets.txt exists
   if (targets.good()) {
     DEBUG0("Reading targets from targets.txt\n");
     std::string line;
@@ -469,6 +474,7 @@ void carver_pass::get_instrument_func_set() {
     return;
   }
 
+  // Otherwise
   for (auto &F : Mod->functions()) {
 
     if (F.isIntrinsic() || !F.size()) {

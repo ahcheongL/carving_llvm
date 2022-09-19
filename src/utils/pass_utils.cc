@@ -182,6 +182,7 @@ int num_class_name_const = 0;
 std::vector<std::pair<Constant *, int>> class_name_consts;
 std::map<StructType *, std::pair<int, Constant *>> class_name_map;
 
+// Collect (index, class name) into vector and map.
 void get_class_type_info() {
   for (auto struct_type : Mod->getIdentifiedStructTypes()) {
     if (struct_type->isOpaque()) {
@@ -199,9 +200,10 @@ void get_class_type_info() {
 std::map<Function *, std::vector<GlobalVariable *>> global_var_uses;
 static std::set<Use *> searching_uses;
 
+// Construct `global_var_uses`, which maps function to used global variables.
 static void add_global_use(Use &op, std::set<GlobalVariable *> *inserted,
                            Function *F) {
-
+  // Check if this op is already searched
   if (searching_uses.find(&op) != searching_uses.end()) {
     return;
   }
