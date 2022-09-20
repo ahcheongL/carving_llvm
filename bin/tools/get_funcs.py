@@ -4,20 +4,28 @@ import sys
 import glob
 
 from utils import read_carved_func_type
+from pathlib import Path
+import os
 
-
-if len(sys.argv) != 4:
+if len(sys.argv) != 5:
     print(
-        "usage : {} <carved_dir> <carved_types.txt> <target_funcs.txt>".format(
+        "usage : {} <.bc file> <carved_dir> <carved_types.txt> <target_funcs.txt>".format(
             sys.argv[0]
         )
     )
     exit()
 
-type_info, types = read_carved_func_type(sys.argv[2])
+
+script_file_path = Path(os.path.realpath(__file__))
+project_path = script_file_path.parent.parent.parent
+unit_driver_pass_py = project_path / "bin" / "simple_unit_driver_pass.py"
+bc_file, carved_dir, carved_types, target_funcs = sys.argv[1:]
+stem = Path(bc_file).stem
+
+type_info, types = read_carved_func_type(carved_types)
 
 funcs = set()
-for fn in glob.glob("{}/*".format(sys.argv[1])):
+for fn in glob.glob("{}/*".format(carved_dir)):
     if "call_seq" in fn:
         continue
 
@@ -27,7 +35,7 @@ for fn in glob.glob("{}/*".format(sys.argv[1])):
 
 print("# of funcs : {}".format(len(funcs)))
 
-with open(sys.argv[3], "w") as f:
+with open(target_funcs, "w") as f:
     for fn in funcs:
         f.write("{}\n".format(fn))
 
@@ -43,8 +51,8 @@ with open("make_driver.sh", "w") as f:
     idx = 0
     for fn in funcs:
         f.write(
-            "/home/cheong/carving_llvm/bin/simple_unit_driver_pass.py curl.bc {} -lssl -lcrypto -lz -lpthread -ldl &\n".format(
-                fn
+            "{} {} {} -lssl -lcrypto -lz -lpthread -ldl &\n".format(
+                unit_driver_pass_py, bc_file, fn
             )
         )
         idx += 1
@@ -57,11 +65,11 @@ with open("make_driver.sh", "w") as f:
 with open("run_tests.sh", "w") as f:
     f.write("#!/bin/bash\n")
     idx = 0
-    for fn in glob.glob("{}/*".format(sys.argv[1])):
+    for fn in glob.glob("{}/*".format(carved_dir)):
         if "call_seq" in fn:
             continue
         func = "_".join(fn.split("/")[-1].split("_")[:-2])
-        f.write("./curl.{}.driver {} &\n".format(func, fn))
+        f.write("./{}.{}.driver {} &\n".format(stem, func, fn))
 
         idx += 1
 
