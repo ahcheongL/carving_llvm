@@ -237,6 +237,7 @@ bool carver_pass::hookInstrs(Module &M) {
     std::vector<Instruction *> cast_instrs;
     std::vector<CallInst *> call_instrs;
     std::vector<Instruction *> ret_instrs;
+
     for (auto &BB : F) {
       for (auto &IN : BB) {
         if (isa<CastInst>(&IN)) {

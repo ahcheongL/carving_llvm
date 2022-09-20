@@ -313,6 +313,7 @@ void get_llvm_types() {
   DoublePtrTy = PointerType::get(DoubleTy, 0);
 }
 
+// Check if the function is not the scope of analysis.
 bool is_inst_forbid_func(Function *F) {
   if (F->isIntrinsic() || !F->size()) {
     return true;
