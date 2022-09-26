@@ -476,7 +476,9 @@ void __carv_func_ret_probe(char *func_name, int func_id) {
     }
   }
 
+#ifdef SMALL
   skip_write = false;
+#endif
 
   if (skip_write) {
     idx = 0;

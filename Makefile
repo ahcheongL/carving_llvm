@@ -18,6 +18,11 @@ CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0
 #CXXFLAGS=`llvm-config --cxxflags` -fPIC -O2
 AR=ar
 
+SMALL ?= 0
+ifeq ($(SMALL), 1)
+	CXXFLAGS += -DSMALL
+endif
+
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
