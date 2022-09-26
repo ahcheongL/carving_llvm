@@ -14,9 +14,14 @@ endif
 CC=clang
 CXX=clang++
 CFLAGS=`llvm-config --cflags` -fPIC -O2
-CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0
-#CXXFLAGS=`llvm-config --cxxflags` -fPIC -O2
 AR=ar
+
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0 -DDEBUG
+else
+	CXXFLAGS=`llvm-config --cxxflags` -fPIC -O2
+endif
 
 SMALL ?= 0
 ifeq ($(SMALL), 1)
