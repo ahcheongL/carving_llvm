@@ -239,6 +239,7 @@ void __carv_struct_name_update(char *field_name) {
   return;
 }
 
+// Save ptr with size and type_name into memory `allocted_ptrs`.
 void __mem_allocated_probe(void *ptr, int size, char *type_name) {
   if (!__carv_ready0) {
     return;

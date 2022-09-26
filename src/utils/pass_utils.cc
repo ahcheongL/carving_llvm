@@ -53,8 +53,8 @@ bool is_func_ptr_type(Type *type) {
   return false;
 }
 
+// Get symbol of probe base name.
 std::string get_link_name(std::string base_name) {
-
   auto search = probe_link_names.find(base_name);
   if (search == probe_link_names.end()) {
     DEBUG0("Can't find probe name : " << base_name << "! Abort.\n");

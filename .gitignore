@@ -43,3 +43,5 @@ func_types.txt
 *.gcda
 
 target_funcs.txt
+test/map_test
+test/boost_map

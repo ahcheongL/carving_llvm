@@ -21,6 +21,7 @@ public:
 private:
   bool hookInstrs(Module &M);
 
+  // Target function including main
   std::set<std::string> instrument_func_set;
   void get_instrument_func_set();
 
@@ -227,7 +228,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
   DEBUG0("Iterating functions...\n");
 
-  for (auto &F : M) {
+  for (llvm::Function &F : M) {
     if (is_inst_forbid_func(&F)) {
       continue;
     }
@@ -238,8 +239,8 @@ bool carver_pass::hookInstrs(Module &M) {
     std::vector<CallInst *> call_instrs;
     std::vector<Instruction *> ret_instrs;
 
-    for (auto &BB : F) {
-      for (auto &IN : BB) {
+    for (llvm::BasicBlock &BB : F) {
+      for (llvm::Instruction &IN : BB) {
         if (isa<CastInst>(&IN)) {
           cast_instrs.push_back(&IN);
         } else if (isa<CallInst>(&IN)) {
@@ -250,13 +251,13 @@ bool carver_pass::hookInstrs(Module &M) {
       }
     }
 
-    if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
-      // Just insert memory tracking probes
-      BasicBlock &entry_block = F.getEntryBlock();
-      Insert_alloca_probe(entry_block);
+    // Just insert memory tracking probes
+    BasicBlock &entry_block = F.getEntryBlock();
+    Insert_alloca_probe(entry_block);
 
+    if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
       // Perform memory tracking
-      for (auto call_instr : call_instrs) {
+      for (llvm::CallInst *call_instr : call_instrs) {
         Function *callee = call_instr->getCalledFunction();
         if ((callee == NULL) || (callee->isDebugInfoForProfiling())) {
           continue;
@@ -289,12 +290,8 @@ bool carver_pass::hookInstrs(Module &M) {
       continue;
     }
 
-    DEBUG0("Inserting probe in " << func_name << "\n");
-
-    carved_types_file << "##" << func_name << "\n";
-
-    BasicBlock &entry_block = F.getEntryBlock();
-    Insert_alloca_probe(entry_block);
+    DEBUG0("Inserting probe in " << func_name << '\n');
+    carved_types_file << "##" << func_name << '\n';
 
     IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
     Constant *func_id_const = ConstantInt::get(Int32Ty, func_id++);
@@ -308,7 +305,6 @@ bool carver_pass::hookInstrs(Module &M) {
     } else if (F.isVarArg()) {
       // TODO, unreachable
     } else {
-
       // Insert input carving probes
       int param_idx = 0;
 

@@ -33,7 +33,7 @@ Constant *global_carve_ready = NULL;
 Constant *global_cur_class_idx = NULL;
 Constant *global_cur_class_size = NULL;
 
-// Get or insert the function prototypes in the module symbol table
+// Insert the probes in the module symbol table
 void get_carving_func_callees() {
   mem_allocated_probe =
       Mod->getOrInsertFunction(get_link_name("__mem_allocated_probe"), VoidTy,
@@ -96,23 +96,24 @@ std::vector<AllocaInst *> tracking_allocas;
 
 // Insert probes to track alloca instrution memory allcation
 void Insert_alloca_probe(BasicBlock &entry_block) {
+  std::vector<AllocaInst *> alloc_instrs;
+  AllocaInst *last_alloc_instr = NULL;
 
-  std::vector<AllocaInst *> allocas;
-  AllocaInst *alloca_instr = NULL;
-
-  for (auto &IN : entry_block) {
+  // Collect all alloca instructions in block
+  for (llvm::Instruction &IN : entry_block) {
     if (isa<AllocaInst>(&IN)) {
-      alloca_instr = dyn_cast<AllocaInst>(&IN);
-      allocas.push_back(alloca_instr);
+      last_alloc_instr = dyn_cast<AllocaInst>(&IN);
+      alloc_instrs.push_back(last_alloc_instr);
     }
   }
 
-  if (alloca_instr != NULL) {
-    IRB->SetInsertPoint(alloca_instr->getNextNonDebugInstruction());
-    for (auto iter = allocas.begin(); iter != allocas.end(); iter++) {
-      AllocaInst *alloc_instr = *iter;
+  if (last_alloc_instr != NULL) {
+    IRB->SetInsertPoint(last_alloc_instr->getNextNonDebugInstruction());
+    for (llvm::AllocaInst *alloc_instr : alloc_instrs) {
+      // allocated_type is the type pointed by alloc_instr_type.
       Type *allocated_type = alloc_instr->getAllocatedType();
       Type *alloc_instr_type = alloc_instr->getType();
+
       unsigned int size = DL->getTypeAllocSize(allocated_type);
 
       Value *casted_ptr = alloc_instr;
@@ -121,6 +122,8 @@ void Insert_alloca_probe(BasicBlock &entry_block) {
                                      Int8PtrTy);
       }
 
+      Value *size_const = ConstantInt::get(Int32Ty, size);
+
       Constant *type_name_const = Constant::getNullValue(Int8PtrTy);
 
       if (allocated_type->isStructTy()) {
@@ -128,7 +131,6 @@ void Insert_alloca_probe(BasicBlock &entry_block) {
         type_name_const = gen_new_string_constant(typestr, IRB);
       }
 
-      Value *size_const = ConstantInt::get(Int32Ty, size);
       IRB->CreateCall(mem_allocated_probe,
                       {casted_ptr, size_const, type_name_const});
       tracking_allocas.push_back(alloc_instr);
@@ -136,13 +138,14 @@ void Insert_alloca_probe(BasicBlock &entry_block) {
   }
 }
 
-static Constant *get_mem_alloc_type(Instruction *IN) {
-  if (IN == NULL) {
+static Constant *get_mem_alloc_type(Instruction *call_inst) {
+  if (call_inst == NULL) {
     return Constant::getNullValue(Int8PtrTy);
   }
 
   CastInst *cast_instr;
-  if ((cast_instr = dyn_cast<CastInst>(IN->getNextNonDebugInstruction()))) {
+  if ((cast_instr =
+           dyn_cast<CastInst>(call_inst->getNextNonDebugInstruction()))) {
     Type *cast_type = cast_instr->getType();
     if (isa<PointerType>(cast_type)) {
       PointerType *cast_ptr_type = dyn_cast<PointerType>(cast_type);
@@ -158,31 +161,32 @@ static Constant *get_mem_alloc_type(Instruction *IN) {
   return Constant::getNullValue(Int8PtrTy);
 }
 
-bool Insert_mem_func_call_probe(Instruction *IN, std::string callee_name) {
-  IRB->SetInsertPoint(IN->getNextNonDebugInstruction());
+bool Insert_mem_func_call_probe(Instruction *call_inst,
+                                std::string callee_name) {
+  IRB->SetInsertPoint(call_inst->getNextNonDebugInstruction());
 
   if (callee_name == "malloc") {
     // Track malloc
-    Constant *type_name_const = get_mem_alloc_type(IN);
+    Constant *type_name_const = get_mem_alloc_type(call_inst);
 
-    Value *size = IN->getOperand(0);
+    Value *size = call_inst->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
-    IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
+    IRB->CreateCall(mem_allocated_probe, {call_inst, size, type_name_const});
     return true;
   } else if (callee_name == "realloc") {
     // Track realloc
-    Constant *type_name_const = get_mem_alloc_type(IN);
-    IRB->CreateCall(remove_probe, {IN->getOperand(0)});
-    Value *size = IN->getOperand(1);
+    Constant *type_name_const = get_mem_alloc_type(call_inst);
+    IRB->CreateCall(remove_probe, {call_inst->getOperand(0)});
+    Value *size = call_inst->getOperand(1);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
-    IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
+    IRB->CreateCall(mem_allocated_probe, {call_inst, size, type_name_const});
     return true;
   } else if (callee_name == "free") {
-    IRB->CreateCall(remove_probe, {IN->getOperand(0)});
+    IRB->CreateCall(remove_probe, {call_inst->getOperand(0)});
     return true;
   } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
     // Get some hint from memory related functions
@@ -215,22 +219,23 @@ bool Insert_mem_func_call_probe(Instruction *IN, std::string callee_name) {
     // std::vector<Value *> strlen_args;
     // strlen_args.push_back(IN.getOperand(0));
     // Value * strlen_result = IRB->CreateCall(strlen_callee, strlen_args);
-    // Value * add_one = IRB->CreateAdd(strlen_result, ConstantInt::get(Int64Ty,
-    // 1)); std::vector<Value *> args {IN.getOperand(0), add_one};
-    // IRB->CreateCall(mem_allocated_probe, args);
+    // Value * add_one = IRB->CreateAdd(strlen_result,
+    // ConstantInt::get(Int64Ty, 1)); std::vector<Value *> args
+    // {IN.getOperand(0), add_one}; IRB->CreateCall(mem_allocated_probe,
+    // args);
   } else if ((callee_name == "_Znwm") || (callee_name == "_Znam")) {
     // new operator
-    Constant *type_name_const = get_mem_alloc_type(IN);
+    Constant *type_name_const = get_mem_alloc_type(call_inst);
 
-    Value *size = IN->getOperand(0);
+    Value *size = call_inst->getOperand(0);
     if (size->getType() == Int64Ty) {
       size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
     }
-    IRB->CreateCall(mem_allocated_probe, {IN, size, type_name_const});
+    IRB->CreateCall(mem_allocated_probe, {call_inst, size, type_name_const});
     return true;
   } else if ((callee_name == "_ZdlPv") || (callee_name == "_ZdaPv")) {
     // delete operator
-    IRB->CreateCall(remove_probe, {IN->getOperand(0)});
+    IRB->CreateCall(remove_probe, {call_inst->getOperand(0)});
     return true;
   }
 
@@ -846,10 +851,7 @@ void insert_check_carve_ready() {
 
 // Remove alloca (local variable) memory tracking info.
 void insert_dealloc_probes() {
-  for (auto iter = tracking_allocas.begin(); iter != tracking_allocas.end();
-       iter++) {
-
-    AllocaInst *alloc_instr = *iter;
+  for (auto alloc_instr : tracking_allocas) {
     Value *casted_ptr =
         IRB->CreateCast(Instruction::CastOps::BitCast, alloc_instr, Int8PtrTy);
     IRB->CreateCall(remove_probe, {casted_ptr});
