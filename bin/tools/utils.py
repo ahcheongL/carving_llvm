@@ -51,3 +51,35 @@ def read_carved_func_type(type_infof):
         break
   
   return type_info, types
+
+def get_link_option(input_bc_filename):
+  orig_filename = ".".join(input_bc_filename.split(".")[:-1])
+
+  cmd = ["ldd", orig_filename]
+
+  out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE).stdout.decode()
+
+  link_commands = []
+
+  for line in out.split("\n"):
+    if "linux-vdso.so" in line:
+      continue
+    if "libgcc_s.so" in line:
+      continue
+    if "ld-linux-x86-64.so" in line:
+      continue
+    if "libc.so" in line:
+      continue
+
+    if "=>" not in line:
+      continue
+
+    line = line.strip().split("=>")[0]
+
+    if "lib" not in line and "so" not in line:
+      continue
+
+    so_name = line.split("lib")[1].split(".so")[0]
+    link_commands.append("-l" + so_name)
+
+  return (link_commands)

@@ -34,6 +34,10 @@ so_path = source_dir + "/lib/" + so_name
 
 outname = ".".join(inputbc.split(".")[:-1]) + ".carv"
 
+if len(compile_args) == 0:
+  link_args = utils.get_link_option(inputbc)
+  compile_args = link_args
+
 cmd = ["clang++", "--ld-path=" + ld_path
   , "-fno-experimental-new-pass-manager"
 #  , "-ggdb", "-O0"
