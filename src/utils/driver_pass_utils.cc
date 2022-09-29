@@ -234,7 +234,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
 
 void insert_gep_replay_probe(Value * gep_val) {
   PointerType * gep_type = dyn_cast<PointerType>(gep_val->getType());
-  Type * gep_pointee_type = gep_type->getElementType();
+  Type * gep_pointee_type = gep_type->getPointerElementType();
 
   if (gep_pointee_type->isStructTy()) {
     insert_struct_replay_probe(gep_val, gep_pointee_type);

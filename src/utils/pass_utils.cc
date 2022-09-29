@@ -123,10 +123,10 @@ std::string find_param_name(Value *param, BasicBlock *BB) {
         DILocalVariable *var = intrinsic->getVariable();
         return var->getName().str();
       }
-#else
-#endif
     }
   }
+#else
+#endif
 
   return "";
 }
