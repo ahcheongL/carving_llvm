@@ -137,8 +137,8 @@ bool extract_pass::hookInstrs(Module &M) {
       for (auto field_type : struct_type->elements()) {
         if (field_type->isPointerTy()) {
           PointerType * ptr_type = dyn_cast<PointerType>(field_type);
-          if (ptr_type->getElementType()->isStructTy()) {
-            StructType * struct_type = dyn_cast<StructType>(ptr_type->getElementType());
+          if (ptr_type->getPointerElementType()->isStructTy()) {
+            StructType * struct_type = dyn_cast<StructType>(ptr_type->getPointerElementType());
             if (struct_type->isOpaque()) { continue; }
             std::string name = struct_type->getName().str();
             unsigned int num_fields = get_num_fields(struct_type);

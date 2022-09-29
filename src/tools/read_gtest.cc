@@ -99,8 +99,8 @@ std::pair<bool, std::string> extract_pass::is_worth_to_test(Function * F) {
             }
           } else if (op_type->isPointerTy()) {
             PointerType * pointer_type = dyn_cast<PointerType>(op_type);
-            if (pointer_type->getElementType()->isStructTy()) {
-              StructType * struct_type = dyn_cast<StructType>(pointer_type->getElementType());
+            if (pointer_type->getPointerElementType()->isStructTy()) {
+              StructType * struct_type = dyn_cast<StructType>(pointer_type->getPointerElementType());
               std::string struct_name = struct_type->getName().str();
               for (auto complex_type : complex_types) {
                 if (struct_name.find(complex_type) != std::string::npos) {
