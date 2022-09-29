@@ -28,6 +28,8 @@ ifeq ($(SMALL), 1)
 	CXXFLAGS += -DSMALL
 endif
 
+CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
+
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 

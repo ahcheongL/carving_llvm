@@ -105,7 +105,9 @@ std::string find_param_name(Value *param, BasicBlock *BB) {
 
   Instruction *ptr = NULL;
 
+#if LLVM_MAJOR < 15
   for (auto instr_iter = BB->begin(); instr_iter != BB->end(); instr_iter++) {
+
     if ((ptr == NULL) && isa<StoreInst>(instr_iter)) {
       StoreInst *store_inst = dyn_cast<StoreInst>(instr_iter);
       if (store_inst->getOperand(0) == param) {
@@ -114,12 +116,15 @@ std::string find_param_name(Value *param, BasicBlock *BB) {
     } else if (isa<DbgVariableIntrinsic>(instr_iter)) {
       DbgVariableIntrinsic *intrinsic =
           dyn_cast<DbgVariableIntrinsic>(instr_iter);
+
       Value *valloc = intrinsic->getVariableLocationOp(0);
 
       if (valloc == ptr) {
         DILocalVariable *var = intrinsic->getVariable();
         return var->getName().str();
       }
+#else
+#endif
     }
   }
 
@@ -156,11 +161,15 @@ void get_struct_field_names_from_DIT(DIType *dit,
         DIDerivedType *elem_DIT = dyn_cast<DIDerivedType>(iter2);
         dwarf::Tag elem_tag = elem_DIT->getTag();
         std::string elem_name = "";
+
+#if LLVM_MAJOR < 15
         if (elem_tag == dwarf::Tag::DW_TAG_member) {
           elem_name = elem_DIT->getName().str();
         } else if (elem_tag == dwarf::Tag::DW_TAG_inheritance) {
           elem_name = elem_DIT->getBaseType()->getName().str();
         }
+#else
+#endif
 
         if (elem_name == "") {
           elem_name = "field" + std::to_string(field_idx);

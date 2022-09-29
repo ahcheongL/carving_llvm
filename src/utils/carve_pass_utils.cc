@@ -413,7 +413,7 @@ BasicBlock *insert_array_carve_probe(Value *arr_ptr_val,
   assert(arr_ptr_type->isPointerTy());
   PointerType *arr_ptr_type_2 = dyn_cast<PointerType>(arr_ptr_type);
 
-  Type *arr_type = arr_ptr_type_2->getElementType();
+  Type *arr_type = arr_ptr_type_2->getPointerElementType();
   assert(arr_type->isArrayTy());
 
   ArrayType *arr_type_2 = dyn_cast<ArrayType>(arr_type);
