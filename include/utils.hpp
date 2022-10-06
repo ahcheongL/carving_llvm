@@ -11,7 +11,7 @@
 #include <memory>
 #include <assert.h>
 
-#include "boost/container/map.hpp"
+//#include "boost/container/map.hpp"
 
 enum INPUT_TYPE {
   CHAR,
@@ -408,13 +408,6 @@ public:
   }
 
   Elem* find (Key key) {
-    if (root == NULL) { return NULL; }
-    data_node * search_node = root->find_node(key, NULL);
-    if (search_node == NULL) { return NULL; }
-    return &(search_node->elem);
-  }
-
-  Elem * operator[](Key key) {
     if (root == NULL) { return NULL; }
     data_node * search_node = root->find_node(key, NULL);
     if (search_node == NULL) { return NULL; }

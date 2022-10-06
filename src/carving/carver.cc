@@ -28,7 +28,8 @@ static int callseq_index;
 static int carved_index = 0;
 
 // Function pointer names
-static boost::container::map<void *, char *> func_ptrs;
+//static boost::container::map<void *, char *> func_ptrs;
+static map<void *, char *> func_ptrs;
 
 static map<void *, char> no_stub_funcs;
 
@@ -38,7 +39,8 @@ vector<IVAR *> *__carve_cur_inputs = NULL;
 static vector<PTR> *cur_carved_ptrs = NULL;
 
 // memory info
-static boost::container::map<void *, struct typeinfo> alloced_ptrs;
+//static boost::container::map<void *, struct typeinfo> alloced_ptrs;
+map<void *, struct typeinfo> alloced_ptrs;
 
 // variable naming
 static vector<char *> __carv_base_names;
@@ -128,18 +130,27 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   // Check whether it is alloced area
   // if (alloced_ptrs.size() == 0) { return 0; } // no way
 
-  auto closest_alloc = alloced_ptrs.upper_bound(ptr);
-  if (closest_alloc == alloced_ptrs.begin()) {
+
+  // boost implementation
+  // auto closest_alloc = alloced_ptrs.upper_bound(ptr);
+  // if (closest_alloc == alloced_ptrs.begin()) {
+  //   VAR<void *> *inputv =
+  //       new VAR<void *>(ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
+  //   __carve_cur_inputs->push_back((IVAR *)inputv);
+  //   return 0;
+  // }
+  //closest_alloc--;
+
+  auto closest_alloc = alloced_ptrs.find_small_closest(ptr);
+  if (closest_alloc == NULL) {
     VAR<void *> *inputv =
         new VAR<void *>(ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
     return 0;
   }
 
-  closest_alloc--;
-
-  char *closest_alloc_ptr_addr = (char *)closest_alloc->first;
-  typeinfo *closest_alloced_info = &closest_alloc->second;
+  char *closest_alloc_ptr_addr = (char *)closest_alloc->key;
+  typeinfo *closest_alloced_info = &closest_alloc->elem;
 
   char *alloced_addr_end = closest_alloc_ptr_addr + closest_alloced_info->size;
 
@@ -175,7 +186,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   return ptr_alloc_size;
 }
 
-void __record_func_ptr(void *ptr, char *name) { func_ptrs[ptr] = name; }
+void __record_func_ptr(void *ptr, char *name) { func_ptrs.insert(ptr, name); } // func_ptrs[ptr] = name; }
 
 void __add_no_stub_func(void *ptr) { no_stub_funcs.insert(ptr, 0); }
 
@@ -184,7 +195,7 @@ bool __is_no_stub_func(void *ptr) { return no_stub_funcs.find(ptr) != NULL; }
 void __Carv_func_ptr(void *ptr) {
   char *updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptrs.find(ptr);
-  if ((ptr == NULL) || (search == func_ptrs.end())) {
+  if ((ptr == NULL) || (search == NULL)) {
     VAR<void *> *inputv =
         new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
@@ -192,7 +203,7 @@ void __Carv_func_ptr(void *ptr) {
   }
 
   VAR<char *> *inputv =
-      new VAR<char *>(search->second, updated_name, INPUT_TYPE::FUNCPTR);
+      new VAR<char *>(*search, updated_name, INPUT_TYPE::FUNCPTR);
   __carve_cur_inputs->push_back((IVAR *)inputv);
   return;
 }
@@ -247,7 +258,8 @@ void __mem_allocated_probe(void *ptr, int size, char *type_name) {
   struct typeinfo tmp {
     type_name, size
   };
-  alloced_ptrs[ptr] = tmp;
+  //alloced_ptrs[ptr] = tmp;
+  alloced_ptrs.insert(ptr, tmp);
   return;
 }
 
@@ -255,7 +267,8 @@ void __remove_mem_allocated_probe(void *ptr) {
   if (!__carv_ready0) {
     return;
   }
-  alloced_ptrs.erase(ptr);
+  //alloced_ptrs.erase(ptr);
+  alloced_ptrs.remove(ptr);
 }
 
 void __carv_func_call_probe(int func_id) {
@@ -728,7 +741,7 @@ void __carv_close(const char *type_name, const char *func_name) {
 
   unsigned int cur_type_idx = 0;
 
-  unsigned int *type_idx_ptr = type_idx[type_name];
+  unsigned int *type_idx_ptr = type_idx.find(type_name); //type_idx[type_name];
   if (type_idx_ptr == NULL) {
     cur_type_idx = max_type_idx;
     type_idx.insert(type_name, max_type_idx++);
@@ -781,10 +794,10 @@ void __carv_close(const char *type_name, const char *func_name) {
     return;
   }
 
-  unsigned int *type_count = type_counter[type_name];
+  unsigned int *type_count = type_counter.find(type_name); //type_counter[type_name];
   if (type_count == NULL) {
     type_counter.insert(type_name, 1);
-    type_count = type_counter[type_name];
+    type_count = type_counter.find(type_name); //type_counter[type_name];
   } else {
     (*type_count)++;
   }
