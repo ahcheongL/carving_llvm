@@ -16,8 +16,6 @@ FunctionCallee replay_ptr_func;
 FunctionCallee replay_func_ptr;
 FunctionCallee record_func_ptr;
 
-FunctionCallee replay_ptr_alloc_size;
-
 FunctionCallee update_class_ptr;
 
 FunctionCallee keep_class_info;
@@ -165,7 +163,8 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
       class_idx = IRB->CreateLoad(Int32Ty, global_cur_class_index);
     }
     
-    Instruction * ptr_bytesize = IRB->CreateCall(replay_ptr_alloc_size, {});
+    Constant * ptr_alloc_size_gv = Mod->getOrInsertGlobal("__replay_cur_alloc_size", Int32Ty);
+    Value * ptr_bytesize = IRB->CreateLoad(Int32Ty, ptr_alloc_size_gv);
     Value * ptr_size = IRB->CreateSDiv(ptr_bytesize, pointee_size_val);
 
     BasicBlock * start_block = IRB->GetInsertBlock();
@@ -173,7 +172,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
     Function * cur_func = start_block->getParent();
     
     //Make loop block
-    BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_func);
+    BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_func, start_block->getNextNode());
     BasicBlock * const loopblock_start = loopblock;
     
     Value * cmp_instr1 = IRB->CreateICmpEQ(ptr_size
@@ -203,7 +202,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
     
     Instruction * temp_br_instr2 = IRB->CreateBr(loopblock);
 
-    BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_func);
+    BasicBlock * endblock = BasicBlock::Create(*Context, "end", cur_func, loopblock->getNextNode());
 
     IRB->SetInsertPoint(temp_br_instr);
 
@@ -407,9 +406,6 @@ void get_driver_func_callees() {
     , DoubleTy);
   replay_ptr_func = Mod->getOrInsertFunction(get_link_name("Replay_pointer")
     , Int8PtrTy, Int32Ty, Int32Ty, Int8PtrTy);
-
-  replay_ptr_alloc_size = Mod->getOrInsertFunction(get_link_name("Replay_ptr_alloc_size")
-    , Int32Ty);
 
   replay_func_ptr = Mod->getOrInsertFunction(get_link_name("Replay_func_ptr")
     , Int8PtrTy);

@@ -40,9 +40,9 @@ if len(compile_args) == 0:
 
 cmd = ["clang++", "--ld-path=" + ld_path
   , "-fno-experimental-new-pass-manager"
-#  , "-ggdb", "-O0"
+  , "-ggdb", "-O0"
 #  , "-fsanitize=address"
-  , "-O2"
+#  , "-O2"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
   , "-L", "/usr/lib/llvm-13/lib/clang/13.0.1/lib/linux", "-lclang_rt.profile-x86_64"
   , "-I", source_dir + "/include", "-o", outname

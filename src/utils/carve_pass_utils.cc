@@ -28,13 +28,15 @@ FunctionCallee carv_func_ret;
 FunctionCallee update_carved_ptr_idx;
 FunctionCallee keep_class_info;
 FunctionCallee class_carver;
+FunctionCallee carv_open;
+FunctionCallee carv_close;
 
 Constant *global_carve_ready = NULL;
 Constant *global_cur_class_idx = NULL;
 Constant *global_cur_class_size = NULL;
 
 // Insert the probes in the module symbol table
-void get_carving_func_callees() {
+void get_carving_func_callees_and_globals() {
   mem_allocated_probe =
       Mod->getOrInsertFunction(get_link_name("__mem_allocated_probe"), VoidTy,
                                Int8PtrTy, Int32Ty, Int8PtrTy);
@@ -90,6 +92,17 @@ void get_carving_func_callees() {
       get_link_name("__update_carved_ptr_idx"), VoidTy);
   keep_class_info = Mod->getOrInsertFunction(
       get_link_name("__keep_class_info"), VoidTy, Int8PtrTy, Int32Ty, Int32Ty);
+
+  // Constructs global variables to global symbol table.
+  global_carve_ready = Mod->getOrInsertGlobal("__carv_ready", Int8Ty);
+  global_cur_class_idx =
+      Mod->getOrInsertGlobal("__carv_cur_class_index", Int32Ty);
+  global_cur_class_size =
+      Mod->getOrInsertGlobal("__carv_cur_class_size", Int32Ty);
+
+  carv_open = Mod->getOrInsertFunction(get_link_name("__carv_open"), VoidTy);
+  carv_close = Mod->getOrInsertFunction(get_link_name("__carv_close"), VoidTy,
+                                        Int8PtrTy, Int8PtrTy);
 }
 
 std::vector<AllocaInst *> tracking_allocas;
@@ -767,7 +780,7 @@ void insert_struct_carve_probe_inner(Value *struct_ptr, Type *type) {
 
     // depth check
     Constant *depth_check_const =
-        Mod->getOrInsertGlobal(get_link_name("__carv_depth"), Int8Ty);
+        Mod->getOrInsertGlobal("__carv_depth", Int8Ty);
 
     Value *depth_check_val = IRB->CreateLoad(Int8Ty, depth_check_const);
     Value *depth_check_cmp = IRB->CreateICmpSGT(
@@ -865,3 +878,61 @@ std::set<std::string> no_carve_funcs{
     "libc_start_init",   "exit",
     "libc_exit_fini",    "_Exit",
 };
+
+void gen_class_carver() {
+  class_carver =
+      Mod->getOrInsertFunction("__class_carver", VoidTy, Int8PtrTy, Int32Ty);
+  Function *class_carver_func = dyn_cast<Function>(class_carver.getCallee());
+
+  BasicBlock *entry_BB =
+      BasicBlock::Create(*Context, "entry", class_carver_func);
+
+  BasicBlock *default_BB =
+      BasicBlock::Create(*Context, "default", class_carver_func);
+
+  // Put return void ad default block
+  IRB->SetInsertPoint(default_BB);
+  IRB->CreateRetVoid();
+
+  IRB->SetInsertPoint(entry_BB);
+
+  Value *carving_ptr = class_carver_func->getArg(0); // *int8
+  Value *class_idx = class_carver_func->getArg(1);   // int32
+
+  SwitchInst *switch_inst =
+      IRB->CreateSwitch(class_idx, default_BB, num_class_name_const + 1);
+
+  for (auto class_type : class_name_map) {
+    int case_id = class_type.second.first;
+    BasicBlock *case_block = BasicBlock::Create(
+        *Context, std::to_string(case_id), class_carver_func);
+    switch_inst->addCase(ConstantInt::get(Int32Ty, case_id), case_block);
+    IRB->SetInsertPoint(case_block);
+
+    StructType *class_type_ptr = class_type.first;
+
+    Value *casted_var =
+        IRB->CreateCast(Instruction::CastOps::BitCast, carving_ptr,
+                        PointerType::get(class_type_ptr, 0));
+
+    insert_struct_carve_probe_inner(casted_var, class_type_ptr);
+    IRB->CreateRetVoid();
+  }
+
+  // default is char *
+  int case_id = num_class_name_const;
+  BasicBlock *case_block =
+      BasicBlock::Create(*Context, std::to_string(case_id), class_carver_func);
+  switch_inst->addCase(ConstantInt::get(Int32Ty, case_id), case_block);
+  IRB->SetInsertPoint(case_block);
+
+  Value *load_val = IRB->CreateLoad(Int8Ty, carving_ptr);
+  IRB->CreateCall(carv_char_func, {load_val});
+  IRB->CreateRetVoid();
+
+  switch_inst->setDefaultDest(case_block);
+
+  default_BB->eraseFromParent();
+
+  return;
+}

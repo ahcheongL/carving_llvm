@@ -18,8 +18,6 @@ extern FunctionCallee replay_ptr_func;
 extern FunctionCallee replay_func_ptr;
 extern FunctionCallee record_func_ptr;
 
-extern FunctionCallee replay_ptr_alloc_size;
-
 extern FunctionCallee update_class_ptr;
 
 extern FunctionCallee keep_class_info;

@@ -328,7 +328,7 @@ bool is_inst_forbid_func(Function *F) {
     return true;
   }
   std::string name = F->getName().str();
-  if (name.find("__Carv__") != std::string::npos) {
+  if (name.find("__Carv_") != std::string::npos) {
     return true;
   }
   if (name.find("llvm_gcov") != std::string::npos) {

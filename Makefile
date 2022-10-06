@@ -7,16 +7,12 @@ LLVM_MAJOR = $(shell llvm-config --version 2>/dev/null | sed 's/\..*//' )
 LLVM_MINOR = $(shell llvm-config --version 2>/dev/null | sed 's/.*\.//' | sed 's/git//' | sed 's/svn//' | sed 's/ .*//' )
 $(info Detected LLVM VERSION : $(LLVMVER))
 
-ifneq ($(LLVM_MAJOR), 13)
-$(info Warning : not LLVM 13 version)
-endif
-
 CC=clang
 CXX=clang++
 CFLAGS=`llvm-config --cflags` -fPIC -O2
 AR=ar
 
-DEBUG ?= 0
+DEBUG ?= 1
 ifeq ($(DEBUG), 1)
 	CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0 -DDEBUG
 else
@@ -35,10 +31,12 @@ MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: lib/carve_func_args_pass.so lib/carver.a lib/carver_probe_names.txt
 all: lib/simple_unit_driver_pass.so lib/driver.a lib/driver_probe_names.txt
-all: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
 unit_test: lib/unit_test_pass.so lib/unit_test_mock.a lib/unit_test_probe_names.txt all
-carve_type: lib/carve_type_pass.so
+carve_type: lib/carve_type_pass.so all
+extend_driver: lib/extend_driver_pass.so lib/extend_driver.a lib/extend_driver_probe_names.txt all
+
+tools: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
 lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
@@ -130,28 +128,26 @@ lib/unit_test_probe_names.txt: src/drivers/unit_test_mock.o src/drivers/unit_tes
 	mkdir -p lib
 	python3 bin/get_probe_names.py src/drivers/unit_test_mock.o src/drivers/unit_test_mock_probes.txt $@
 
+lib/extend_driver_pass.so: src/drivers/extend_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+	mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+
+lib/extend_driver.a: src/drivers/extend_driver.o
+	mkdir -p lib
+	$(AR) rsv $@ $^
+
+src/drivers/extend_driver.o: src/drivers/extend_driver_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/extend_driver_probes.cc -o $@
+
+lib/extend_driver_probe_names.txt: src/drivers/extend_driver.o src/drivers/extend_driver_probes.txt
+	mkdir -p lib
+	python3 bin/get_probe_names.py src/drivers/extend_driver.o src/drivers/extend_driver_probes.txt $@
+
+
 clean:
-	rm -f lib/carve_func_args_pass.so
-	rm -f lib/carver.a
-	rm -f src/carving/carver.o
+	rm -f lib/*.so lib/*.a src/carving/*.o drivers/*.o
+	rm -f src/utils/*.o
 	rm -f lib/carver_probe_names.txt
-	rm -f lib/shape_fixed_driver_pass.so
-	rm -f lib/shape_fixed_driver.a
-	rm -f src/drivers/shape_fixed_driver.o
 	rm -f lib/shape_fixed_driver_probe_names.txt
-	rm -f lib/simple_unit_driver_pass.so
-	rm -f lib/driver.a
-	rm -f src/drivers/driver.o
 	rm -f lib/driver_probe_names.txt
-	rm -f lib/extract_info_pass.so
-	rm -f lib/read_gtest.so
-	rm -f lib/get_call_seq.so
-	rm -f lib/call_seq.a
-	rm -f src/utils/carve_pass_utils.o
-	rm -f lib/carve_type_pass.so
-	rm -f src/utils/driver_pass_utils.o
-	rm -f src/utils/pass_utils.o
-	rm -f lib/unit_test_pass.so
-	rm -f lib/unit_test_mock.a
-	rm -f src/drivers/unit_test_mock.o
 	rm -f lib/unit_test_probe_names.txt

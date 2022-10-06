@@ -8,7 +8,33 @@ public:
   static char ID;
   carver_pass() : ModulePass(ID) { func_id = 0; }
 
-  bool runOnModule(Module &M) override;
+  bool runOnModule(Module &M) override {
+
+    DEBUG0("Running carver_pass\n");
+
+    read_probe_list("carver_probe_names.txt");
+    initialize_pass_contexts(M);
+
+    get_llvm_types();
+    get_carving_func_callees_and_globals();
+
+    instrument_module();
+
+    DEBUG0("Verifying module...\n");
+    std::string out;
+    llvm::raw_string_ostream output(out);
+    bool has_error = verifyModule(M, &output);
+
+    if (has_error > 0) {
+      DEBUG0("IR errors : \n");
+      DEBUG0(out);
+      return false;
+    }
+
+    DEBUG0("Verifying done without errors\n");
+
+    return true;
+  }
 
 #if LLVM_VERSION_MAJOR >= 4
   StringRef getPassName() const override {
@@ -19,7 +45,7 @@ public:
   }
 
 private:
-  bool hookInstrs(Module &M);
+  bool instrument_module();
 
   // Target function including main
   std::set<std::string> instrument_func_set;
@@ -29,8 +55,6 @@ private:
 
   void insert_global_carve_probe(Function *F, BasicBlock *BB);
 
-  void gen_class_carver();
-
   int func_id;
 
   std::ofstream carved_types_file;
@@ -39,64 +63,6 @@ private:
 } // namespace
 
 char carver_pass::ID = 0;
-
-void carver_pass::gen_class_carver() {
-  class_carver =
-      Mod->getOrInsertFunction("__class_carver", VoidTy, Int8PtrTy, Int32Ty);
-  Function *class_carver_func = dyn_cast<Function>(class_carver.getCallee());
-
-  BasicBlock *entry_BB =
-      BasicBlock::Create(*Context, "entry", class_carver_func);
-
-  BasicBlock *default_BB =
-      BasicBlock::Create(*Context, "default", class_carver_func);
-
-  // Put return void ad default block
-  IRB->SetInsertPoint(default_BB);
-  IRB->CreateRetVoid();
-
-  IRB->SetInsertPoint(entry_BB);
-
-  Value *carving_ptr = class_carver_func->getArg(0); // *int8
-  Value *class_idx = class_carver_func->getArg(1);   // int32
-
-  SwitchInst *switch_inst =
-      IRB->CreateSwitch(class_idx, default_BB, num_class_name_const + 1);
-
-  for (auto class_type : class_name_map) {
-    int case_id = class_type.second.first;
-    BasicBlock *case_block = BasicBlock::Create(
-        *Context, std::to_string(case_id), class_carver_func);
-    switch_inst->addCase(ConstantInt::get(Int32Ty, case_id), case_block);
-    IRB->SetInsertPoint(case_block);
-
-    StructType *class_type_ptr = class_type.first;
-
-    Value *casted_var =
-        IRB->CreateCast(Instruction::CastOps::BitCast, carving_ptr,
-                        PointerType::get(class_type_ptr, 0));
-
-    insert_struct_carve_probe_inner(casted_var, class_type_ptr);
-    IRB->CreateRetVoid();
-  }
-
-  // default is char *
-  int case_id = num_class_name_const;
-  BasicBlock *case_block =
-      BasicBlock::Create(*Context, std::to_string(case_id), class_carver_func);
-  switch_inst->addCase(ConstantInt::get(Int32Ty, case_id), case_block);
-  IRB->SetInsertPoint(case_block);
-
-  Value *load_val = IRB->CreateLoad(Int8Ty, carving_ptr);
-  IRB->CreateCall(carv_char_func, {load_val});
-  IRB->CreateRetVoid();
-
-  switch_inst->setDefaultDest(case_block);
-
-  default_BB->eraseFromParent();
-
-  return;
-}
 
 void carver_pass::Insert_return_val_probe(Instruction *IN, Function *callee) {
   std::string callee_name;
@@ -203,19 +169,7 @@ void carver_pass::insert_global_carve_probe(Function *F, BasicBlock *BB) {
   return;
 }
 
-bool carver_pass::hookInstrs(Module &M) {
-  initialize_pass_contexts(M);
-
-  get_llvm_types();
-  get_carving_func_callees();
-
-  // Constructs global variables to global symbol table.
-  global_carve_ready = Mod->getOrInsertGlobal("__carv_ready", Int8Ty);
-  global_cur_class_idx =
-      Mod->getOrInsertGlobal("__carv_cur_class_index", Int32Ty);
-  global_cur_class_size =
-      Mod->getOrInsertGlobal("__carv_cur_class_size", Int32Ty);
-
+bool carver_pass::instrument_module() {
   get_class_type_info();
 
   get_instrument_func_set();
@@ -228,7 +182,7 @@ bool carver_pass::hookInstrs(Module &M) {
 
   DEBUG0("Iterating functions...\n");
 
-  for (llvm::Function &F : M) {
+  for (llvm::Function &F : Mod->functions()) {
     if (is_inst_forbid_func(&F)) {
       continue;
     }
@@ -397,34 +351,10 @@ bool carver_pass::hookInstrs(Module &M) {
 
   char *tmp = getenv("DUMP_IR");
   if (tmp) {
-    M.dump();
+    Mod->dump();
   }
 
   delete IRB;
-  return true;
-}
-
-// Runs at module startup
-bool carver_pass::runOnModule(Module &M) {
-
-  DEBUG0("Running carver_pass\n");
-
-  read_probe_list("carver_probe_names.txt");
-  hookInstrs(M);
-
-  DEBUG0("Verifying module...\n");
-  std::string out;
-  llvm::raw_string_ostream output(out);
-  bool has_error = verifyModule(M, &output);
-
-  if (has_error > 0) {
-    DEBUG0("IR errors : \n");
-    DEBUG0(out);
-    return false;
-  }
-
-  DEBUG0("Verifying done without errors\n");
-
   return true;
 }
 

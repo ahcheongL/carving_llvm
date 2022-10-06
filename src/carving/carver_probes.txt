@@ -22,7 +22,5 @@ __update_carved_ptr_idx
 __keep_class_info
 __carv_open
 __carv_close
-__carv_ready
-__carv_depth
 __add_no_stub_func
 __is_no_stub_func
