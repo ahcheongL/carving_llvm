@@ -38,13 +38,17 @@ if len(compile_args) == 0:
   link_args = utils.get_link_option(inputbc)
   compile_args = link_args
 
+clang_ver = utils.get_clang_version()
+if clang_ver == 15:
+  force_legacy_pm_flag = "-flegacy-pass-manager"
+else:
+  force_legacy_pm_flag = "-fno-experimental-new-pass-manager"
+
 cmd = ["clang++", "--ld-path=" + ld_path
-  , "-fno-experimental-new-pass-manager"
-  , "-ggdb", "-O0"
+  , force_legacy_pm_flag , "-ggdb", "-O0"
 #  , "-fsanitize=address"
 #  , "-O2"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
-  , "-L", "/usr/lib/llvm-13/lib/clang/13.0.1/lib/linux", "-lclang_rt.profile-x86_64"
   , "-I", source_dir + "/include", "-o", outname
   , "-L", source_dir + "/lib", inputbc, "-l:carver.a" ] + compile_args
 

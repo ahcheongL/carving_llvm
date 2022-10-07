@@ -83,3 +83,9 @@ def get_link_option(input_bc_filename):
     link_commands.append("-l" + so_name)
 
   return (link_commands)
+
+def get_clang_version():
+  cmd = ["clang++", "--version"]
+  out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE).stdout.decode()
+  version = int(out.split(" ")[2].split(".")[0])
+  return version
