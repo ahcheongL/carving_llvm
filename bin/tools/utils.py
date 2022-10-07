@@ -89,3 +89,11 @@ def get_clang_version():
   out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE).stdout.decode()
   version = int(out.split(" ")[2].split(".")[0])
   return version
+
+def need_asan_flag(input_bc_filename):
+  orig_filename = ".".join(input_bc_filename.split(".")[:-1])
+
+  cmd = ["nm", orig_filename]
+  out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE).stdout.decode()
+
+  return "__asan_report" in out

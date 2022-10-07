@@ -153,20 +153,41 @@ public:
     return *this;
   }
 
+  void increase_capacity() {
+    capacity *= 2;
+
+    elem_type * tmp = new elem_type[capacity];
+    int idx;
+    for (idx = 0; idx < num_elem; idx++) {
+      tmp[idx] = data[idx];
+    }
+
+    delete [] data;
+    data = tmp;
+  }
+
   void push_back(elem_type elem) {
     data[num_elem] = elem;
     num_elem++;
     if (num_elem >= capacity) {
-      capacity *= 2;
+      increase_capacity();
+    }
+  }
 
-      elem_type * tmp = new elem_type[capacity];
-      int idx;
-      for (idx = 0; idx < num_elem; idx++) {
-        tmp[idx] = data[idx];
+  void insert(int idx, elem_type elem) {
+    if (idx == num_elem) {
+      push_back(elem);
+    } else if ((idx < num_elem) && (idx >= 0)) {
+      if ((num_elem + 1) >= capacity) {
+        increase_capacity();
       }
 
-      delete [] data;
-      data = tmp;
+      for (int i = num_elem; i > idx; i--) {
+        data[i] = data[i-1];
+      }
+      data[idx] = elem;
+    } else {
+      return;
     }
   }
 

@@ -107,26 +107,6 @@ void driver_pass::instrument_driver_func() {
 
   Value * size_arg = driver_func->getArg(1);
   Type * size_arg_type = size_arg->getType();
-
-  AllocaInst *new_data_ptr = IRB->CreateAlloca(Int8PtrTy);
-  AllocaInst *new_size_ptr = IRB->CreateAlloca(size_arg_type);
-
-  LoadInst * new_data = IRB->CreateLoad(Int8PtrTy, new_data_ptr);
-  LoadInst * new_size = IRB->CreateLoad(size_arg_type, new_size_ptr);
-
-  data_arg->replaceAllUsesWith(new_data);
-  size_arg->replaceAllUsesWith(new_size);
-
-  IRB->SetInsertPoint(new_data);
-
-  Value * data_1_arg = IRB->CreateInBoundsGEP(Int8Ty, data_arg, ConstantInt::get(Int32Ty, 4));
-
-  IRB->CreateStore(data_1_arg, new_data_ptr);
-  Value * new_size_val = IRB->CreateSub(size_arg, ConstantInt::get(size_arg_type, 4));
-  IRB->CreateStore(new_size_val, new_size_ptr);
-
-  IRB->SetInsertPoint(new_size->getNextNonDebugInstruction());
-
   
   //Record class type string constants
   for (auto iter : class_name_map) {
@@ -136,9 +116,13 @@ void driver_pass::instrument_driver_func() {
       , ConstantInt::get(Int32Ty, iter.second.first)});
   }
 
-  FunctionCallee read_carv_file = Mod->getOrInsertFunction(get_link_name("read_carv_file"), VoidTy, Int8PtrTy);
+  FunctionCallee read_carv_file = Mod->getOrInsertFunction(get_link_name("read_carv_file"), VoidTy, Int8PtrTy, Int32Ty);
 
-  IRB->CreateCall(read_carv_file, {data_arg});
+  if (size_arg_type != Int32Ty) {
+    size_arg = IRB->CreateIntCast(size_arg, Int32Ty, false);
+  }
+
+  IRB->CreateCall(read_carv_file, {data_arg, size_arg});
 
   BasicBlock * cur_block = IRB->GetInsertBlock();
 

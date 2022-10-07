@@ -1,15 +1,23 @@
 #include "utils.hpp"
 #include "dirent.h"
 
-#include "boost/container/vector.hpp"
-
 extern map<void *, char *> __replay_func_ptrs;
 extern vector<IVAR *> __replay_inputs;
 extern vector<PTR> __replay_carved_ptrs;
 
-void read_carv_file(char * data) {
-  int carv_index = *((int *) data);
+void read_carv_file(char * data, int size) {
 
+  int limit = size;
+  if (limit >= 100) {
+    limit = 100;
+  }
+
+  int carv_index = 0;
+  
+  for (int i = 0; i < limit; i++) {
+    carv_index += data[i];
+  }
+  
   char * carv_dir = getenv("CARV_DIR");
 
   if (carv_dir == NULL) {
@@ -21,15 +29,15 @@ void read_carv_file(char * data) {
   d = opendir(carv_dir);
   if (!d) return;
 
-  boost::container::vector<dirent *> files;
+  vector<dirent *> files;
 
   while ((dir = readdir(d)) != NULL) {
     if (dir->d_type != DT_REG) { continue; }
     bool inserted = false;
 
     for (int i = 0; i < files.size(); i++) {
-      if (strcmp(dir->d_name, files[i]->d_name) < 0) {
-        files.insert(files.begin() + i, dir);
+      if (strcmp(dir->d_name, (*files.get(i))->d_name) < 0) {
+        files.insert(i, dir);
         inserted = true;
         break;
       }
@@ -40,7 +48,7 @@ void read_carv_file(char * data) {
     }
   }
 
-  char * carv_file_name = files[carv_index % files.size()]->d_name;
+  char * carv_file_name = (*files.get(carv_index % files.size()))->d_name;
 
   FILE * input_fp = fopen(carv_file_name, "r");
   if (input_fp == NULL) {
