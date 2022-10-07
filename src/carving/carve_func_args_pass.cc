@@ -419,7 +419,7 @@ void carver_pass::get_instrument_func_set() {
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) {
       continue;
     }
-    if (func_name == "__cxx_global_var_init") {
+    if (func_name.find("__cxx_global_var_init") != std::string::npos) {
       continue;
     }
     if (func_name.find("llvm_gcov") != std::string::npos) {
