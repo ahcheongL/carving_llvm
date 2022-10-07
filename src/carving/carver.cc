@@ -651,6 +651,9 @@ void __carver_argv_modifier(int *argcptr, char ***argvptr) {
       outdir_name = (char *)malloc(sizeof(char) * 512);
       snprintf(outdir_name, 512, "%s/%s", cwd, tmp_outdir_name);
     }
+  } else {
+    outdir_name = (char *)malloc(sizeof(char) * 512);
+    snprintf(outdir_name, 512, "%s", tmp_outdir_name);
   }
 
   (*argvptr)[argc] = 0;
