@@ -103,6 +103,19 @@ void driver_pass::instrument_driver_func() {
   Type * data_arg_pointee_type = data_arg_type->getPointerElementType();
   assert(data_arg_pointee_type->isIntegerTy());
 
+  //remove old use_carved_obj assignment
+  for (auto &BB : *driver_func) {
+    for (auto &I : BB) {
+      if (auto *SI = dyn_cast<StoreInst>(&I)) {
+        Value * store_val = SI->getPointerOperand();
+        if (store_val == use_carved_obj) {
+          SI->eraseFromParent();
+          break;
+        }
+      }
+    }
+  }
+
   IRB->SetInsertPoint(driver_func->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
 
   Value * size_arg = driver_func->getArg(1);
