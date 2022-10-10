@@ -103,23 +103,52 @@ void driver_pass::instrument_driver_func() {
   Type * data_arg_pointee_type = data_arg_type->getPointerElementType();
   assert(data_arg_pointee_type->isIntegerTy());
 
+  Value * orig_obj_val = NULL;
+
+  Instruction * val_insert_point = NULL;
   //remove old use_carved_obj assignment
   for (auto &BB : *driver_func) {
     for (auto &I : BB) {
       if (auto *SI = dyn_cast<StoreInst>(&I)) {
-        Value * store_val = SI->getPointerOperand();
+        Value * store_val = SI->getPointerOperand();        
         if (store_val == use_carved_obj) {
+          orig_obj_val = SI->getValueOperand();
+          val_insert_point = SI->getNextNonDebugInstruction();
           SI->eraseFromParent();
           break;
         }
       }
     }
   }
+  
+  if (orig_obj_val == NULL) {
+    return;
+  }
 
   IRB->SetInsertPoint(driver_func->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
 
   Value * size_arg = driver_func->getArg(1);
   Type * size_arg_type = size_arg->getType();
+
+  
+  AllocaInst *new_data_ptr = IRB->CreateAlloca(Int8PtrTy);
+  AllocaInst *new_size_ptr = IRB->CreateAlloca(size_arg_type);
+
+  LoadInst * new_data = IRB->CreateLoad(Int8PtrTy, new_data_ptr);
+  LoadInst * new_size = IRB->CreateLoad(size_arg_type, new_size_ptr);
+
+  data_arg->replaceAllUsesWith(new_data);
+  size_arg->replaceAllUsesWith(new_size);
+
+  IRB->SetInsertPoint(new_data);
+
+  Value * data_1_arg = IRB->CreateInBoundsGEP(Int8Ty, data_arg, ConstantInt::get(Int32Ty, 4));
+
+  IRB->CreateStore(data_1_arg, new_data_ptr);
+  Value * new_size_val = IRB->CreateSub(size_arg, ConstantInt::get(size_arg_type, 4));
+  IRB->CreateStore(new_size_val, new_size_ptr);
+
+  IRB->SetInsertPoint(new_size->getNextNonDebugInstruction());
   
   //Record class type string constants
   for (auto iter : class_name_map) {
@@ -129,22 +158,38 @@ void driver_pass::instrument_driver_func() {
       , ConstantInt::get(Int32Ty, iter.second.first)});
   }
 
-  FunctionCallee read_carv_file = Mod->getOrInsertFunction(get_link_name("read_carv_file"), VoidTy, Int8PtrTy, Int32Ty);
+  FunctionCallee read_carv_file = Mod->getOrInsertFunction(get_link_name("read_carv_file"), Int8Ty, Int8PtrTy, Int32Ty);
 
   if (size_arg_type != Int32Ty) {
     size_arg = IRB->CreateIntCast(size_arg, Int32Ty, false);
   }
 
-  IRB->CreateCall(read_carv_file, {data_arg, size_arg});
+  Value * read_val = IRB->CreateCall(read_carv_file, {data_arg, size_arg});
+
+  IRB->SetInsertPoint(val_insert_point);
+
+  Value * cmp_val = IRB->CreateICmpEQ(read_val, ConstantInt::get(Int8Ty, 0));
 
   BasicBlock * cur_block = IRB->GetInsertBlock();
 
   BasicBlock * end_block =
           cur_block->splitBasicBlock(&(*IRB->GetInsertPoint()));
 
+  BasicBlock * then_block = BasicBlock::Create(Mod->getContext(), "then"
+    , driver_func, end_block);
+  
   BasicBlock * new_block = BasicBlock::Create(Mod->getContext(), "new_block", driver_func, end_block);
+  
+  Instruction * new_term = IRB->CreateCondBr(cmp_val, then_block, new_block);
+  new_term->removeFromParent();
 
-  cur_block->getTerminator()->setOperand(0, new_block);
+  ReplaceInstWithInst(cur_block->getTerminator(), new_term);
+
+  IRB->SetInsertPoint(then_block);
+
+  IRB->CreateStore(orig_obj_val, use_carved_obj);
+
+  IRB->CreateBr(end_block);
 
   IRB->SetInsertPoint(new_block);
 

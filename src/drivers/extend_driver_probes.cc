@@ -5,29 +5,31 @@ extern map<void *, char *> __replay_func_ptrs;
 extern vector<IVAR *> __replay_inputs;
 extern vector<PTR> __replay_carved_ptrs;
 
-void read_carv_file(char * data, int size) {
+char read_carv_file(char * data, int size) {
 
-  int limit = size;
-  if (limit >= 100) {
-    limit = 100;
-  }
+  // int limit = size;
+  // if (limit > 500) {
+  //   limit = 500;
+  // }
 
-  int carv_index = 0;
+  // int carv_index = 0;
   
-  for (int i = 0; i < limit; i++) {
-    carv_index += data[i];
-  }
+  // for (int i = 0; i < limit; i++) {
+  //   carv_index += data[i];
+  // }
+
+  int carv_index = *(int *) data;
   
   char * carv_dir = getenv("CARV_DIR");
 
   if (carv_dir == NULL) {
-    return;
+    return 0;
   }
 
   DIR *d;
   struct dirent *dir;
   d = opendir(carv_dir);
-  if (!d) return;
+  if (!d) return 0;
 
   vector<dirent *> files;
 
@@ -48,12 +50,24 @@ void read_carv_file(char * data, int size) {
     }
   }
 
-  char * carv_file_name = (*files.get(carv_index % files.size()))->d_name;
+  int num_files = files.size();
 
-  FILE * input_fp = fopen(carv_file_name, "r");
+  carv_index = carv_index % (num_files + 10);
+  if (carv_index >= num_files) {
+    return 0;
+  }
+
+  char * carv_file_name = (*files.get(carv_index))->d_name;
+
+  char * full_name = (char *) malloc(strlen(carv_dir) + strlen(carv_file_name) + 2);
+  strcpy(full_name, carv_dir);
+  strcat(full_name, "/");
+  strcat(full_name, carv_file_name);
+
+  FILE * input_fp = fopen(full_name, "r");
   if (input_fp == NULL) {
     //fprintf(stderr, "Can't read input file\n");
-    return;
+    return 0;
   }
 
   files.clear();
@@ -183,5 +197,5 @@ void read_carv_file(char * data, int size) {
 
   if (line) { free(line); }
   fclose(input_fp);
-  return;
+  return 1;
 }
