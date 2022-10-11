@@ -104,7 +104,6 @@ class CarvingIR(unittest.TestCase):
             sp.run(["get-bc", "-o", bitcode, binary])
             sp.run([carve_pass_bin, bitcode, "func_args"], cwd=temp_dir)
             sp.run([carved_binary, "carve_inputs"], cwd=temp_dir)
-            input()
             sp.run([simple_unit_driver_bin, bitcode, "_Z3fooSt6vectorI5ShapeSaIS0_EE"])
             original_output = sp.check_output([binary]).strip().split(b'\n')
             replay1 = sp.check_output([driver_foo, input1]).strip()
