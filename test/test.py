@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import unittest
 import tempfile
-import subprocess
+import subprocess as sp
 
 script_file_path = Path(os.path.realpath(__file__))
 project_path = script_file_path.parent.parent
@@ -12,7 +12,7 @@ simple_unit_driver_bin = project_path.joinpath("bin", "simple_unit_driver_pass.p
 
 def run_gdb(executable: Path, args: str, gdb_script_path: Path):
 
-    output = subprocess.check_output(
+    output = sp.check_output(
         [
             "gdb",
             "-q",
@@ -71,12 +71,12 @@ class CarvingIR(unittest.TestCase):
             driver_goo = temp_dir.joinpath("main.goo.driver")
             driver_goo_input_1 = carve_inputs_dir.joinpath("goo_2_0")
             driver_goo_input_2 = carve_inputs_dir.joinpath("goo_3_1")
-            subprocess.run(["gclang", source_code, "-O0", "-o", binary])
-            subprocess.run(["get-bc", "-o", bitcode, binary])
-            subprocess.run([carve_pass_bin, bitcode, "func_args"])
-            subprocess.run([carved_binary, input_args, "carve_inputs"], cwd=temp_dir)
-            subprocess.run([simple_unit_driver_bin, bitcode, "foo"])
-            subprocess.run([simple_unit_driver_bin, bitcode, "goo"])
+            sp.run(["gclang", source_code, "-O0", "-o", binary])
+            sp.run(["get-bc", "-o", bitcode, binary])
+            sp.run([carve_pass_bin, bitcode, "func_args"], cwd=temp_dir)
+            sp.run([carved_binary, input_args, "carve_inputs"], cwd=temp_dir)
+            sp.run([simple_unit_driver_bin, bitcode, "foo"])
+            sp.run([simple_unit_driver_bin, bitcode, "goo"])
             original_gdb_output_foo = run_gdb(binary, input_args, gdb_foo)
             replay_gdb_output_foo = run_gdb(driver_foo, driver_foo_input, gdb_foo)
             self.assertEqual(original_gdb_output_foo, replay_gdb_output_foo)
@@ -87,6 +87,30 @@ class CarvingIR(unittest.TestCase):
             ) + run_gdb(driver_goo, driver_goo_input_2, gdb_goo_replay)
             
             self.assertEqual(original_gdb_output_goo, replay_gdb_output_goo)
+    
+    def test_8_2_cpp_vector(self):
+        with tempfile.TemporaryDirectory() as fp:
+            source_code = project_path / "IR_example" / "8_2_c++_vector" / "main.cc"
+            temp_dir = Path(fp)
+            carve_inputs = temp_dir / "carve_inputs"
+            carve_inputs.mkdir()
+            binary = temp_dir / "main"
+            bitcode = temp_dir / "main.bc"
+            carved_binary = temp_dir / "main.carv"
+            driver_foo = temp_dir / "main._Z3fooSt6vectorI5ShapeSaIS0_EE.driver"
+            input1 = carve_inputs / "_Z3fooSt6vectorI5ShapeSaIS0_EE_200_0"
+            input2 = carve_inputs / "_Z3fooSt6vectorI5ShapeSaIS0_EE_309_1"
+            sp.run(["gclang++", source_code, "-O0", "-g", "-o", binary])
+            sp.run(["get-bc", "-o", bitcode, binary])
+            sp.run([carve_pass_bin, bitcode, "func_args"], cwd=temp_dir)
+            sp.run([carved_binary, "carve_inputs"], cwd=temp_dir)
+            input()
+            sp.run([simple_unit_driver_bin, bitcode, "_Z3fooSt6vectorI5ShapeSaIS0_EE"])
+            original_output = sp.check_output([binary]).strip().split(b'\n')
+            replay1 = sp.check_output([driver_foo, input1]).strip()
+            replay2 = sp.check_output([driver_foo, input2]).strip()
+            self.assertEqual(original_output[0], replay1)
+            self.assertEqual(original_output[1], replay2)
             
 
 
