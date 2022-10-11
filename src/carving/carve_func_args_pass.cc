@@ -403,18 +403,10 @@ void carver_pass::get_instrument_func_set() {
 
   // Otherwise
   for (auto &F : Mod->functions()) {
-    llvm::DISubprogram *dbgF = F.getSubprogram();
-    if (dbgF == NULL) {
-      continue;
-    }
-    std::string filename = F.getSubprogram()->getFilename().str();
-    if (filename.find("gcc/") != std::string::npos) {
-      continue;
-    }
-
     if (F.isIntrinsic() || !F.size()) {
       continue;
     }
+
     std::string func_name = F.getName().str();
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) {
       continue;
@@ -424,6 +416,14 @@ void carver_pass::get_instrument_func_set() {
     }
     if (func_name.find("llvm_gcov") != std::string::npos) {
       continue;
+    }
+
+    llvm::DISubprogram *dbgF = F.getSubprogram();
+    if (dbgF != NULL) {
+      std::string filename = dbgF->getFilename().str();
+      if (filename.find("gcc/") != std::string::npos) {
+        continue;
+      }
     }
 
     // TODO

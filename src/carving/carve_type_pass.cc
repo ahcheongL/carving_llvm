@@ -185,7 +185,12 @@ bool carver_pass::instrument_module() {
 
         Constant *name = gen_new_string_constant("obj", IRB);
 
-        IRB->SetInsertPoint(IN->getNextNonDebugInstruction());
+        Instruction * tmp = &(*IN);
+        while (tmp->getNextNonDebugInstruction() && isa<PHINode>(tmp->getNextNonDebugInstruction())) {
+          tmp = tmp->getNextNonDebugInstruction();
+        }
+
+        IRB->SetInsertPoint(tmp->getNextNonDebugInstruction());
 
         IRB->CreateCall(carv_open, {});
 
@@ -229,7 +234,7 @@ bool carver_pass::instrument_module() {
 bool carver_pass::get_target_types() {
   std::ifstream target_f("target.txt");
   if (!target_f.good()) {
-    DEBUG0("No targets.txt found, carving won't work.\n");
+    DEBUG0("No target.txt found, carving won't work.\n");
     return false;
   }
 
