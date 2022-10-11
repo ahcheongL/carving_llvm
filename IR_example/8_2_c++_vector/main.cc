@@ -10,6 +10,11 @@ public:
 };
 
 int foo(std::vector<class Shape> shapevec) {
+  printf("{");
+  for (auto s: shapevec){
+    printf("(%d %d), ", s.width, s.area);
+  }
+  printf("}\n");
   return 0;
 }
 

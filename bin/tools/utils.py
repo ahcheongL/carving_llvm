@@ -95,7 +95,6 @@ def get_clang_version():
     version = tokens[tokens.index("version") + 1].split(".")[0]
     return version
 
-
 def need_asan_flag(input_bc_filename):
     orig_filename = ".".join(input_bc_filename.split(".")[:-1])
 
