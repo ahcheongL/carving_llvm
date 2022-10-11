@@ -86,8 +86,9 @@ def get_link_option(input_bc_filename):
 
 def get_clang_version():
   cmd = ["clang++", "--version"]
-  out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE).stdout.decode()
-  version = int(out.split(" ")[2].split(".")[0])
+  out = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE).stdout.decode() 
+  tokens = out.split()
+  version = int(tokens[tokens.index("version") + 1].split(".")[0])
   return version
 
 def need_asan_flag(input_bc_filename):
