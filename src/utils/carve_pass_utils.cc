@@ -30,13 +30,14 @@ FunctionCallee keep_class_info;
 FunctionCallee class_carver;
 FunctionCallee carv_open;
 FunctionCallee carv_close;
+FunctionCallee record_func_ptr_index;
 
 Constant *global_carve_ready = NULL;
 Constant *global_cur_class_idx = NULL;
 Constant *global_cur_class_size = NULL;
 
 // Insert the probes in the module symbol table
-void get_carving_func_callees_and_globals() {
+void get_carving_func_callees_and_globals(bool carv_func_name) {
   mem_allocated_probe =
       Mod->getOrInsertFunction(get_link_name("__mem_allocated_probe"), VoidTy,
                                Int8PtrTy, Int32Ty, Int8PtrTy);
@@ -71,8 +72,14 @@ void get_carving_func_callees_and_globals() {
   carv_ptr_func =
       Mod->getOrInsertFunction(get_link_name("Carv_pointer"), Int32Ty,
                                Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
-  carv_func_ptr = Mod->getOrInsertFunction(get_link_name("__Carv_func_ptr"),
-                                           VoidTy, Int8PtrTy);
+
+  if (carv_func_name) {
+    carv_func_ptr = Mod->getOrInsertFunction(get_link_name("__Carv_func_ptr_name"),
+                                          VoidTy, Int8PtrTy);
+  } else {
+    carv_func_ptr = Mod->getOrInsertFunction(get_link_name("__Carv_func_ptr_index"),
+                                          VoidTy, Int8PtrTy);
+  }
 
   carv_ptr_name_update = Mod->getOrInsertFunction(
       get_link_name("__carv_ptr_name_update"), VoidTy, Int32Ty);
@@ -103,6 +110,9 @@ void get_carving_func_callees_and_globals() {
   carv_open = Mod->getOrInsertFunction(get_link_name("__carv_open"), VoidTy);
   carv_close = Mod->getOrInsertFunction(get_link_name("__carv_close"), VoidTy,
                                         Int8PtrTy, Int8PtrTy);
+
+  record_func_ptr_index = Mod->getOrInsertFunction(
+      get_link_name("__record_func_ptr_index"), VoidTy, Int8PtrTy, Int32Ty);
 }
 
 std::vector<AllocaInst *> tracking_allocas;
@@ -274,7 +284,7 @@ static void Insert_glob_mem_alloc_probe(GlobalVariable *gv) {
 }
 
 static bool instrumented = false;
-void Insert_carving_main_probe(BasicBlock *entry_block, Function *F) {
+void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector<Function *> * func_list) {
 
   if (instrumented) {
     return;
@@ -347,36 +357,46 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F) {
   }
 
   // Record func ptr
-  for (auto &Func : Mod->functions()) {
-    bool is_no_stub = false;
-    if (Func.isIntrinsic()) {
-      continue;
-    }
-    if (!Func.size()) {
-      is_no_stub = true;
-    }
+  if (func_list == NULL) {
+    for (auto &Func : Mod->functions()) {
+      bool is_no_stub = false;
+      if (Func.isIntrinsic()) {
+        continue;
+      }
+      if (!Func.size()) {
+        is_no_stub = true;
+      }
 
-    std::string func_name = Func.getName().str();
-    Constant *func_name_const = gen_new_string_constant(func_name, IRB);
-    Value *cast_val =
-        IRB->CreateCast(Instruction::CastOps::BitCast, &Func, Int8PtrTy);
-    IRB->CreateCall(record_func_ptr, {cast_val, func_name_const});
+      std::string func_name = Func.getName().str();
+      Constant *func_name_const = gen_new_string_constant(func_name, IRB);
+      Value *cast_val =
+          IRB->CreateCast(Instruction::CastOps::BitCast, &Func, Int8PtrTy);
+      IRB->CreateCall(record_func_ptr, {cast_val, func_name_const});
 
-    if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) {
-      is_no_stub = true;
-    }
-    if (func_name == "__cxx_global_var_init") {
-      is_no_stub = true;
-    }
-    if (func_name == "main") {
-      is_no_stub = true;
-    }
+      if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) {
+        is_no_stub = true;
+      }
+      if (func_name == "__cxx_global_var_init") {
+        is_no_stub = true;
+      }
+      if (func_name == "main") {
+        is_no_stub = true;
+      }
 
-    if (!is_no_stub) {
-      continue;
-    }
+      if (!is_no_stub) {
+        continue;
+      }
 
-    IRB->CreateCall(add_no_stub_func, {cast_val});
+      IRB->CreateCall(add_no_stub_func, {cast_val});
+    }
+  } else {
+    int index = 0;
+    for (Function * func : *func_list) {
+      Value *cast_val =
+          IRB->CreateCast(Instruction::CastOps::BitCast, func, Int8PtrTy);
+      IRB->CreateCall(record_func_ptr_index, {cast_val, ConstantInt::get(Int32Ty, index)});
+      index++;
+    }
   }
 
   // Record class type string constants

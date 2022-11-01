@@ -10,7 +10,8 @@ Carv_longlong
 Carv_float
 Carv_double
 Carv_pointer
-__Carv_func_ptr
+__Carv_func_ptr_name
+__Carv_func_ptr_index
 __carv_ptr_name_update
 __carv_name_push
 __carv_name_pop
@@ -24,3 +25,4 @@ __carv_open
 __carv_close
 __add_no_stub_func
 __is_no_stub_func
+__record_func_ptr_index

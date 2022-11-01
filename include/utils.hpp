@@ -15,36 +15,28 @@
 
 enum INPUT_TYPE {
   CHAR,
-  UCHAR,
   SHORT,
-  USHORT,
   INT,
-  UINT,
   LONG,
-  ULONG,
   LONGLONG,
-  ULONGLONG,
   FLOAT,
   DOUBLE,
   LONGDOUBLE,
-  POINTER,
+  PTR,
   NULLPTR,
-  VOID,
-  VOIDPTR,
   FUNCPTR,
-  FUNCTION,
-  UNKNOWN_PTR,
+  UNKNOWN_PTR
 };
 
-class PTR {
+class POINTER {
 public:
 
-  PTR() : addr(0), pointee_type(0), alloc_size(0) {}
+  POINTER() : addr(0), pointee_type(0), alloc_size(0) {}
 
-  PTR(void * _addr, int _size)
+  POINTER(void * _addr, int _size)
     : addr(_addr), pointee_type(0), alloc_size(_size)  {}
 
-  PTR(void * _addr, const char * pointee_type, int _size)
+  POINTER(void * _addr, const char * pointee_type, int _size)
     : addr(_addr), pointee_type(pointee_type), alloc_size(_size)  {}
   
   void * addr;
@@ -687,7 +679,7 @@ public:
   }
 
   vector<IVAR *> inputs;
-  vector<PTR> carved_ptrs;
+  vector<POINTER> carved_ptrs;
   int carved_ptr_begin_idx;
   int carving_index;
   int func_call_idx;

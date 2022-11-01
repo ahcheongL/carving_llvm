@@ -17,10 +17,13 @@ public:
     initialize_pass_contexts(M);
 
     get_llvm_types();
-    
-    read_probe_list("carver_probe_names.txt");
-    get_carving_func_callees_and_globals();
 
+    for (auto &F : M) {
+      func_list.push_back(&F);
+    }
+
+    read_probe_list("carver_probe_names.txt");
+    get_carving_func_callees_and_globals(false);
     
     if (!get_target_types()) {
       DEBUG0("No target type found\n");
@@ -62,6 +65,8 @@ private:
   bool is_complex_type(Type *);
 
   int func_id = 0;
+
+  std::vector<Function *> func_list;
 
   std::set<Type *> target_types;
   std::string      target_type_name;
@@ -111,7 +116,7 @@ bool carver_pass::instrument_module() {
 
     // Main argc argv handling
     if (func_name == "main") {
-      Insert_carving_main_probe(&entry_block, &F);
+      Insert_carving_main_probe(&entry_block, &F, &func_list);
       main_func = &F;
     }
 

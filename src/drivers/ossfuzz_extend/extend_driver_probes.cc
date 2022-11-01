@@ -3,7 +3,7 @@
 
 extern map<void *, char *> __replay_func_ptrs;
 extern vector<IVAR *> __replay_inputs;
-extern vector<PTR> __replay_carved_ptrs;
+extern vector<POINTER> __replay_carved_ptrs;
 
 char read_carv_file(char * data, int size) {
 
@@ -106,7 +106,7 @@ char read_carv_file(char * data, int size) {
 
         void * new_ptr = malloc(ptr_size);
 
-        __replay_carved_ptrs.push_back(PTR(new_ptr, strdup(type_str + 1), ptr_size));
+        __replay_carved_ptrs.push_back(POINTER(new_ptr, strdup(type_str + 1), ptr_size));
       }
     } else {
       char * type_str = strchr(line, ':');
@@ -152,7 +152,7 @@ char read_carv_file(char * data, int size) {
         double value = atof(value_str + 1);
         VAR<double> * inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
         __replay_inputs.push_back((IVAR *) inputv);
-      } else if (!strncmp(type_str, "NULL", 4)) {
+      } else if (!strncmp(type_str, "NULLPTR", 4)) {
         VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
         __replay_inputs.push_back((IVAR *) inputv);
       } else if (!strncmp(type_str, "FUNCPTR", 7)) {
@@ -183,7 +183,7 @@ char read_carv_file(char * data, int size) {
 
         int ptr_index = atoi(value_str + 1);
         int ptr_offset = atoi(index_str + 1);
-        VAR<int> * inputv = new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::POINTER);
+        VAR<int> * inputv = new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::PTR);
         __replay_inputs.push_back((IVAR *) inputv);
       } else if (!strncmp(type_str, "UNKNOWN_PTR", 11)) {
         VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);

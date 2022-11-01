@@ -16,7 +16,7 @@ DEBUG ?= 1
 ifeq ($(DEBUG), 1)
 	CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0 -DDEBUG
 else
-	CXXFLAGS=`llvm-config --cxxflags` -fPIC -O2
+	CXXFLAGS=`llvm-config --cxxflags` -fPIC -g -O2
 endif
 
 SMALL ?= 0
@@ -35,6 +35,7 @@ all: lib/simple_unit_driver_pass.so lib/driver.a lib/driver_probe_names.txt
 unit_test: lib/unit_test_pass.so lib/unit_test_mock.a lib/unit_test_probe_names.txt all
 carve_type: lib/carve_type_pass.so all
 extend_driver: lib/extend_driver_pass.so lib/extend_driver.a lib/extend_driver_probe_names.txt all
+fuzz_driver: lib/fuzz_driver_pass.so lib/fuzz_driver.a lib/fuzz_driver_probe_names.txt all
 
 tools: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
@@ -49,18 +50,18 @@ lib/carver.a: src/carving/carver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-lib/shape_fixed_driver_pass.so: src/drivers/shape_fixed_driver_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
+lib/fuzz_driver_pass.so: src/drivers/fuzz_driver/fuzz_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
-src/drivers/shape_fixed_driver.o: src/drivers/shape_fixed_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/shape_fixed_driver_probes.cc -o $@
+src/drivers/fuzz_driver/fuzz_driver.o: src/drivers/fuzz_driver/fuzz_driver_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/fuzz_driver/fuzz_driver_probes.cc -o $@
 
-lib/shape_fixed_driver.a: src/drivers/shape_fixed_driver.o
+lib/fuzz_driver.a: src/drivers/fuzz_driver/fuzz_driver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-lib/simple_unit_driver_pass.so: src/drivers/simple_unit_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/simple_unit_driver_pass.so: src/drivers/simple_replay/simple_unit_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
@@ -75,9 +76,9 @@ lib/carver_probe_names.txt: src/carving/carver.o src/carving/carver_probes.txt
 	mkdir -p lib
 	python3 bin/get_probe_names.py src/carving/carver.o src/carving/carver_probes.txt $@
 
-lib/shape_fixed_driver_probe_names.txt: src/drivers/shape_fixed_driver.o src/drivers/shape_fixed_driver_probes.txt
+lib/fuzz_driver_probe_names.txt: src/drivers/fuzz_driver/fuzz_driver.o src/drivers/fuzz_driver/fuzz_driver_probes.txt
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/shape_fixed_driver.o src/drivers/shape_fixed_driver_probes.txt $@
+	python3 bin/get_probe_names.py src/drivers/fuzz_driver/fuzz_driver.o src/drivers/fuzz_driver/fuzz_driver_probes.txt $@
 
 lib/driver_probe_names.txt: src/drivers/driver.o src/drivers/driver_probe_names.txt
 	mkdir -p lib
@@ -113,41 +114,40 @@ src/utils/pass_utils.o: src/utils/pass_utils.cc include/pass.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/pass_utils.cc -o $@
 
 
-lib/unit_test_pass.so: src/drivers/unit_test_mock_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/unit_test_pass.so: src/drivers/unit_test_mock/unit_test_mock_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
-lib/unit_test_mock.a: src/drivers/unit_test_mock.o
+lib/unit_test_mock.a: src/drivers/unit_test_mock/unit_test_mock.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-src/drivers/unit_test_mock.o: src/drivers/unit_test_mock_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/unit_test_mock_probes.cc -o $@
+src/drivers/unit_test_mock/unit_test_mock.o: src/drivers/unit_test_mock/unit_test_mock_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/unit_test_mock/unit_test_mock_probes.cc -o $@
 
-lib/unit_test_probe_names.txt: src/drivers/unit_test_mock.o src/drivers/unit_test_mock_probes.txt
+lib/unit_test_probe_names.txt: src/drivers/unit_test_mock/unit_test_mock.o src/drivers/unit_test_mock/unit_test_mock_probes.txt
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/unit_test_mock.o src/drivers/unit_test_mock_probes.txt $@
+	python3 bin/get_probe_names.py src/drivers/unit_test_mock/unit_test_mock.o src/drivers/unit_test_mock/unit_test_mock_probes.txt $@
 
-lib/extend_driver_pass.so: src/drivers/extend_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/extend_driver_pass.so: src/drivers/ossfuzz_extend/extend_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
 
-lib/extend_driver.a: src/drivers/extend_driver.o
+lib/extend_driver.a: src/drivers/ossfuzz_extend/extend_driver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-src/drivers/extend_driver.o: src/drivers/extend_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/extend_driver_probes.cc -o $@
+src/drivers/ossfuzz_extend/extend_driver.o: src/drivers/ossfuzz_extend/extend_driver_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/ossfuzz_extend/extend_driver_probes.cc -o $@
 
-lib/extend_driver_probe_names.txt: src/drivers/extend_driver.o src/drivers/extend_driver_probes.txt
+lib/extend_driver_probe_names.txt: src/drivers/ossfuzz_extend/extend_driver.o src/drivers/ossfuzz_extend/extend_driver_probes.txt
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/extend_driver.o src/drivers/extend_driver_probes.txt $@
+	python3 bin/get_probe_names.py src/drivers/ossfuzz_extend/extend_driver.o src/drivers/ossfuzz_extend/extend_driver_probes.txt $@
 
 
 clean:
 	rm -f lib/*.so lib/*.a src/carving/*.o drivers/*.o
 	rm -f src/utils/*.o
-	rm -f lib/carver_probe_names.txt
-	rm -f lib/shape_fixed_driver_probe_names.txt
-	rm -f lib/driver_probe_names.txt
-	rm -f lib/unit_test_probe_names.txt
+	rm -f lib/*_probe_names.txt
+	rm -rf src/drivers/*.o
+	rm -rf src/drivers/*/*.o

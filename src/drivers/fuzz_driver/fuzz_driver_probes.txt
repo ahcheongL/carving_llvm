@@ -1,0 +1,2 @@
+__driver_inputfb_open
+__record_func_ptr_index

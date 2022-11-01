@@ -6,8 +6,9 @@ static map<char *, classinfo> class_info;
 map<void *, char *> __replay_func_ptrs;
 
 vector<IVAR *> __replay_inputs;
-vector<PTR> __replay_carved_ptrs;
+vector<POINTER> __replay_carved_ptrs;
 
+//adhoc to make a set
 static map<int, char> replayed_ptr;
 
 void __driver_inputf_open(char * inputfilename);
@@ -64,7 +65,7 @@ void __driver_inputf_open(char * inputfilename) {
 
         void * new_ptr = malloc(ptr_size);
 
-        __replay_carved_ptrs.push_back(PTR(new_ptr, strdup(type_str + 1), ptr_size));
+        __replay_carved_ptrs.push_back(POINTER(new_ptr, strdup(type_str + 1), ptr_size));
       }
     } else {
       char * type_str = strchr(line, ':');
@@ -110,7 +111,7 @@ void __driver_inputf_open(char * inputfilename) {
         double value = atof(value_str + 1);
         VAR<double> * inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
         __replay_inputs.push_back((IVAR *) inputv);
-      } else if (!strncmp(type_str, "NULL", 4)) {
+      } else if (!strncmp(type_str, "NULLPTR", 7)) {
         VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
         __replay_inputs.push_back((IVAR *) inputv);
       } else if (!strncmp(type_str, "FUNCPTR", 7)) {
@@ -141,7 +142,7 @@ void __driver_inputf_open(char * inputfilename) {
 
         int ptr_index = atoi(value_str + 1);
         int ptr_offset = atoi(index_str + 1);
-        VAR<int> * inputv = new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::POINTER);
+        VAR<int> * inputv = new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::PTR);
         __replay_inputs.push_back((IVAR *) inputv);
       } else if (!strncmp(type_str, "UNKNOWN_PTR", 11)) {
         VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
@@ -290,7 +291,7 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
 #endif
   }
 
-  if (elem_ptr->type != INPUT_TYPE::POINTER) {
+  if (elem_ptr->type != INPUT_TYPE::PTR) {
     //fprintf(stderr, "Replay error : Invalid input type\n");
     __replay_cur_alloc_size = 0;
     __replay_cur_pointee_size = -1;
@@ -301,7 +302,7 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   int ptr_index = elem_v->input;
   int ptr_offset = elem_v->pointer_offset;
   
-  PTR * carved_ptr = __replay_carved_ptrs[ptr_index];
+  POINTER * carved_ptr = __replay_carved_ptrs[ptr_index];
 
   if (ptr_offset != 0) {
     __replay_cur_alloc_size = 0;

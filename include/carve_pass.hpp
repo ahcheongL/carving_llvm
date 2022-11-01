@@ -3,7 +3,7 @@
 
 #include "pass.hpp"
 
-void get_carving_func_callees_and_globals();
+void get_carving_func_callees_and_globals(bool);
 
 extern FunctionCallee mem_allocated_probe;
 extern FunctionCallee remove_probe;
@@ -40,6 +40,8 @@ extern FunctionCallee class_carver;
 extern FunctionCallee carv_open;
 extern FunctionCallee carv_close;
 
+extern FunctionCallee record_func_ptr_index;
+
 //Memory tracking
 extern std::vector<AllocaInst *> tracking_allocas;
 void Insert_alloca_probe(BasicBlock &);
@@ -47,7 +49,7 @@ void insert_dealloc_probes();
 bool Insert_mem_func_call_probe(Instruction *, std::string);
 
 
-void Insert_carving_main_probe(BasicBlock *, Function *);
+void Insert_carving_main_probe(BasicBlock *, Function *, std::vector<Function *> *);
 
 BasicBlock * insert_carve_probe(Value *, BasicBlock *);
 

@@ -16,7 +16,7 @@ public:
     initialize_pass_contexts(M);
 
     get_llvm_types();
-    get_carving_func_callees_and_globals();
+    get_carving_func_callees_and_globals(true);
 
     instrument_module();
 
@@ -253,7 +253,7 @@ bool carver_pass::instrument_module() {
 
     // Main argc argv handling
     if (func_name == "main") {
-      Insert_carving_main_probe(&entry_block, &F);
+      Insert_carving_main_probe(&entry_block, &F, NULL);
       tracking_allocas.clear();
       continue;
     } else if (F.isVarArg()) {
