@@ -38,9 +38,6 @@ bool driver_pass::hookInstrs(Module &M) {
 
   get_driver_func_callees();
 
-  global_cur_class_index = M.getOrInsertGlobal("__replay_cur_class_index", Int32Ty);
-  global_cur_class_size = M.getOrInsertGlobal("__replay_cur_pointee_size", Int32Ty);
-
   bool res = get_target_func();
   if (res == false) {
     DEBUG0("get_target_func failed\n");

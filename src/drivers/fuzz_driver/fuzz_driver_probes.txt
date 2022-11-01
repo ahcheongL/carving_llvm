@@ -1,2 +1,11 @@
 __driver_inputfb_open
 __record_func_ptr_index
+Replay_char2
+Replay_short2
+Replay_int2
+Replay_long2
+Replay_float2
+Replay_double2
+Replay_longlong2
+Replay_pointer2
+Replay_func_ptr2

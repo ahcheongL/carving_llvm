@@ -299,6 +299,19 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector
   size_t num_main_args = F->arg_size();
   assert(num_main_args == 0 || num_main_args == 2);
 
+  std::vector<CallInst *> call_instrs;
+  std::vector<ReturnInst *> ret_instrs;
+
+  for (auto &BB : *F) {
+    for (auto &I : BB) {
+      if (isa<CallInst>(&I)) {
+        call_instrs.push_back(dyn_cast<CallInst>(&I));
+      } else if (isa<ReturnInst>(&I)) {
+        ret_instrs.push_back(dyn_cast<ReturnInst>(&I));
+      }
+    }
+  }
+
   if (F->arg_size() == 0) {
     F->setName("__old_main");
     // Make another copy of main that has argc and argv...
@@ -314,6 +327,8 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector
 
     IRB->SetInsertPoint(call_old_main);
     F = new_func;
+
+    forbid_func_set.insert(new_func);
   }
 
   Value *argc = F->getArg(0);
@@ -407,18 +422,7 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector
                      ConstantInt::get(Int32Ty, iter.second.first)});
   }
 
-  std::vector<CallInst *> call_instrs;
-  std::vector<ReturnInst *> ret_instrs;
-
-  for (auto &BB : *F) {
-    for (auto &I : BB) {
-      if (isa<CallInst>(&I)) {
-        call_instrs.push_back(dyn_cast<CallInst>(&I));
-      } else if (isa<ReturnInst>(&I)) {
-        ret_instrs.push_back(dyn_cast<ReturnInst>(&I));
-      }
-    }
-  }
+  
 
   for (auto call_instr : call_instrs) {
     Function *callee = call_instr->getCalledFunction();

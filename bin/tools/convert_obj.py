@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import sys
 import argparse
 import os
@@ -54,13 +56,12 @@ def get_type_bytes_len(type):
     if typename == "PTR":
         return 4
     if typename == "NULLPTR":
-        return 0
+        return 4
     if typename == "UNKNOWN_PTR":
-        return 0
+        return 4
     if typename == "FUNCPTR":
         return 4
     
-
 
 def parse_txt(inputfn):
     carved_ctx = CarvedContext()
@@ -84,7 +85,10 @@ def parse_txt(inputfn):
         typeidx = OBJTYPES.index(line[1])
 
         if len(line) == 3:
-            newobj = CarvedObj(typeidx, int(line[2]), line[0])
+            if typeidx == 9 or typeidx == 11:
+                newobj = CarvedObj(typeidx, 0xffffffff, line[0])
+            else:
+                newobj = CarvedObj(typeidx, int(line[2]), line[0])
         else:
             newobj = CarvedObj(typeidx, int(line[2]), line[0], int(line[3]))
         
@@ -94,7 +98,7 @@ def parse_txt(inputfn):
 
     return carved_ctx
 
-def parse_bin(inputfn):
+def parse_bin(inputfn): #deprecated
     carved_ctx = CarvedContext()
     inputf = open(inputfn, "rb")
 
@@ -130,15 +134,18 @@ def write_bin(outpufn, carved_ctx):
     outputf = open(outpufn, "wb")
     outputf.write(len(carved_ctx.carved_ptrs).to_bytes(4, byteorder='little'))
     for ptr in carved_ctx.carved_ptrs:
-        outputf.write(int(ptr.ptr_addr, 16).to_bytes(8, byteorder='little'))
         outputf.write(ptr.size.to_bytes(4, byteorder='little'))
     
-    outputf.write(len(carved_ctx.carved).to_bytes(4, byteorder='little'))
     for obj in carved_ctx.carved:
-        outputf.write(obj.type.to_bytes(1, byteorder='little'))
         value_len = get_type_bytes_len(obj.type)
         if value_len > 0:
-            outputf.write(obj.value.to_bytes(value_len, byteorder='little'))
+            try:
+              outputf.write(obj.value.to_bytes(value_len, byteorder='little', signed=True))
+            except Exception as e:
+                print(e)
+                print(obj)
+                print(value_len)
+                exit(0)
         if obj.type == 8:
             outputf.write(obj.offset.to_bytes(4, byteorder='little'))
     
@@ -158,17 +165,9 @@ def write_txt(outputfn, carved_ctx):
     outputf.close()
 
 
-def convert_one_file(inputfn, outputfn, out_format):
-    
-    if out_format == 'bin':
-        carved_ctx = parse_txt(inputfn)        
-    else:
-        carved_ctx = parse_bin(inputfn)
-
-    if out_format == 'bin':
-        write_bin(outputfn, carved_ctx)
-    else:
-        write_txt(outputfn, carved_ctx)
+def convert_one_file(inputfn, outputfn):
+    carved_ctx = parse_txt(inputfn)        
+    write_bin(outputfn, carved_ctx)
 
 def convert_directory(inputdir, outputdir, out_format):
     for filename in os.listdir(inputdir):
@@ -182,7 +181,6 @@ if __name__ == '__main__':
     parser.add_argument('--output-directory', '--od', nargs=1, help='output directory')
     parser.add_argument('--input', '-i', nargs=1, help='input file')
     parser.add_argument('--output', '-o', nargs=1, help='output file')
-    parser.add_argument('--format', '-f', nargs=1, required=True, help='output format')
     args = parser.parse_args()
 
     if (args.input and args.input_directory) or (args.output and args.output_directory):
@@ -193,12 +191,8 @@ if __name__ == '__main__':
         print('Error: input and output file or directory must be specified')
         sys.exit(1)
 
-    if args.format[0] != "bin" and args.format[0] != "txt":
-        print('Error: format must be bin or txt')
-        sys.exit(1)
-
     if args.input:
-        convert_one_file(args.input[0], args.output[0], args.format[0])
+        convert_one_file(args.input[0], args.output[0])
     
     else:
-        convert_directory(args.input_directory[0], args.output_directory[0], args.format[0])
+        convert_directory(args.input_directory[0], args.output_directory[0])

@@ -1,15 +1,15 @@
 #include "utils.hpp"
 
-static map<char *, classinfo> class_info;
+map<char *, classinfo> __replay_class_info;
 
 //Function pointer names
-map<void *, char *> __replay_func_ptrs;
+static map<void *, char *> __replay_func_ptrs;
 
 vector<IVAR *> __replay_inputs;
 vector<POINTER> __replay_carved_ptrs;
 
 //adhoc to make a set
-static map<int, char> replayed_ptr;
+map<int, char> __replay_replayed_ptr;
 
 void __driver_inputf_open(char * inputfilename);
 
@@ -310,13 +310,13 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
     return (char *) carved_ptr->addr + ptr_offset;
   }
 
-  char * search = replayed_ptr.find(ptr_index);
+  char * search = __replay_replayed_ptr.find(ptr_index);
   if (search != NULL) {
     __replay_cur_alloc_size = 0;
     __replay_cur_pointee_size = -1;
     return (char *) carved_ptr->addr + ptr_offset;
   }
-  replayed_ptr.insert(ptr_index, 0);
+  __replay_replayed_ptr.insert(ptr_index, 0);
 
   __replay_cur_alloc_size = carved_ptr->alloc_size;
 
@@ -334,13 +334,13 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   }
 
   // carved ptr has different type
-  int num_class_info = class_info.size();
+  int num___replay_class_info = __replay_class_info.size();
   int idx = 0;
-  for (idx = 0; idx < num_class_info; idx++) {
-    auto class_info_elem = class_info.get_by_idx(idx);
-    if (!strcmp(type_name, class_info_elem->key)) {
-      __replay_cur_pointee_size = class_info_elem->elem.size;
-      __replay_cur_class_index = class_info_elem->elem.class_index;
+  for (idx = 0; idx < num___replay_class_info; idx++) {
+    auto __replay_class_info_elem = __replay_class_info.get_by_idx(idx);
+    if (!strcmp(type_name, __replay_class_info_elem->key)) {
+      __replay_cur_pointee_size = __replay_class_info_elem->elem.size;
+      __replay_cur_class_index = __replay_class_info_elem->elem.class_index;
       break;
     }
   }
@@ -365,7 +365,7 @@ void * Replay_func_ptr() {
 
 void __keep_class_info(char * class_name, int size, int index) {
   classinfo tmp {index, size};
-  class_info.insert(class_name, tmp);
+  __replay_class_info.insert(class_name, tmp);
 }
 
 void __record_func_ptr(void * ptr, char * name) {

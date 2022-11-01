@@ -322,11 +322,17 @@ void get_llvm_types() {
   DoublePtrTy = PointerType::get(DoubleTy, 0);
 }
 
+std::set<Function *> forbid_func_set;
 // Check if the function is not the scope of analysis.
 bool is_inst_forbid_func(Function *F) {
   if (F->isIntrinsic() || !F->size()) {
     return true;
   }
+
+  if (forbid_func_set.find(F) != forbid_func_set.end()) {
+    return true;
+  }
+
   std::string name = F->getName().str();
   if (name.find("__Carv_") != std::string::npos) {
     return true;

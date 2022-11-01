@@ -13,41 +13,38 @@ class driver_pass : public ModulePass {
     DEBUG0("Running binary fuzz driver_pass\n");
 
     for (auto &F : M) {
+      if (F.isIntrinsic() || !F.size()) {
+        continue;
+      }
       func_list.push_back(&F);
     }
 
-    read_probe_list("driver_probe_names.txt");
-    read_probe_list("fuzz_driver_probe_names.txt");
     initialize_pass_contexts(M);
-    get_llvm_types();
-
-    get_driver_func_callees();
-
-    global_cur_class_index = M.getOrInsertGlobal("__replay_cur_class_index", Int32Ty);
-    global_cur_class_size = M.getOrInsertGlobal("__replay_cur_pointee_size", Int32Ty);
 
     bool res = get_target_func();
     if (res == false) {
       DEBUG0("get_target_func failed\n");
-      DEBUG0("Here's the list of functions\n");
-      std::set<StringRef> func_names;
-      for (Function * func : func_list) {
-        StringRef func_name = func->getName();
-        if (func_name.contains("llvm.")) {
-          continue;
-        }
+      DEBUG0("Print out the list of functions\n");
 
-        if (func_name.contains('.')) {
-          func_name = func_name.substr(0, func_name.find('.'));
-        }
-        
-        if (func_names.find(func_name) == func_names.end()) {
-          llvm::errs() << func_name << "\n";
-          func_names.insert(func_name);
-        }
-      }
+      dump_func_info();
       return true;
     }
+
+    read_probe_list("driver_probe_names.txt");
+    read_probe_list("fuzz_driver_probe_names.txt");
+    get_llvm_types();
+
+    get_driver_func_callees();
+
+    replay_char_func = Mod->getOrInsertFunction(get_link_name("Replay_char2"), Int8Ty);
+    replay_short_func = Mod->getOrInsertFunction(get_link_name("Replay_short2"), Int16Ty);
+    replay_int_func = Mod->getOrInsertFunction(get_link_name("Replay_int2"), Int32Ty);
+    replay_long_func = Mod->getOrInsertFunction(get_link_name("Replay_long2"), Int64Ty);
+    replay_float_func = Mod->getOrInsertFunction(get_link_name("Replay_float2"), FloatTy);
+    replay_double_func = Mod->getOrInsertFunction(get_link_name("Replay_double2"), DoubleTy);
+    replay_longlong_func = Mod->getOrInsertFunction(get_link_name("Replay_longlong2"), Int64Ty);
+    replay_ptr_func = Mod->getOrInsertFunction(get_link_name("Replay_pointer2"), Int8PtrTy, Int32Ty, Int32Ty, Int8PtrTy);
+    replay_func_ptr = Mod->getOrInsertFunction(get_link_name("Replay_func_ptr2"), Int8PtrTy);
 
     get_class_type_info();
 
@@ -88,6 +85,7 @@ class driver_pass : public ModulePass {
 
   bool get_target_func();
   void instrument_main_func(Function * main_func);
+  void dump_func_info();
 };
 
 }  // namespace
@@ -107,7 +105,7 @@ bool driver_pass::instrument_module() {
     if (func_name == "main") {
       main_func = &F;
     } else if (target_func != &F) {
-      //make_stub(&F);
+      make_stub(&F);
     }
   }
 
@@ -172,13 +170,11 @@ void driver_pass::instrument_main_func(Function * main_func) {
   IRB->SetInsertPoint(cur_block);
 
   //Record func ptr
-  FunctionCallee record_func_ptr_index = Mod->getOrInsertFunction(get_link_name("__record_func_ptr_index"), VoidTy, Int32Ty);
-  int index = 0;
+  FunctionCallee record_func_ptr_index = Mod->getOrInsertFunction(get_link_name("__record_func_ptr_index"), VoidTy, Int8PtrTy);
   for (Function * func : func_list) {
     Value *cast_val =
         IRB->CreateCast(Instruction::CastOps::BitCast, func, Int8PtrTy);
-    IRB->CreateCall(record_func_ptr_index, {cast_val, ConstantInt::get(Int32Ty, index)});
-    index++;
+    IRB->CreateCall(record_func_ptr_index, {cast_val});
   }
 
   //Record class type string constants
@@ -253,6 +249,56 @@ bool driver_pass::get_target_func() {
   }
 
   return true;
+}
+
+void driver_pass::dump_func_info() {
+  std::error_code EC1;
+  llvm::raw_fd_ostream out1("func.list", EC1);
+
+  CallGraph cg = CallGraph(*Mod);
+  std::error_code EC2;
+  llvm::raw_fd_ostream out2("callgraph.dot", EC2);
+
+  std::set<StringRef> func_names;
+  for (Function * func : func_list) {
+    StringRef func_name = func->getName();
+    if (func_name.contains("llvm.")) {
+      continue;
+    }
+
+    if (func_name.contains('.')) {
+      func_name = func_name.substr(0, func_name.find('.'));
+    }
+    
+    if (func_names.find(func_name) == func_names.end()) {
+      out1 << func_name << "\n";
+      func_names.insert(func_name);
+
+      const CallGraphNode * node = cg[func];
+      std::set<StringRef> called_funcs;
+      for (auto & edge : *node) {
+        const Function * callee = edge.second->getFunction();
+        if (callee == nullptr) {
+          continue;
+        }
+        StringRef callee_name = callee->getName();
+        if (callee_name.contains("llvm.")) {
+          continue;
+        }
+        if (callee_name.contains('.')) {
+          callee_name = callee_name.substr(0, callee_name.find('.'));
+        }
+        called_funcs.insert(callee_name);
+      }
+      
+      out2 << func_name << ":" << called_funcs.size() << "\n";
+      for (auto & called_func : called_funcs) {
+        out2 << called_func << "\n";
+      }
+    }
+  }
+  out1.close();
+  out2.close();
 }
 
 static RegisterPass<driver_pass> X("driver", "Driver pass", false , false);

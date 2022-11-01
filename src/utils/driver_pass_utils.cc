@@ -26,6 +26,7 @@ FunctionCallee class_replay;
 
 Constant * global_cur_class_index = NULL;
 Constant * global_cur_class_size = NULL;
+Constant * global_ptr_alloc_size = NULL;
 
 void make_stub(Function * F) {
   std::vector<BasicBlock *> BBs;
@@ -163,8 +164,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
       class_idx = IRB->CreateLoad(Int32Ty, global_cur_class_index);
     }
     
-    Constant * ptr_alloc_size_gv = Mod->getOrInsertGlobal("__replay_cur_alloc_size", Int32Ty);
-    Value * ptr_bytesize = IRB->CreateLoad(Int32Ty, ptr_alloc_size_gv);
+    Value * ptr_bytesize = IRB->CreateLoad(Int32Ty, global_ptr_alloc_size);
     Value * ptr_size = IRB->CreateSDiv(ptr_bytesize, pointee_size_val);
 
     BasicBlock * start_block = IRB->GetInsertBlock();
@@ -420,5 +420,9 @@ void get_driver_func_callees() {
     Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
 
   __replay_fini = Mod->getOrInsertFunction(get_link_name("__replay_fini"), VoidTy);
+
+  global_cur_class_index = Mod->getOrInsertGlobal("__replay_cur_class_index", Int32Ty);
+  global_cur_class_size = Mod->getOrInsertGlobal("__replay_cur_pointee_size", Int32Ty);
+  global_ptr_alloc_size = Mod->getOrInsertGlobal("__replay_cur_alloc_size", Int32Ty);
 
 }

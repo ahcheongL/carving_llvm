@@ -1,12 +1,17 @@
 #include "utils.hpp"
 
-extern vector<IVAR *> __replay_inputs;
 extern vector<POINTER> __replay_carved_ptrs;
+extern map<char *, classinfo> __replay_class_info;
+extern map<int, char> __replay_replayed_ptr;
 
 static vector<void *> func_ptr_index;
 
+static FILE * input_fp = NULL;
+
+#define MAX_NUM_PTRS 1000
+
 void __driver_inputfb_open(char * inputfname) {
-  FILE * input_fp = fopen(inputfname, "rb");
+  input_fp = fopen(inputfname, "rb");
   if (input_fp == NULL) {
     fprintf(stderr, "Can't read input file\n");
     std::abort();
@@ -17,9 +22,10 @@ void __driver_inputfb_open(char * inputfname) {
     return;
   }
 
+  num_ptrs = num_ptrs % MAX_NUM_PTRS;
+
   int index;
   for (index = 0; index < num_ptrs; index++) {
-    fseek(input_fp, sizeof(void *), SEEK_CUR);
     int size = 0;
     if (!fread(&size, sizeof(int), 1, input_fp)) {
       return;
@@ -29,131 +35,141 @@ void __driver_inputfb_open(char * inputfname) {
     __replay_carved_ptrs.push_back(ptr);
   }
 
-  int num_inputs = 0;
-  if (!fread(&num_inputs, sizeof(int), 1, input_fp)) {
-    return;
-  }
-
-  int num_func = func_ptr_index.size();
-
-  for (index = 0; index < num_inputs; index++) {
-    char type_id = 0;
-    if (!fread(&type_id, sizeof(char), 1, input_fp)) {
-      return;
-    }
-
-    type_id = type_id % (INPUT_TYPE::UNKNOWN_PTR + 1);
-
-    switch(type_id) {
-      case INPUT_TYPE::CHAR:
-        {
-          char val[sizeof(char) + 1];
-          if (!fread(val, sizeof(char), 1, input_fp)) {
-            return;
-          }
-          VAR<char> * inputv = new VAR<char>(val[0], 0, INPUT_TYPE::CHAR);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::SHORT:
-        {
-          char val[sizeof(short) + 1];
-          if (!fread(val, sizeof(short), 1, input_fp)) {
-            return;
-          }
-          VAR<short> * inputv = new VAR<short>(*(short *)val, 0, INPUT_TYPE::SHORT);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::INT:
-        {
-          char val[sizeof(int) + 1];
-          if (!fread(val, sizeof(int), 1, input_fp)) {
-            return;
-          }
-          VAR<int> * inputv = new VAR<int>(*(int *)val, 0, INPUT_TYPE::INT);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::LONG:
-        {
-          char val[sizeof(long) + 1];
-          if (!fread(val, sizeof(long), 1, input_fp)) {
-            return;
-          }
-          VAR<long> * inputv = new VAR<long>(*(long *)val, 0, INPUT_TYPE::LONG);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::FLOAT:
-        {
-          char val[sizeof(float) + 1];
-          if (!fread(val, sizeof(float), 1, input_fp)) {
-            return;
-          }
-          VAR<float> * inputv = new VAR<float>(*(float *)val, 0, INPUT_TYPE::FLOAT);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::DOUBLE:
-        {
-          char val[sizeof(double) + 1];
-          if (!fread(val, sizeof(double), 1, input_fp)) {
-            return;
-          }
-          VAR<double> * inputv = new VAR<double>(*(double *)val, 0, INPUT_TYPE::DOUBLE);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::PTR:
-        {
-          char val[sizeof(int) + 1];
-          if (!fread(val, sizeof(int), 1, input_fp)) {
-            return;
-          }
-          char offset_val[sizeof(int) + 1];
-          if (!fread(offset_val, sizeof(int), 1, input_fp)) {
-            return;
-          }
-
-          VAR<int> * inputv = new VAR<int>(*(int *)val, 0, *(int *) offset_val, INPUT_TYPE::PTR);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::NULLPTR:
-        {
-          VAR<void *> * inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::FUNCPTR:
-        {
-          char val[sizeof(int) + 1];
-          if (!fread(val, sizeof(int), 1, input_fp)) {
-            return;
-          }
-
-          int func_index = (*(int *)val) % num_func;
-          void * func_ptr = *func_ptr_index.get(func_index);
-          VAR<void *> * inputv = new VAR<void *>(func_ptr, 0, INPUT_TYPE::FUNCPTR);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      case INPUT_TYPE::UNKNOWN_PTR:
-        {
-          VAR<void *> * inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
-          __replay_inputs.push_back((IVAR *) inputv);
-        }
-        break;
-      default:
-        break;  
-    }
-  }
-
-  fclose(input_fp);
   return;
 }
 
 void __record_func_ptr_index(void * ptr) {
   func_ptr_index.push_back(ptr);
+}
+
+char Replay_char2() {
+  char val;
+  if (!fread(&val, sizeof(char), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+short Replay_short2() {
+  short val;
+  if (!fread(&val, sizeof(short), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+int Replay_int2() {
+  int val;
+  if (!fread(&val, sizeof(int), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+long Replay_long2() {
+  long val;
+  if (!fread(&val, sizeof(long), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+float Replay_float2() {
+  float val;
+  if (!fread(&val, sizeof(float), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+double Replay_double2() {
+  double val;
+  if (!fread(&val, sizeof(double), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+long long Replay_longlong2() {
+  long long val;
+  if (!fread(&val, sizeof(long long), 1, input_fp)) {
+    return 0;
+  }
+  
+  return val;
+}
+
+extern int __replay_cur_alloc_size;
+extern int __replay_cur_class_index;
+extern int __replay_cur_pointee_size;
+
+void * Replay_pointer2(int default_idx, int default_pointee_size, char * pointee_type_name) {
+  int ptr_idx;
+  if (!fread(&ptr_idx, sizeof(int), 1, input_fp)) {
+    __replay_cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return NULL;
+  }
+
+  if (ptr_idx == -1) {
+    __replay_cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return NULL;
+  }
+
+  int num_carved_ptrs = __replay_carved_ptrs.size();
+  ptr_idx = ptr_idx % (num_carved_ptrs * 2);
+
+  if (ptr_idx >= num_carved_ptrs) {
+    __replay_cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return NULL;
+  }
+
+  int offset;
+  if (!fread(&offset, sizeof(int), 1, input_fp)) {
+    __replay_cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return NULL;
+  }
+
+  POINTER * carved_ptr = __replay_carved_ptrs[ptr_idx];
+
+  if (offset != 0) {
+    __replay_cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return (char *) carved_ptr->addr + offset;
+  }
+
+  char * search = __replay_replayed_ptr.find(ptr_idx);
+  if (search != NULL) {
+    __replay_cur_alloc_size = 0;
+    __replay_cur_pointee_size = -1;
+    return carved_ptr->addr;
+  }
+  __replay_replayed_ptr.insert(ptr_idx, 0);
+
+  __replay_cur_alloc_size = carved_ptr->alloc_size;
+  __replay_cur_pointee_size = default_pointee_size;
+  __replay_cur_class_index = default_idx;
+
+  return carved_ptr->addr;
+}
+
+void * Replay_func_ptr2() {
+  char val[sizeof(int) + 1];
+  if (!fread(val, sizeof(int), 1, input_fp)) {
+    return NULL;
+  }
+
+  int func_index = (*(int *)val) % func_ptr_index.size();
+  void * func_ptr = *func_ptr_index.get(func_index);
+
+  return func_ptr;
 }

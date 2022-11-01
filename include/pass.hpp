@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constant.h"
@@ -96,6 +97,7 @@ void initialize_pass_contexts(Module &);
 
 void construct_ditype_map();
 
+extern std::set<Function *> forbid_func_set;
 bool is_inst_forbid_func(Function *);
 
 #endif
