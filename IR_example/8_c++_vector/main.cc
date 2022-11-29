@@ -3,6 +3,11 @@
 #include<cstdlib>
 
 int foo(std::vector<int> intvec) {
+  fprintf(stderr, "{");
+  for (auto s: intvec){
+    fprintf(stderr, "%d, ", s);
+  }
+  fprintf(stderr, "}\n");
   return 0;
 }
 

@@ -1,3 +1,4 @@
+#include<stdio.h>
 #include<iostream>
 #include<vector>
 #include<cstdlib>
@@ -10,11 +11,11 @@ public:
 };
 
 int foo(std::vector<class Shape> shapevec) {
-  printf("{");
+  fprintf(stderr, "{");
   for (auto s: shapevec){
-    printf("(%d %d), ", s.width, s.area);
+    fprintf(stderr, "(%d %d), ", s.width, s.area);
   }
-  printf("}\n");
+  fprintf(stderr, "}\n");
   return 0;
 }
 

@@ -3,10 +3,12 @@
 
 
 int foo (int * a , int* b) {
+  fprintf(stderr, "foo: {*a: %d, *b: %d}\n", *a, *b);
   return *a + *b;
 }
 
 int goo (int * a, int * b) {
+  fprintf(stderr, "goo: {*a: %d, *b: %d}\n", *a, *b);
   return *a + *b;
 }
 
