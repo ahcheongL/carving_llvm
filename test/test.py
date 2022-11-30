@@ -65,12 +65,12 @@ class CarvingIR(unittest.TestCase):
         self.assertEqual(original_output, replay_output)
     
     def test_01_sample_args(self):
-        source_code = project_path / "IR_example" / "1_simple" / "main.c"
+        source_code = project_path / "IR_example" / "1_simple" / "test.c"
         argv = ["1", "2", "3", "4", "5"]
         self.template(source_code, argv)
     
     def test_02_two_pointers(self):
-        self.template(project_path / "IR_example" / "2_two_pointers" / "main.c")
+        self.template(project_path / "IR_example" / "2_two_pointers" / "test.c")
     
     def test_03_struct(self):
         self.template(project_path / "IR_example" / "3_struct" / "main.c")

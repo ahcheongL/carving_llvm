@@ -1,4 +1,0 @@
-b goo
-run
-x/d $rdi+16
-quit
