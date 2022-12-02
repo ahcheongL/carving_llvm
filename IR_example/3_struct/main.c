@@ -7,6 +7,7 @@ typedef struct _a {
 } structa;
 
 int foo (structa * s1) {
+  fprintf(stderr, "foo: *s1 = {f1 = %d, f2 = %d}\n", s1->f1, s1->f2);
   return s1->f2;
 }
 

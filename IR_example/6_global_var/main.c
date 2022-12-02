@@ -4,6 +4,7 @@
 int global;
 
 int foo (int a , int b) {
+  fprintf(stderr, "%d, %d, %d\n", a, b, global);
   return a + b + global;
 }
 

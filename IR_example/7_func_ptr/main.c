@@ -12,14 +12,17 @@ struct stra{
 gooptr global_goop;
 
 int foo (gooptr ptr, int * intptr, struct stra * strptr){
+  fprintf(stderr, "%d %d %d %d %d\n", intptr[0], intptr[1], intptr[2], intptr[3], intptr[4]);
   return ptr(intptr) + global_goop(intptr);
 }
 
 int goo (int * ptr) {
+  fprintf(stderr, "%d %d %d %d %d\n", ptr[0], ptr[1], ptr[2], ptr[3], ptr[4]);
   return ptr[4];
 }
 
 int goo2 (int * ptr) {
+  fprintf(stderr, "%d %d %d %d %d\n", ptr[0], ptr[1], ptr[2], ptr[3], ptr[4]);
   return ptr[2];
 }
 

@@ -415,6 +415,10 @@ void carver_pass::get_instrument_func_set() {
       continue;
     }
 
+    if (func_name == "__clang_call_terminate"){
+      continue;
+    }
+
     llvm::DISubprogram *dbgF = F.getSubprogram();
     if (dbgF != NULL) {
       std::string filename = dbgF->getFilename().str();
@@ -428,6 +432,7 @@ void carver_pass::get_instrument_func_set() {
       continue;
     }
 
+    // DEBUG0("Target function : " << F.getName().str() << '\n');
     // if (func_name.find("DefaultChannelTest") == std::string::npos) {
     // continue; } if (func_name.find("TestBody") == std::string::npos) {
     // continue; }
