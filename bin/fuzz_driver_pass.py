@@ -35,16 +35,18 @@ env=os.environ.copy()
 if func_name != None:
   func_name = func_name[0]
   env["TARGET_NAME"] = func_name
-  outname = ".".join(inputbc.split(".")[:-1]) + "." + func_name + ".driver"
+  outname = ".".join(inputbc.split(".")[:-1]) + "." + func_name + ".bc"
 else:
   outname = "/dev/null"
 
-cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
-  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
-  , "-I", source_dir + "/include", "-o", outname
-  #, "-fsanitize=address"
-  , "-ggdb", "-O0"
-  , "-L", source_dir + "/lib", inputbc, "-l:driver.a", "-l:fuzz_driver.a", ] + compile_args
+# cmd = ["clang++", "--ld-path=" + ld_path, "-fno-experimental-new-pass-manager"
+#   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
+#   , "-I", source_dir + "/include", "-o", outname
+#   #, "-fsanitize=address"
+#   , "-ggdb", "-O0"
+#   , "-L", source_dir + "/lib", inputbc, "-l:driver.a", "-l:fuzz_driver.a", ] + compile_args
+
+cmd = ["opt" , "-enable-new-pm=0", "-load", so_path, "--fuzz_driver_pass", inputbc, "-o", outname]
 
 #env["DUMP_IR"] = "1"
 print(" ".join(cmd))

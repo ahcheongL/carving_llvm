@@ -35,7 +35,7 @@ static std::map<std::string, Constant *> new_string_globals;
 static std::map<std::string, std::string> probe_link_names;
 
 std::string get_type_str(Type *type) {
-  if (type->isStructTy()) {
+  if (type->isStructTy() && dyn_cast<StructType>(type)->hasName()) {
     return type->getStructName().str();
   }
   std::string typestr;
@@ -354,4 +354,19 @@ bool is_inst_forbid_func(Function *F) {
   }
 
   return false;
+}
+
+void check_and_dump_module() {
+  char * tmp = getenv("DUMP_IR");
+  if (tmp == NULL) { return; }
+  DEBUG0("Dumping IR...\n");
+  for (auto struct_types : Mod->getIdentifiedStructTypes()) {
+    struct_types->dump();
+  }
+  for (auto &global_var : Mod->globals()) {
+    global_var.dump();
+  }
+  for (auto &F : Mod->functions()) {
+    F.dump();
+  }
 }

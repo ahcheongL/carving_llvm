@@ -104,8 +104,14 @@ bool driver_pass::instrument_module() {
 
     if (func_name == "main") {
       main_func = &F;
-    } else if (target_func != &F) {
-      make_stub(&F);
+      instrument_main_func(main_func);
+    }
+  }
+
+  for (auto &F : Mod->functions()) {
+    if (is_inst_forbid_func(&F)) { continue; }
+    if (main_func != &F && target_func != &F) {
+      //make_stub(&F);
     }
   }
 
@@ -119,35 +125,12 @@ bool driver_pass::instrument_module() {
     return false;
   }
 
-  instrument_main_func(main_func);
-
-  char * tmp = getenv("DUMP_IR");
-  if (tmp) {
-    DEBUG0("Dumping IR...\n");
-    DEBUGDUMP(Mod);
-  }
-
+  check_and_dump_module();
   delete IRB;
   return true;
 }
 
 void driver_pass::instrument_main_func(Function * main_func) {
-
-  const DebugLoc * debug_loc = NULL;
-
-  //get random debug info...
-  for (auto &BB : main_func->getBasicBlockList()) {
-    for (auto &IN : BB) {
-      if (isa<CallInst>(&IN)) {
-        CallInst * CI = cast<CallInst>(&IN);
-        const DebugLoc & DL = CI->getDebugLoc();
-        debug_loc = &DL;
-        break;
-      }
-    }
-
-    if (debug_loc != NULL) { break; }
-  }
 
   //remove all BBs
   std::vector<BasicBlock *> BBs;
@@ -216,9 +199,9 @@ void driver_pass::instrument_main_func(Function * main_func) {
 
   CallInst * target_call = IRB->CreateCall(
     target_func->getFunctionType(), target_func, target_args);
-  
-  target_call->setDebugLoc(*debug_loc);
-  
+
+  target_func->setSubprogram(0);
+
   //Return
   IRB->CreateCall(__replay_fini, {});
 
@@ -257,7 +240,7 @@ void driver_pass::dump_func_info() {
 
   CallGraph cg = CallGraph(*Mod);
   std::error_code EC2;
-  llvm::raw_fd_ostream out2("callgraph.dot", EC2);
+  llvm::raw_fd_ostream out2("callgraph.txt", EC2);
 
   std::set<StringRef> func_names;
   for (Function * func : func_list) {
@@ -301,7 +284,7 @@ void driver_pass::dump_func_info() {
   out2.close();
 }
 
-static RegisterPass<driver_pass> X("driver", "Driver pass", false , false);
+static RegisterPass<driver_pass> X("fuzz_driver_pass", "Driver pass", false , false);
 
 static void registerPass(const PassManagerBuilder &,
     legacy::PassManagerBase &PM) {

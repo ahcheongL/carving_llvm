@@ -257,6 +257,7 @@ double Replay_double() {
 int __replay_cur_alloc_size = 0;
 int __replay_cur_class_index = -1;
 int __replay_cur_pointee_size = -1;
+void * __replay_cur_zero_address = 0;
 
 void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee_type_name) {
 
@@ -304,12 +305,6 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   
   POINTER * carved_ptr = __replay_carved_ptrs[ptr_index];
 
-  if (ptr_offset != 0) {
-    __replay_cur_alloc_size = 0;
-    __replay_cur_pointee_size = -1;
-    return (char *) carved_ptr->addr + ptr_offset;
-  }
-
   char * search = __replay_replayed_ptr.find(ptr_index);
   if (search != NULL) {
     __replay_cur_alloc_size = 0;
@@ -319,10 +314,7 @@ void * Replay_pointer (int default_idx, int default_pointee_size, char * pointee
   __replay_replayed_ptr.insert(ptr_index, 0);
 
   __replay_cur_alloc_size = carved_ptr->alloc_size;
-
-  if (pointee_type_name == NULL) {
-    return (char *) carved_ptr->addr + ptr_offset;
-  }
+  __replay_cur_zero_address = carved_ptr->addr;
 
   const char * type_name = carved_ptr->pointee_type;
 

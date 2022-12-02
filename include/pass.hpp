@@ -100,4 +100,5 @@ void construct_ditype_map();
 extern std::set<Function *> forbid_func_set;
 bool is_inst_forbid_func(Function *);
 
+void check_and_dump_module();
 #endif

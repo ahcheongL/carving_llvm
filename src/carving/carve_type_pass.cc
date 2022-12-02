@@ -223,10 +223,7 @@ bool carver_pass::instrument_module() {
     }
   }
 
-  char *tmp = getenv("DUMP_IR");
-  if (tmp) {
-    Mod->dump();
-  }
+  check_and_dump_module();
 
   delete IRB;
 

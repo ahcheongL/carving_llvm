@@ -2,10 +2,11 @@
 
 import sys
 import argparse
+import struct
 import os
 
 OBJTYPES = ["CHAR", "SHORT", "INT", "LONG", "LONGLONG", "FLOAT", "DOUBLE",
-"LONGDOUBLE", "PTR", "NULLPTR", "FUNCPTR", "UNKNOWN_PTR"]
+"LONGDOUBLE", "PTR", "NULL", "FUNCPTR", "UNKNOWN_PTR"]
 
 class CarvedObj:
     def __init__(self, type, value, name = "", offset = 0):
@@ -46,7 +47,7 @@ def get_type_bytes_len(type):
     if typename == "INT":
         return 4
     if typename == "LONG":
-        return 4
+        return 8
     if typename == "LONGLONG":
         return 8
     if typename == "FLOAT":
@@ -55,7 +56,7 @@ def get_type_bytes_len(type):
         return 8
     if typename == "PTR":
         return 4
-    if typename == "NULLPTR":
+    if typename == "NULL":
         return 4
     if typename == "UNKNOWN_PTR":
         return 4
@@ -80,13 +81,25 @@ def parse_txt(inputfn):
     for line in inputf:
         line = line.strip().split(":")
 
-        assert(line[1] in OBJTYPES)
+        try:
+          assert(line[1] in OBJTYPES)
+        except Exception as e:
+            print(e)
+            print(line)
+            exit(0)
 
         typeidx = OBJTYPES.index(line[1])
 
         if len(line) == 3:
             if typeidx == 9 or typeidx == 11:
-                newobj = CarvedObj(typeidx, 0xffffffff, line[0])
+                newobj = CarvedObj(typeidx, -1, line[0])
+            elif typeidx == 5 or typeidx == 6:
+                float_num = float(line[2])
+                int_num = struct.pack('<f', float_num)
+
+                print("float_num : {}, int_num : {}", float_num, int_num)
+
+                newobj = CarvedObj(typeidx, int_num, line[0])
             else:
                 newobj = CarvedObj(typeidx, int(line[2]), line[0])
         else:

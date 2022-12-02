@@ -27,6 +27,7 @@ FunctionCallee class_replay;
 Constant * global_cur_class_index = NULL;
 Constant * global_cur_class_size = NULL;
 Constant * global_ptr_alloc_size = NULL;
+Constant * global_cur_zero_address = NULL;
 
 void make_stub(Function * F) {
   std::vector<BasicBlock *> BBs;
@@ -127,20 +128,18 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
 
     bool is_class_type = false;
     Value * default_class_idx = NULL;
-    Constant * class_name_const = NULL;
+    Constant * class_name_const = gen_new_string_constant(get_type_str(pointee_type), IRB);
+
     if (pointee_type->isStructTy()) {
       StructType * struct_type = dyn_cast<StructType> (pointee_type);
       auto search = class_name_map.find(struct_type);
       if (search != class_name_map.end()) {
         is_class_type = true;
         default_class_idx = ConstantInt::get(Int32Ty, search->second.first);
-        std::string struct_name = struct_type->getName().str();
-        class_name_const = gen_new_string_constant(struct_name, IRB);
       }
     } else if (pointee_type == Int8Ty) {
       is_class_type = true;
       default_class_idx = ConstantInt::get(Int32Ty, num_class_name_const);
-      class_name_const = gen_new_string_constant("i8", IRB);
     }
 
     if (is_class_type) {
@@ -151,7 +150,7 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
       result = IRB->CreateCall(replay_ptr_func
         , {ConstantInt::get(Int32Ty, 0)
             , ConstantInt::get(Int32Ty, pointee_size)
-            , ConstantPointerNull::get(Int8PtrTy)});
+            , class_name_const});
     }
     
     result = IRB->CreatePointerCast(result, typeptr);
@@ -174,8 +173,14 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
     //Make loop block
     BasicBlock * loopblock = BasicBlock::Create(*Context, "loop", cur_func, start_block->getNextNode());
     BasicBlock * const loopblock_start = loopblock;
+
+    Value * zero_address = IRB->CreateLoad(Int8PtrTy, global_cur_zero_address);
+    Value * casted_zero_address = NULL;
+    if (!is_class_type) {
+      casted_zero_address = IRB->CreateCast(Instruction::CastOps::BitCast, zero_address, typeptr);
+    }
     
-    Value * cmp_instr1 = IRB->CreateICmpEQ(ptr_size
+    Value * cmp_instr1 = IRB->CreateICmpSLE(ptr_size
       , ConstantInt::get(Int32Ty, 0));
     
     Instruction * temp_br_instr = IRB->CreateBr(loopblock);
@@ -185,12 +190,12 @@ Value * insert_replay_probe (Type * typeptr, Value * ptr) {
     index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), start_block);
 
     if (is_class_type) {
-      Value * casted_result = IRB->CreateBitCast(result, Int8PtrTy);
+      //Value * casted_result = IRB->CreateBitCast(zero_address, Int8PtrTy);
       Value * elem_ptr = IRB->CreateCall(update_class_ptr
-        , {casted_result, index_phi, pointee_size_val});
+        , {zero_address, index_phi, pointee_size_val});
       IRB->CreateCall(class_replay, {elem_ptr, class_idx});
     } else {
-      Value * getelem_instr = IRB->CreateGEP(pointee_type, result, index_phi);
+      Value * getelem_instr = IRB->CreateGEP(pointee_type, casted_zero_address, index_phi);
       insert_gep_replay_probe(getelem_instr);
     }
 
@@ -268,8 +273,7 @@ void insert_gep_replay_probe(Value * gep_val) {
 
 
 std::set<std::string> struct_replayes;
-void insert_struct_replay_probe_inner(Value * struct_ptr
-  , Type * type) {
+void insert_struct_replay_probe_inner(Value * struct_ptr, Type * type) {
 
   StructType * struct_type = dyn_cast<StructType>(type);
 
@@ -309,6 +313,8 @@ void insert_struct_replay_probe_inner(Value * struct_ptr
     }
 
     IRB->CreateRetVoid();
+
+    forbid_func_set.insert(struct_replay_func);
   }
 
   IRB->restoreIP(cur_ip);
@@ -424,5 +430,5 @@ void get_driver_func_callees() {
   global_cur_class_index = Mod->getOrInsertGlobal("__replay_cur_class_index", Int32Ty);
   global_cur_class_size = Mod->getOrInsertGlobal("__replay_cur_pointee_size", Int32Ty);
   global_ptr_alloc_size = Mod->getOrInsertGlobal("__replay_cur_alloc_size", Int32Ty);
-
+  global_cur_zero_address = Mod->getOrInsertGlobal("__replay_cur_zero_address", Int8PtrTy);
 }

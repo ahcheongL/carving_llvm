@@ -349,10 +349,7 @@ bool carver_pass::instrument_module() {
 
   carved_types_file.close();
 
-  char *tmp = getenv("DUMP_IR");
-  if (tmp) {
-    Mod->dump();
-  }
+  check_and_dump_module();
 
   delete IRB;
   return true;

@@ -224,7 +224,7 @@ void __carv_ptr_name_update(int idx) {
   return;
 }
 
-void __keep_class_info(char *class_name, int size, int index) {
+void __keep_class_info(char * class_name, int size, int index) {
   classinfo tmp(index, size);
   class_info.insert(class_name, tmp);
 }

@@ -273,7 +273,7 @@ static void Insert_glob_mem_alloc_probe(GlobalVariable *gv) {
 
   Constant *type_name_const = Constant::getNullValue(Int8PtrTy);
 
-  if (gv_type->isStructTy()) {
+  if (gv_type->isStructTy() && dyn_cast<StructType>(gv_type)->hasName()) {
     std::string type_name = gv_type->getStructName().str();
     type_name_const = gen_new_string_constant(type_name, IRB);
   }
