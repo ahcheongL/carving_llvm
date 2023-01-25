@@ -10,11 +10,14 @@ project_path = script_file_path.parent.parent
 carve_pass_bin = project_path / "bin" / "carve_pass.py"
 simple_unit_driver_bin = project_path / "bin" / "simple_unit_driver_pass.py"
 
+debug_level = 0
 
 class CarvingIR(unittest.TestCase):
     def setUp(self):
         self.fp = tempfile.mkdtemp()
         self.temp_dir = Path(self.fp)
+        if (debug_level >= 2):
+            print(f"Running directory: {self.temp_dir}")
         self.carve_inputs = self.temp_dir / "carve_inputs"
         self.carve_inputs.mkdir()
         self.binary = self.temp_dir / "main"
