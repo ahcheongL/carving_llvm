@@ -36,6 +36,7 @@ unit_test: lib/unit_test_pass.so lib/unit_test_mock.a lib/unit_test_probe_names.
 carve_type: lib/carve_type_pass.so all
 extend_driver: lib/extend_driver_pass.so lib/extend_driver.a lib/extend_driver_probe_names.txt all
 fuzz_driver: lib/fuzz_driver_pass.so lib/fuzz_driver.a lib/fuzz_driver_probe_names.txt all
+clementine_driver: lib/clementine_driver_pass.so lib/clementine_driver.a lib/clementine_driver_probe_names.txt all
 
 tools: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
@@ -61,6 +62,18 @@ lib/fuzz_driver.a: src/drivers/fuzz_driver/fuzz_driver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
+
+lib/clementine_driver_pass.so: src/drivers/clementine_driver/clementine_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+	mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+
+src/drivers/clementine_driver/clementine_driver.o: src/drivers/clementine_driver/clementine_driver_probes.cc include/utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/clementine_driver/clementine_driver_probes.cc -o $@
+
+lib/clementine_driver.a: src/drivers/clementine_driver/clementine_driver.o
+	mkdir -p lib
+	$(AR) rsv $@ $^
+
 lib/simple_unit_driver_pass.so: src/drivers/simple_replay/simple_unit_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
@@ -74,11 +87,15 @@ lib/driver.a: src/drivers/driver.o
 
 lib/carver_probe_names.txt: src/carving/carver.o src/carving/carver_probes.txt
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/carving/carver.o src/carving/carver_probes.txt $@
+	python3 bin/get_probe_names.py $^ $@
 
 lib/fuzz_driver_probe_names.txt: src/drivers/fuzz_driver/fuzz_driver.o src/drivers/fuzz_driver/fuzz_driver_probes.txt
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/fuzz_driver/fuzz_driver.o src/drivers/fuzz_driver/fuzz_driver_probes.txt $@
+	python3 bin/get_probe_names.py $^ $@
+
+lib/clementine_driver_probe_names.txt: src/drivers/clementine_driver/clementine_driver.o src/drivers/clementine_driver/clementine_driver_probes.txt
+	mkdir -p lib
+	python3 bin/get_probe_names.py $^ $@
 
 lib/driver_probe_names.txt: src/drivers/driver.o src/drivers/driver_probe_names.txt
 	mkdir -p lib

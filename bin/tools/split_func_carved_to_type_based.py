@@ -43,6 +43,9 @@ for fn in glob.glob("{}/*".format(carved_dir)):
   
   func_name = "_".join(fn.split("/")[-1].split("_")[:-2])
 
+  if func_name not in type_info:
+    continue
+
   var_types = type_info[func_name]
   var_idx = 0
   ptrs = []

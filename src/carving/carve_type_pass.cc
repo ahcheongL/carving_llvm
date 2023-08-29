@@ -1,18 +1,24 @@
 #include "carve_pass.hpp"
 
+/* Usage
+  1. Set target type names in target.txt
+  2. Execute the executable as usual,
+     but add output directory at the end of the command.
+*/
+
 #define FIELD_THRESHOLD 10
 
 namespace {
 
-class carver_pass : public ModulePass {
+class type_carver_pass : public ModulePass {
 
 public:
   static char ID;
-  carver_pass() : ModulePass(ID) {}
+  type_carver_pass() : ModulePass(ID) {}
 
   bool runOnModule(Module &M) override {
 
-    DEBUG0("Running carver_pass\n");
+    DEBUG0("Running type_carver_pass\n");
 
     initialize_pass_contexts(M);
 
@@ -74,9 +80,9 @@ private:
 
 } // namespace
 
-char carver_pass::ID = 0;
+char type_carver_pass::ID = 0;
 
-bool carver_pass::instrument_module() {
+bool type_carver_pass::instrument_module() {
 
   get_class_type_info();
 
@@ -233,7 +239,7 @@ bool carver_pass::instrument_module() {
   return true;
 }
 
-bool carver_pass::get_target_types() {
+bool type_carver_pass::get_target_types() {
   std::ifstream target_f("target.txt");
   if (!target_f.good()) {
     DEBUG0("No target.txt found, carving won't work.\n");
@@ -274,7 +280,7 @@ bool carver_pass::get_target_types() {
 }
 
 static void register_pass(const PassManagerBuilder &, legacy::PassManagerBase &PM) {
-  PM.add(new carver_pass());
+  PM.add(new type_carver_pass());
 }
 
 static RegisterStandardPasses

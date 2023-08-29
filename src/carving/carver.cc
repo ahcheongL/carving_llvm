@@ -720,15 +720,13 @@ void __carv_open() {
     return;
   }
 
-  if ((rand() % 100) < CARV_PROB_TYPE) {
-    FUNC_CONTEXT new_ctx = FUNC_CONTEXT(carved_index++, 0, 0);
-    inputs.push_back(new_ctx);
-    __carve_cur_inputs = &(inputs.back()->inputs);
-    cur_carved_ptrs = &(inputs.back()->carved_ptrs);
-    return;
-  } else {
-    __carve_cur_inputs = NULL;
-  }
+  std::cerr << "__carv open called\n";
+
+  FUNC_CONTEXT new_ctx = FUNC_CONTEXT(carved_index++, 0, 0);
+  inputs.push_back(new_ctx);
+  __carve_cur_inputs = &(inputs.back()->inputs);
+  cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+  return;
 }
 
 static map<const char *, unsigned int> type_counter;
