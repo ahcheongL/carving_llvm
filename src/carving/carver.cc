@@ -1,9 +1,12 @@
 #ifndef __CROWN_CARVER_DEF
 #define __CROWN_CARVER_DEF
 
-#include "utils.hpp"
 #include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+#include "utils.hpp"
 
 #define MAX_NUM_FILE 8
 #define MINSIZE 3
@@ -28,7 +31,7 @@ static int callseq_index;
 static int carved_index = 0;
 
 // Function pointer names
-//static boost::container::map<void *, char *> func_ptrs;
+// static boost::container::map<void *, char *> func_ptrs;
 static map<void *, char *> func_ptrs;
 static map<void *, int> func_ptr_index;
 
@@ -40,7 +43,7 @@ vector<IVAR *> *__carve_cur_inputs = NULL;
 static vector<POINTER> *cur_carved_ptrs = NULL;
 
 // memory info
-//static boost::container::map<void *, struct typeinfo> alloced_ptrs;
+// static boost::container::map<void *, struct typeinfo> alloced_ptrs;
 map<void *, struct typeinfo> alloced_ptrs;
 
 // variable naming
@@ -55,6 +58,10 @@ bool __carv_ready = false;
 char __carv_depth = 0;
 
 static map<char *, classinfo> class_info;
+
+static map<void *, char *> vtable_map;
+
+extern "C" {
 
 void Carv_char(char input) {
   VAR<char> *inputv =
@@ -106,6 +113,13 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     VAR<void *> *inputv =
         new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
+    return 0;
+  }
+
+  auto vtable_search = vtable_map.find(ptr);
+  if (vtable_search != NULL) {
+    VAR<char *> *inputv =
+        new VAR<char *>(*vtable_search, updated_name, INPUT_TYPE::VTABLE_PTR);
     return 0;
   }
 
@@ -173,11 +187,14 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   return ptr_alloc_size;
 }
 
+void __record_vtable_ptr(void *ptr, char *name) {
+  vtable_map.insert(ptr, name);
+}
+
 void __record_func_ptr(void *ptr, char *name) { func_ptrs.insert(ptr, name); }
 void __record_func_ptr_index(void *ptr, int index) {
   func_ptr_index.insert(ptr, index);
 }
-
 
 void __add_no_stub_func(void *ptr) { no_stub_funcs.insert(ptr, 0); }
 
@@ -209,8 +226,7 @@ void __Carv_func_ptr_index(void *ptr) {
     return;
   }
 
-  VAR<int> *inputv =
-      new VAR<int>(*search, updated_name, INPUT_TYPE::FUNCPTR);
+  VAR<int> *inputv = new VAR<int>(*search, updated_name, INPUT_TYPE::FUNCPTR);
   __carve_cur_inputs->push_back((IVAR *)inputv);
   return;
 }
@@ -224,7 +240,7 @@ void __carv_ptr_name_update(int idx) {
   return;
 }
 
-void __keep_class_info(char * class_name, int size, int index) {
+void __keep_class_info(char *class_name, int size, int index) {
   classinfo tmp(index, size);
   class_info.insert(class_name, tmp);
 }
@@ -265,7 +281,7 @@ void __mem_allocated_probe(void *ptr, int size, char *type_name) {
   struct typeinfo tmp {
     type_name, size
   };
-  //alloced_ptrs[ptr] = tmp;
+  // alloced_ptrs[ptr] = tmp;
   alloced_ptrs.insert(ptr, tmp);
   return;
 }
@@ -274,7 +290,7 @@ void __remove_mem_allocated_probe(void *ptr) {
   if (!__carv_ready0) {
     return;
   }
-  //alloced_ptrs.erase(ptr);
+  // alloced_ptrs.erase(ptr);
   alloced_ptrs.remove(ptr);
 }
 
@@ -419,11 +435,66 @@ static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
         idx2++;
       }
 
-      if (changed)
-        break;
+      if (changed) break;
       idx1++;
     }
   }
+  return;
+}
+
+static map<char *, char *> file_save_map;
+
+void __carv_file(char *file_name) {
+  static unsigned int file_idx = 0;
+  FILE *target_file = fopen(file_name, "rb");
+  if (target_file == NULL) {
+    return;
+  }
+
+  if (file_save_map.find(file_name) == NULL) {
+    char *hash_vec = (char *)malloc(sizeof(char) * 256);
+    memset(hash_vec, 0, sizeof(char) * 256);
+    file_save_map.insert(file_name, hash_vec);
+  }
+
+  char *hash_vec = *(file_save_map.find(file_name));
+
+  char file_outdir_name[256];
+  snprintf(file_outdir_name, 256, "%s/carved_file_%s", outdir_name, file_name);
+
+  mkdir(file_outdir_name, 0777);
+
+  char outfile_name[256];
+  snprintf(outfile_name, 256, "%s/carved_file_%s/%d", outdir_name, file_name,
+           file_idx++);
+
+  FILE *outfile = fopen(outfile_name, "wb");
+  if (outfile == NULL) {
+    fclose(target_file);
+    return;
+  }
+
+  char buf[4096];
+  int read_size;
+  int hash_val = 0;
+  while ((read_size = fread(buf, 1, 4096, target_file)) > 0) {
+    fwrite(buf, 1, read_size, outfile);
+    int idx = 0;
+    while (idx < read_size) {
+      hash_val += buf[idx++];
+      hash_val = hash_val % 256;
+    }
+  }
+
+  fclose(target_file);
+  fclose(outfile);
+
+  if (hash_vec[hash_val] == 0) {
+    hash_vec[hash_val] = 1;
+  } else {
+    unlink(outfile_name);
+  }
+
   return;
 }
 
@@ -594,6 +665,9 @@ void __carv_func_ret_probe(char *func_name, int func_id) {
     } else if (elem->type == INPUT_TYPE::FUNCPTR) {
       VAR<char *> *input = (VAR<char *> *)elem;
       fprintf(outfile, "%s:FUNCPTR:%s\n", elem->name, input->input);
+    } else if (elem->type == INPUT_TYPE::VTABLE_PTR) {
+      VAR<char *> *input = (VAR<char *> *)elem;
+      fprintf(outfile, "%s:VTABLE_PTR:%s\n", elem->name, input->input);
     } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
       void *addr = ((VAR<void *> *)elem)->input;
 
@@ -642,7 +716,6 @@ void __carv_func_ret_probe(char *func_name, int func_id) {
 }
 
 void __carver_argv_modifier(int *argcptr, char ***argvptr) {
-
   int argc = (*argcptr) - 1;
   *argcptr = argc;
 
@@ -749,7 +822,8 @@ void __carv_close(const char *type_name, const char *func_name) {
 
   unsigned int cur_type_idx = 0;
 
-  unsigned int *type_idx_ptr = type_idx.find(type_name); //type_idx[type_name];
+  unsigned int *type_idx_ptr =
+      type_idx.find(type_name);  // type_idx[type_name];
   if (type_idx_ptr == NULL) {
     cur_type_idx = max_type_idx;
     type_idx.insert(type_name, max_type_idx++);
@@ -802,10 +876,11 @@ void __carv_close(const char *type_name, const char *func_name) {
     return;
   }
 
-  unsigned int *type_count = type_counter.find(type_name); //type_counter[type_name];
+  unsigned int *type_count =
+      type_counter.find(type_name);  // type_counter[type_name];
   if (type_count == NULL) {
     type_counter.insert(type_name, 1);
-    type_count = type_counter.find(type_name); //type_counter[type_name];
+    type_count = type_counter.find(type_name);  // type_counter[type_name];
   } else {
     (*type_count)++;
   }
@@ -866,6 +941,9 @@ void __carv_close(const char *type_name, const char *func_name) {
     } else if (elem->type == INPUT_TYPE::FUNCPTR) {
       VAR<int> *input = (VAR<int> *)elem;
       fprintf(outfile, "%s:FUNCPTR:%d\n", elem->name, input->input);
+    } else if (elem->type == INPUT_TYPE::VTABLE_PTR) {
+      VAR<int> *input = (VAR<int> *)elem;
+      fprintf(outfile, "%s:VTABLE_PTR:%d\n", elem->name, input->input);
     } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
       void *addr = ((VAR<void *> *)elem)->input;
 
@@ -900,5 +978,5 @@ void __carv_close(const char *type_name, const char *func_name) {
   fclose(outfile);
   return;
 }
-
+}
 #endif

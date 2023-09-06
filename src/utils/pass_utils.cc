@@ -89,7 +89,6 @@ void read_probe_list(std::string filename) {
 }
 
 Constant *gen_new_string_constant(std::string name, IRBuilder<> *IRB) {
-
   auto search = new_string_globals.find(name);
 
   if (search == new_string_globals.end()) {
@@ -102,12 +101,10 @@ Constant *gen_new_string_constant(std::string name, IRBuilder<> *IRB) {
 }
 
 std::string find_param_name(Value *param, BasicBlock *BB) {
-
   Instruction *ptr = NULL;
 
 #if LLVM_MAJOR < 15
   for (auto instr_iter = BB->begin(); instr_iter != BB->end(); instr_iter++) {
-
     if ((ptr == NULL) && isa<StoreInst>(instr_iter)) {
       StoreInst *store_inst = dyn_cast<StoreInst>(instr_iter);
       if (store_inst->getOperand(0) == param) {
@@ -133,7 +130,6 @@ std::string find_param_name(Value *param, BasicBlock *BB) {
 
 void get_struct_field_names_from_DIT(DIType *dit,
                                      std::vector<std::string> *elem_names) {
-
   while ((dit != NULL) && isa<DIDerivedType>(dit)) {
     DIDerivedType *tmptype = dyn_cast<DIDerivedType>(dit);
     dit = tmptype->getBaseType();
@@ -357,16 +353,10 @@ bool is_inst_forbid_func(Function *F) {
 }
 
 void check_and_dump_module() {
-  char * tmp = getenv("DUMP_IR");
-  if (tmp == NULL) { return; }
+  char *tmp = getenv("DUMP_IR");
+  if (tmp == NULL) {
+    return;
+  }
   DEBUG0("Dumping IR...\n");
-  for (auto struct_types : Mod->getIdentifiedStructTypes()) {
-    struct_types->dump();
-  }
-  for (auto &global_var : Mod->globals()) {
-    global_var.dump();
-  }
-  for (auto &F : Mod->functions()) {
-    F.dump();
-  }
+  Mod->dump();
 }

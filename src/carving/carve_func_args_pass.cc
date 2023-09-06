@@ -1,15 +1,14 @@
 #include "carve_pass.hpp"
+#include "llvm/Demangle/Demangle.h"
 
 namespace {
 
 class carver_pass : public ModulePass {
-
-public:
+ public:
   static char ID;
   carver_pass() : ModulePass(ID) { func_id = 0; }
 
   bool runOnModule(Module &M) override {
-
     DEBUG0("Running carver_pass\n");
 
     read_probe_list("carver_probe_names.txt");
@@ -44,7 +43,7 @@ public:
     return "carving function argument instrumentation";
   }
 
-private:
+ private:
   bool instrument_module();
 
   // Target function including main
@@ -60,7 +59,7 @@ private:
   std::ofstream carved_types_file;
 };
 
-} // namespace
+}  // namespace
 
 char carver_pass::ID = 0;
 
@@ -143,7 +142,6 @@ void carver_pass::Insert_return_val_probe(Instruction *IN, Function *callee) {
 }
 
 void carver_pass::insert_global_carve_probe(Function *F, BasicBlock *BB) {
-
   BasicBlock *cur_block = BB;
 
   auto search = global_var_uses.find(F);
@@ -181,6 +179,9 @@ bool carver_pass::instrument_module() {
   carved_types_file.open("carved_types.txt");
 
   DEBUG0("Iterating functions...\n");
+
+  llvm::FunctionCallee carv_file =
+      Mod->getOrInsertFunction("__carv_file", VoidTy, Int8PtrTy);
 
   for (llvm::Function &F : Mod->functions()) {
     if (is_inst_forbid_func(&F)) {
@@ -246,13 +247,14 @@ bool carver_pass::instrument_module() {
 
     DEBUG0("Inserting probe in " << func_name << '\n');
     carved_types_file << "##" << func_name << '\n';
+    std::string demangled_func_name = llvm::demangle(func_name);
 
     IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
     Constant *func_id_const = ConstantInt::get(Int32Ty, func_id++);
     Instruction *init_probe = IRB->CreateCall(carv_func_call, {func_id_const});
 
     // Main argc argv handling
-    if (func_name == "main") {
+    if (demangled_func_name == "main") {
       Insert_carving_main_probe(&entry_block, &F, NULL);
       tracking_allocas.clear();
       continue;
@@ -265,6 +267,15 @@ bool carver_pass::instrument_module() {
       insert_check_carve_ready();
 
       BasicBlock *insert_block = IRB->GetInsertBlock();
+
+      std::vector<std::string> input_files = {
+          "branches",      "cfg_branches",      "input", "type", "coverage",
+          "szd_execution", "szd_execution_temp"};
+
+      for (auto iter : input_files) {
+        Constant *input_name_const = gen_new_string_constant(iter, IRB);
+        IRB->CreateCall(carv_file, {input_name_const});
+      }
 
       for (auto &arg_iter : F.args()) {
         Value *func_arg = &arg_iter;
@@ -292,7 +303,7 @@ bool carver_pass::instrument_module() {
 
     IRB->CreateCall(update_carved_ptr_idx, {});
 
-    DEBUG0("Insert memory tracking for " << func_name << "\n");
+    DEBUG0("Insert memory tracking for " << demangled_func_name << "\n");
 
     // Call instr probing
     for (auto call_instr : call_instrs) {
@@ -316,7 +327,8 @@ bool carver_pass::instrument_module() {
         // exception handling
         IRB->SetInsertPoint(call_instr);
 
-        Constant *func_name_const = gen_new_string_constant(func_name, IRB);
+        Constant *func_name_const =
+            gen_new_string_constant(demangled_func_name, IRB);
         IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});
 
         insert_dealloc_probes();
@@ -335,7 +347,8 @@ bool carver_pass::instrument_module() {
       IRB->SetInsertPoint(ret_instr);
 
       // Write carved result
-      Constant *func_name_const = gen_new_string_constant(func_name, IRB);
+      Constant *func_name_const =
+          gen_new_string_constant(demangled_func_name, IRB);
 
       IRB->CreateCall(carv_func_ret, {func_name_const, func_id_const});
 
@@ -344,7 +357,7 @@ bool carver_pass::instrument_module() {
 
     tracking_allocas.clear();
 
-    DEBUG0("done in " << func_name << "\n");
+    DEBUG0("done in " << demangled_func_name << "\n");
   }
 
   carved_types_file.close();
@@ -415,7 +428,7 @@ void carver_pass::get_instrument_func_set() {
       continue;
     }
 
-    if (func_name == "__clang_call_terminate"){
+    if (func_name == "__clang_call_terminate") {
       continue;
     }
 
@@ -425,6 +438,12 @@ void carver_pass::get_instrument_func_set() {
       if (filename.find("gcc/") != std::string::npos) {
         continue;
       }
+    }
+
+    llvm::ItaniumPartialDemangler Demangler;
+    Demangler.partialDemangle(func_name.c_str());
+    if (Demangler.isCtorOrDtor()) {
+      continue;
     }
 
     // TODO
@@ -458,16 +477,15 @@ static RegisterPass<carver_pass> X("carve", "Carve pass", false, false);
 
 static void registerPass(const PassManagerBuilder &,
                          legacy::PassManagerBase &PM) {
-
   auto p = new carver_pass();
   PM.add(p);
 }
 
-static RegisterStandardPasses
-    RegisterPassOpt(PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
+static RegisterStandardPasses RegisterPassOpt(
+    PassManagerBuilder::EP_ModuleOptimizerEarly, registerPass);
 
-static RegisterStandardPasses
-    RegisterPassO0(PassManagerBuilder::EP_EnabledOnOptLevel0, registerPass);
+static RegisterStandardPasses RegisterPassO0(
+    PassManagerBuilder::EP_EnabledOnOptLevel0, registerPass);
 
 // static RegisterStandardPasses RegisterPassLTO(
 //     PassManagerBuilder::EP_FullLinkTimeOptimizationLast,

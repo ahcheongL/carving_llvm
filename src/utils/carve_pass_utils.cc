@@ -1,5 +1,6 @@
 
 #include "carve_pass.hpp"
+#include "llvm/Demangle/Demangle.h"
 
 FunctionCallee mem_allocated_probe;
 FunctionCallee remove_probe;
@@ -38,67 +39,56 @@ Constant *global_cur_class_size = NULL;
 
 // Insert the probes in the module symbol table
 void get_carving_func_callees_and_globals(bool carv_func_name) {
-  mem_allocated_probe =
-      Mod->getOrInsertFunction(get_link_name("__mem_allocated_probe"), VoidTy,
-                               Int8PtrTy, Int32Ty, Int8PtrTy);
-  remove_probe = Mod->getOrInsertFunction(
-      get_link_name("__remove_mem_allocated_probe"), VoidTy, Int8PtrTy);
+  mem_allocated_probe = Mod->getOrInsertFunction(
+      "__mem_allocated_probe", VoidTy, Int8PtrTy, Int32Ty, Int8PtrTy);
+  remove_probe = Mod->getOrInsertFunction("__remove_mem_allocated_probe",
+                                          VoidTy, Int8PtrTy);
 
-  record_func_ptr = Mod->getOrInsertFunction(get_link_name("__record_func_ptr"),
-                                             VoidTy, Int8PtrTy, Int8PtrTy);
-  add_no_stub_func = Mod->getOrInsertFunction(
-      get_link_name("__add_no_stub_func"), VoidTy, Int8PtrTy);
-  is_no_stub = Mod->getOrInsertFunction(get_link_name("__is_no_stub_func"),
-                                        Int8Ty, Int8PtrTy);
+  record_func_ptr = Mod->getOrInsertFunction("__record_func_ptr", VoidTy,
+                                             Int8PtrTy, Int8PtrTy);
+  add_no_stub_func =
+      Mod->getOrInsertFunction("__add_no_stub_func", VoidTy, Int8PtrTy);
+  is_no_stub = Mod->getOrInsertFunction("__is_no_stub_func", Int8Ty, Int8PtrTy);
 
-  argv_modifier =
-      Mod->getOrInsertFunction(get_link_name("__carver_argv_modifier"), VoidTy,
-                               Int32PtrTy, Int8PtrPtrPtrTy);
-  __carv_fini = Mod->getOrInsertFunction(get_link_name("__carv_FINI"), VoidTy);
-  carv_char_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_char"), VoidTy, Int8Ty);
-  carv_short_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_short"), VoidTy, Int16Ty);
-  carv_int_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_int"), VoidTy, Int32Ty);
-  carv_long_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_longtype"), VoidTy, Int64Ty);
-  carv_longlong_func = Mod->getOrInsertFunction(get_link_name("Carv_longlong"),
-                                                VoidTy, Int128Ty);
-  carv_float_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_float"), VoidTy, FloatTy);
-  carv_double_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_double"), VoidTy, DoubleTy);
-  carv_ptr_func =
-      Mod->getOrInsertFunction(get_link_name("Carv_pointer"), Int32Ty,
-                               Int8PtrTy, Int8PtrTy, Int32Ty, Int32Ty);
+  argv_modifier = Mod->getOrInsertFunction("__carver_argv_modifier", VoidTy,
+                                           Int32PtrTy, Int8PtrPtrPtrTy);
+  __carv_fini = Mod->getOrInsertFunction("__carv_FINI", VoidTy);
+  carv_char_func = Mod->getOrInsertFunction("Carv_char", VoidTy, Int8Ty);
+  carv_short_func = Mod->getOrInsertFunction("Carv_short", VoidTy, Int16Ty);
+  carv_int_func = Mod->getOrInsertFunction("Carv_int", VoidTy, Int32Ty);
+  carv_long_func = Mod->getOrInsertFunction("Carv_longtype", VoidTy, Int64Ty);
+  carv_longlong_func =
+      Mod->getOrInsertFunction("Carv_longlong", VoidTy, Int128Ty);
+  carv_float_func = Mod->getOrInsertFunction("Carv_float", VoidTy, FloatTy);
+  carv_double_func = Mod->getOrInsertFunction("Carv_double", VoidTy, DoubleTy);
+  carv_ptr_func = Mod->getOrInsertFunction("Carv_pointer", Int32Ty, Int8PtrTy,
+                                           Int8PtrTy, Int32Ty, Int32Ty);
 
   if (carv_func_name) {
-    carv_func_ptr = Mod->getOrInsertFunction(get_link_name("__Carv_func_ptr_name"),
-                                          VoidTy, Int8PtrTy);
+    carv_func_ptr =
+        Mod->getOrInsertFunction("__Carv_func_ptr_name", VoidTy, Int8PtrTy);
   } else {
-    carv_func_ptr = Mod->getOrInsertFunction(get_link_name("__Carv_func_ptr_index"),
-                                          VoidTy, Int8PtrTy);
+    carv_func_ptr =
+        Mod->getOrInsertFunction("__Carv_func_ptr_index", VoidTy, Int8PtrTy);
   }
 
-  carv_ptr_name_update = Mod->getOrInsertFunction(
-      get_link_name("__carv_ptr_name_update"), VoidTy, Int32Ty);
-  struct_name_func = Mod->getOrInsertFunction(
-      get_link_name("__carv_struct_name_update"), VoidTy, Int8PtrTy);
-  carv_name_push = Mod->getOrInsertFunction(get_link_name("__carv_name_push"),
-                                            VoidTy, Int8PtrTy);
-  carv_name_pop =
-      Mod->getOrInsertFunction(get_link_name("__carv_name_pop"), VoidTy);
+  carv_ptr_name_update =
+      Mod->getOrInsertFunction("__carv_ptr_name_update", VoidTy, Int32Ty);
+  struct_name_func =
+      Mod->getOrInsertFunction("__carv_struct_name_update", VoidTy, Int8PtrTy);
+  carv_name_push =
+      Mod->getOrInsertFunction("__carv_name_push", VoidTy, Int8PtrTy);
+  carv_name_pop = Mod->getOrInsertFunction("__carv_name_pop", VoidTy);
 
-  carv_func_call = Mod->getOrInsertFunction(
-      get_link_name("__carv_func_call_probe"), VoidTy, Int32Ty);
-  carv_func_ret = Mod->getOrInsertFunction(
-      get_link_name("__carv_func_ret_probe"), VoidTy, Int8PtrTy, Int32Ty);
+  carv_func_call =
+      Mod->getOrInsertFunction("__carv_func_call_probe", VoidTy, Int32Ty);
+  carv_func_ret = Mod->getOrInsertFunction("__carv_func_ret_probe", VoidTy,
+                                           Int8PtrTy, Int32Ty);
 
-  update_carved_ptr_idx = Mod->getOrInsertFunction(
-      get_link_name("__update_carved_ptr_idx"), VoidTy);
-  keep_class_info = Mod->getOrInsertFunction(
-      get_link_name("__keep_class_info"), VoidTy, Int8PtrTy, Int32Ty, Int32Ty);
+  update_carved_ptr_idx =
+      Mod->getOrInsertFunction("__update_carved_ptr_idx", VoidTy);
+  keep_class_info = Mod->getOrInsertFunction("__keep_class_info", VoidTy,
+                                             Int8PtrTy, Int32Ty, Int32Ty);
 
   // Constructs global variables to global symbol table.
   global_carve_ready = Mod->getOrInsertGlobal("__carv_ready", Int8Ty);
@@ -107,12 +97,12 @@ void get_carving_func_callees_and_globals(bool carv_func_name) {
   global_cur_class_size =
       Mod->getOrInsertGlobal("__carv_cur_class_size", Int32Ty);
 
-  carv_open = Mod->getOrInsertFunction(get_link_name("__carv_open"), VoidTy);
-  carv_close = Mod->getOrInsertFunction(get_link_name("__carv_close"), VoidTy,
-                                        Int8PtrTy, Int8PtrTy);
+  carv_open = Mod->getOrInsertFunction("__carv_open", VoidTy);
+  carv_close =
+      Mod->getOrInsertFunction("__carv_close", VoidTy, Int8PtrTy, Int8PtrTy);
 
-  record_func_ptr_index = Mod->getOrInsertFunction(
-      get_link_name("__record_func_ptr_index"), VoidTy, Int8PtrTy, Int32Ty);
+  record_func_ptr_index = Mod->getOrInsertFunction("__record_func_ptr_index",
+                                                   VoidTy, Int8PtrTy, Int32Ty);
 }
 
 std::vector<AllocaInst *> tracking_allocas;
@@ -284,8 +274,8 @@ static void Insert_glob_mem_alloc_probe(GlobalVariable *gv) {
 }
 
 static bool instrumented = false;
-void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector<Function *> * func_list) {
-
+void Insert_carving_main_probe(BasicBlock *entry_block, Function *F,
+                               std::vector<Function *> *func_list) {
   if (instrumented) {
     return;
   }
@@ -353,16 +343,29 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector
 
   IRB->SetInsertPoint(new_argv_load_instr->getNextNonDebugInstruction());
 
+  FunctionCallee vtable_record = Mod->getOrInsertFunction(
+      "__record_vtable_ptr", VoidTy, Int8PtrTy, Int8PtrTy);
+
   auto globals = Mod->global_values();
   // Global variables memory probing
   for (auto global_iter = globals.begin(); global_iter != globals.end();
        global_iter++) {
-
     if (!isa<GlobalVariable>(*global_iter)) {
       continue;
     }
 
+    std::string name = global_iter->getName().str();
+    std::string demangled = llvm::demangle(name);
+
     GlobalValue *global_v1 = &(*global_iter);
+
+    if (demangled.find("vtable for ") != std::string::npos) {
+      Value *cast_ptr =
+          IRB->CreateCast(Instruction::CastOps::BitCast, global_v1, Int8PtrTy);
+      IRB->CreateCall(vtable_record,
+                      {cast_ptr, gen_new_string_constant(demangled, IRB)});
+    }
+
     GlobalVariable *global_v = dyn_cast<GlobalVariable>(global_v1);
     if (global_v->getName().str().find("llvm.") != std::string::npos) {
       continue;
@@ -406,10 +409,11 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector
     }
   } else {
     int index = 0;
-    for (Function * func : *func_list) {
+    for (Function *func : *func_list) {
       Value *cast_val =
           IRB->CreateCast(Instruction::CastOps::BitCast, func, Int8PtrTy);
-      IRB->CreateCall(record_func_ptr_index, {cast_val, ConstantInt::get(Int32Ty, index)});
+      IRB->CreateCall(record_func_ptr_index,
+                      {cast_val, ConstantInt::get(Int32Ty, index)});
       index++;
     }
   }
@@ -421,8 +425,6 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F, std::vector
                     {iter.second.second, ConstantInt::get(Int32Ty, class_size),
                      ConstantInt::get(Int32Ty, iter.second.first)});
   }
-
-  
 
   for (auto call_instr : call_instrs) {
     Function *callee = call_instr->getCalledFunction();
@@ -512,7 +514,6 @@ BasicBlock *insert_array_carve_probe(Value *arr_ptr_val,
 }
 
 BasicBlock *insert_gep_carve_probe(Value *gep_val, BasicBlock *cur_block) {
-
   PointerType *gep_type = dyn_cast<PointerType>(gep_val->getType());
   Type *gep_pointee_type = gep_type->getPointerElementType();
 
@@ -629,9 +630,9 @@ BasicBlock *insert_carve_probe(Value *val, BasicBlock *BB) {
     Constant *typestr_const = gen_new_string_constant(typestr, IRB);
 
     // Call Carv_pointer
-    Value *end_size =
-        IRB->CreateCall(carv_ptr_func, {ptrval, typestr_const,
-                                        default_class_idx, pointee_size_val});
+    Value *end_size = IRB->CreateCall(
+        carv_ptr_func,
+        {ptrval, typestr_const, default_class_idx, pointee_size_val});
 
     Value *class_idx = NULL;
     if (is_class_type) {
@@ -711,7 +712,6 @@ BasicBlock *insert_carve_probe(Value *val, BasicBlock *BB) {
 
 std::set<std::string> struct_carvers;
 void insert_struct_carve_probe(Value *struct_ptr, Type *type) {
-
   StructType *struct_type = dyn_cast<StructType>(type);
 
   auto search2 = class_name_map.find(struct_type);
@@ -744,7 +744,6 @@ void construct_ditype_map() {
 }
 
 void insert_struct_carve_probe_inner(Value *struct_ptr, Type *type) {
-
   IRBuilderBase::InsertPoint cur_ip = IRB->saveIP();
   StructType *struct_type = dyn_cast<StructType>(type);
   const StructLayout *SL = DL->getStructLayout(struct_type);
@@ -920,8 +919,8 @@ void gen_class_carver() {
 
   IRB->SetInsertPoint(entry_BB);
 
-  Value *carving_ptr = class_carver_func->getArg(0); // *int8
-  Value *class_idx = class_carver_func->getArg(1);   // int32
+  Value *carving_ptr = class_carver_func->getArg(0);  // *int8
+  Value *class_idx = class_carver_func->getArg(1);    // int32
 
   SwitchInst *switch_inst =
       IRB->CreateSwitch(class_idx, default_BB, num_class_name_const + 1);

@@ -26,19 +26,24 @@ extern FunctionCallee __replay_fini;
 
 extern FunctionCallee class_replay;
 
+extern Constant *global_cur_class_index;
+extern Constant *global_cur_class_size;
+extern Constant *global_ptr_alloc_size;
+extern Constant *global_cur_zero_address;
+
 void get_driver_func_callees();
 
-void make_stub(Function * F);
+void make_stub(Function *F);
 
-Value * insert_replay_probe(Type *, Value *);
+Value *insert_replay_probe(Type *, Value *);
 
 void insert_gep_replay_probe(Value *);
 
-void insert_struct_replay_probe_inner(Value*, Type *);
-void insert_struct_replay_probe(Value*, Type *);
+void insert_struct_replay_probe_inner(Value *, Type *);
+void insert_struct_replay_probe(Value *, Type *);
 
 void gen_class_replay();
 
-extern Constant * global_cur_class_index;
-extern Constant * global_cur_class_size;
+extern Constant *global_cur_class_index;
+extern Constant *global_cur_class_size;
 #endif

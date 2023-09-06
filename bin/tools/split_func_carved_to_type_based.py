@@ -33,9 +33,15 @@ class carved_ptr:
     self.old_index = old_index
     self.ptr_line = ptr_line
 
+import shutil
 
 for fn in glob.glob("{}/*".format(carved_dir)):
   if fn == "{}/call_seq".format(carved_dir):
+    continue
+
+  filename = fn.split("/")[-1]
+  if filename[:12] == "carved_file_":
+    shutil.copytree(fn, carved_dir + "_type_based/" + filename)
     continue
   
   print("Processing {}".format(fn))
@@ -190,3 +196,9 @@ for fn in glob.glob("{}/*".format(carved_dir)):
           f2.write(line)
 
       var_idx +=1
+
+for type_name in types:
+  type_dirn = carved_dir + "_type_based/" + type_name
+  carved_obj_fns = glob.glob("{}/*".format(type_dirn))
+  if len(carved_obj_fns) == 0:
+    os.rmdir(type_dirn)
