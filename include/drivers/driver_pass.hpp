@@ -1,7 +1,7 @@
 #ifndef DRIVER_PASS_UTILS_HPP
 #define DRIVER_PASS_UTILS_HPP
 
-#include "pass.hpp"
+#include "utils/pass.hpp"
 
 extern FunctionCallee __inputf_open;
 

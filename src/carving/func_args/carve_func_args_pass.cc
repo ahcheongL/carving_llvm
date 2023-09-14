@@ -1,7 +1,5 @@
-#include "carve_pass.hpp"
+#include "carving/carve_pass.hpp"
 #include "llvm/Demangle/Demangle.h"
-
-namespace {
 
 class carver_pass : public ModulePass {
  public:
@@ -58,8 +56,6 @@ class carver_pass : public ModulePass {
 
   std::ofstream carved_types_file;
 };
-
-}  // namespace
 
 char carver_pass::ID = 0;
 
@@ -193,6 +189,7 @@ bool carver_pass::instrument_module() {
     std::vector<Instruction *> cast_instrs;
     std::vector<CallInst *> call_instrs;
     std::vector<Instruction *> ret_instrs;
+    std::vector<InvokeInst *> invoke_instrs;
 
     for (llvm::BasicBlock &BB : F) {
       for (llvm::Instruction &IN : BB) {
@@ -202,6 +199,8 @@ bool carver_pass::instrument_module() {
           call_instrs.push_back(dyn_cast<CallInst>(&IN));
         } else if (isa<ReturnInst>(&IN)) {
           ret_instrs.push_back(&IN);
+        } else if (isa<InvokeInst>(&IN)) {
+          invoke_instrs.push_back(dyn_cast<InvokeInst>(&IN));
         }
       }
     }
@@ -233,6 +232,8 @@ bool carver_pass::instrument_module() {
             IRB->CreateCall(__carv_fini, {});
           }
         }
+
+        IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
         Insert_mem_func_call_probe(call_instr, callee_name);
       }
 
@@ -246,8 +247,9 @@ bool carver_pass::instrument_module() {
     }
 
     DEBUG0("Inserting probe in " << func_name << '\n');
-    carved_types_file << "##" << func_name << '\n';
+
     std::string demangled_func_name = llvm::demangle(func_name);
+    carved_types_file << "##" << demangled_func_name << '\n';
 
     IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
     Constant *func_id_const = ConstantInt::get(Int32Ty, func_id++);
@@ -323,7 +325,10 @@ bool carver_pass::instrument_module() {
         continue;
       }
 
-      if (callee_name == "__cxa_throw") {
+      if (callee_name == "exit") {
+        IRB->SetInsertPoint(call_instr);
+        IRB->CreateCall(__carv_fini, {});
+      } else if (callee_name == "__cxa_throw") {
         // exception handling
         IRB->SetInsertPoint(call_instr);
 
@@ -338,7 +343,33 @@ bool carver_pass::instrument_module() {
           IRB->CreateCall(__carv_fini, {});
         }
       } else {
+        IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
         Insert_mem_func_call_probe(call_instr, callee_name);
+      }
+    }
+
+    for (auto invoke_instr : invoke_instrs) {
+      // insert new/free probe, return value probe
+      Function *callee = invoke_instr->getCalledFunction();
+      if (callee == NULL) {
+        continue;
+      }
+
+      if (callee->isDebugInfoForProfiling()) {
+        continue;
+      }
+
+      std::string callee_name = callee->getName().str();
+      if (callee_name == "__cxa_allocate_exception") {
+        continue;
+      }
+
+      if (callee_name == "__cxa_throw") {
+        //...?
+      } else {
+        IRB->SetInsertPoint(
+            invoke_instr->getNormalDest()->getFirstNonPHIOrDbgOrLifetime());
+        Insert_mem_func_call_probe(invoke_instr, callee_name);
       }
     }
 

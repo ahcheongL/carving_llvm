@@ -155,7 +155,10 @@ map<char *, classinfo> __replay_class_info;
 // Function pointer names
 static map<void *, char *> __replay_func_ptrs;
 
-vector<IVAR *> __replay_inputs;
+IVAR **__replay_inputs = NULL;
+unsigned int __replay_inputs_size = 0;
+unsigned int __replay_inputs_capacity = 0;
+
 vector<POINTER> __replay_carved_ptrs;
 
 // adhoc to make a set
@@ -186,11 +189,17 @@ void __driver_inputf_open(char *inputfilename) {
     return;
   }
 
+  fprintf(stderr, "Trying to read %s\n", inputfilename);
+
   FILE *input_fp = fopen(inputfilename, "r");
   if (input_fp == NULL) {
     // fprintf(stderr, "Can't read input file\n");
     std::abort();
   }
+
+  __replay_inputs_size = 0;
+  __replay_inputs_capacity = 1024;
+  __replay_inputs = (IVAR **)malloc(sizeof(IVAR *) * __replay_inputs_capacity);
 
   char *line = NULL;
   size_t len = 0;
@@ -247,35 +256,35 @@ void __driver_inputf_open(char *inputfilename) {
       if (!strncmp(type_str, "CHAR", 4)) {
         char value = atoi(value_str + 1);
         VAR<char> *inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "SHORT", 5)) {
         short value = atoi(value_str + 1);
         VAR<short> *inputv = new VAR<short>(value, 0, INPUT_TYPE::SHORT);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "INT", 3)) {
         int value = atoi(value_str + 1);
         VAR<int> *inputv = new VAR<int>(value, 0, INPUT_TYPE::INT);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "LONG", 4)) {
         long value = atol(value_str + 1);
         VAR<long> *inputv = new VAR<long>(value, 0, INPUT_TYPE::LONG);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "LONGLONG", 8)) {
         long long value = atoll(value_str + 1);
         VAR<long long> *inputv =
             new VAR<long long>(value, 0, INPUT_TYPE::LONGLONG);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "FLOAT", 5)) {
         float value = atof(value_str + 1);
         VAR<float> *inputv = new VAR<float>(value, 0, INPUT_TYPE::FLOAT);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "DOUBLE", 6)) {
         double value = atof(value_str + 1);
         VAR<double> *inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "NULLPTR", 7)) {
         VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "FUNCPTR", 7)) {
         char *func_name = value_str + 1;
         len = strlen(func_name);
@@ -287,7 +296,7 @@ void __driver_inputf_open(char *inputfilename) {
           if (!strcmp(iter.second, func_name)) {
             VAR<void *> *inputv =
                 new VAR<void *>(iter.first, 0, INPUT_TYPE::FUNCPTR);
-            __replay_inputs.push_back((IVAR *)inputv);
+            __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
             found_func = true;
             break;
           }
@@ -295,7 +304,7 @@ void __driver_inputf_open(char *inputfilename) {
 
         if (!found_func) {
           VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::FUNCPTR);
-          __replay_inputs.push_back((IVAR *)inputv);
+          __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
         }
       } else if (!strncmp(type_str, "PTR", 3)) {
         if (index_str == NULL) {
@@ -307,13 +316,19 @@ void __driver_inputf_open(char *inputfilename) {
         int ptr_offset = atoi(index_str + 1);
         VAR<int> *inputv =
             new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::PTR);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else if (!strncmp(type_str, "UNKNOWN_PTR", 11)) {
         VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
-        __replay_inputs.push_back((IVAR *)inputv);
+        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
       } else {
         // fprintf(stderr, "Invalid input file\n");
         // std::abort();
+      }
+
+      if (__replay_inputs_size >= __replay_inputs_capacity) {
+        __replay_inputs_capacity *= 2;
+        __replay_inputs = (IVAR **)realloc(
+            __replay_inputs, sizeof(IVAR *) * __replay_inputs_capacity);
       }
     }
   }
@@ -322,6 +337,8 @@ void __driver_inputf_open(char *inputfilename) {
     free(line);
   }
   fclose(input_fp);
+
+  fprintf(stderr, "Read %u inputs\n", __replay_inputs_size);
   return;
 }
 
@@ -463,7 +480,11 @@ char *__fetch_file(char *name, unsigned int id) {
 static int cur_input_idx = 0;
 
 void __driver_initialize() {
-  __replay_inputs.clear();
+  for (int idx = 0; idx < __replay_inputs_size; idx++) {
+    delete __replay_inputs[idx];
+  }
+
+  __replay_inputs_size = 0;
   __replay_carved_ptrs.clear();
   __replay_replayed_ptr.clear();
   cur_input_idx = 0;
@@ -471,7 +492,7 @@ void __driver_initialize() {
 }
 
 char Replay_char() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
 
@@ -487,7 +508,7 @@ char Replay_char() {
 }
 
 short Replay_short() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
 
@@ -503,7 +524,7 @@ short Replay_short() {
 }
 
 int Replay_int() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
 
@@ -519,7 +540,7 @@ int Replay_int() {
 }
 
 long Replay_longtype() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
 
@@ -535,7 +556,7 @@ long Replay_longtype() {
 }
 
 long long Replay_longlong() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
 
@@ -551,7 +572,7 @@ long long Replay_longlong() {
 }
 
 float Replay_float() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
   IVAR *elem = __replay_inputs[cur_input_idx++];
@@ -566,7 +587,7 @@ float Replay_float() {
 }
 
 double Replay_double() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
   IVAR *elem = __replay_inputs[cur_input_idx++];
@@ -587,13 +608,7 @@ void *__replay_cur_zero_address = 0;
 
 void *Replay_pointer(int default_idx, int default_pointee_size,
                      char *pointee_type_name) {
-  if (pointee_type_name == nullptr) {
-    fprintf(stderr, "Replay error : pointee_type_name is NULL\n");
-  } else {
-    fprintf(stderr, "Replay pointer: %s\n", pointee_type_name);
-  }
-
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     __replay_cur_alloc_size = 0;
     __replay_cur_pointee_size = -1;
     return 0;
@@ -667,7 +682,7 @@ void *Replay_pointer(int default_idx, int default_pointee_size,
 }
 
 void *Replay_func_ptr() {
-  if (__replay_inputs.size() < cur_input_idx) {
+  if (__replay_inputs_size <= cur_input_idx) {
     return 0;
   }
   IVAR *elem = __replay_inputs[cur_input_idx++];
@@ -735,7 +750,21 @@ void __cov_fini() {
       std::string line;
       while (getline(cov_file_in, line)) {
         auto pos1 = line.find(" ");
+
+        if (pos1 == std::string::npos) {
+          break;
+        }
+
         auto pos2 = line.find_last_of(" ");
+
+        if (pos2 == std::string::npos) {
+          break;
+        }
+
+        if (pos1 == pos2) {
+          break;
+        }
+
         type = line.substr(0, pos1);
         name = line.substr(pos1 + 1, pos2 - pos1 - 1);
         is_covered = line.substr(pos2 + 1) == "1";

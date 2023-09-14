@@ -1,26 +1,31 @@
-#include "utils.hpp"
-#include "dirent.h"
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "utils/data_utils.hpp"
 
 extern map<void *, char *> __replay_func_ptrs;
 extern vector<IVAR *> __replay_inputs;
 extern vector<POINTER> __replay_carved_ptrs;
 
-char read_carv_file(char * data, int size) {
+extern "C" {
 
+char read_carv_file(char *data, int size) {
   // int limit = size;
   // if (limit > 500) {
   //   limit = 500;
   // }
 
   // int carv_index = 0;
-  
+
   // for (int i = 0; i < limit; i++) {
   //   carv_index += data[i];
   // }
 
-  int carv_index = *(int *) data;
-  
-  char * carv_dir = getenv("CARV_DIR");
+  int carv_index = *(int *)data;
+
+  char *carv_dir = getenv("CARV_DIR");
 
   if (carv_dir == NULL) {
     return 0;
@@ -34,7 +39,9 @@ char read_carv_file(char * data, int size) {
   vector<dirent *> files;
 
   while ((dir = readdir(d)) != NULL) {
-    if (dir->d_type != DT_REG) { continue; }
+    if (dir->d_type != DT_REG) {
+      continue;
+    }
     bool inserted = false;
 
     for (int i = 0; i < files.size(); i++) {
@@ -57,23 +64,24 @@ char read_carv_file(char * data, int size) {
     return 0;
   }
 
-  char * carv_file_name = (*files.get(carv_index))->d_name;
+  char *carv_file_name = (*files.get(carv_index))->d_name;
 
-  char * full_name = (char *) malloc(strlen(carv_dir) + strlen(carv_file_name) + 2);
+  char *full_name =
+      (char *)malloc(strlen(carv_dir) + strlen(carv_file_name) + 2);
   strcpy(full_name, carv_dir);
   strcat(full_name, "/");
   strcat(full_name, carv_file_name);
 
-  FILE * input_fp = fopen(full_name, "r");
+  FILE *input_fp = fopen(full_name, "r");
   if (input_fp == NULL) {
-    //fprintf(stderr, "Can't read input file\n");
+    // fprintf(stderr, "Can't read input file\n");
     return 0;
   }
 
   files.clear();
   closedir(d);
 
-  char * line = NULL;
+  char *line = NULL;
   size_t len = 0;
   ssize_t read;
   bool is_carved_ptr = true;
@@ -82,20 +90,20 @@ char read_carv_file(char * data, int size) {
       if (line[0] == '#') {
         is_carved_ptr = false;
       } else {
-        char * addr_str = strchr(line, ':');
-        if (addr_str == NULL) { 
-          //fprintf(stderr, "Invalid input file\n");
-          //std::abort();
+        char *addr_str = strchr(line, ':');
+        if (addr_str == NULL) {
+          // fprintf(stderr, "Invalid input file\n");
+          // std::abort();
         }
-        char * size_str = strchr(addr_str + 1, ':');
-        if (size_str == NULL) { 
-          //fprintf(stderr, "Invalid input file\n");
-          //std::abort();
+        char *size_str = strchr(addr_str + 1, ':');
+        if (size_str == NULL) {
+          // fprintf(stderr, "Invalid input file\n");
+          // std::abort();
         }
-        char * type_str = strchr(size_str + 1, ':');
-        if (type_str == NULL) { 
-          //fprintf(stderr, "Invalid input file\n");
-          //std::abort();
+        char *type_str = strchr(size_str + 1, ':');
+        if (type_str == NULL) {
+          // fprintf(stderr, "Invalid input file\n");
+          // std::abort();
         }
 
         *type_str = 0;
@@ -104,59 +112,61 @@ char read_carv_file(char * data, int size) {
 
         int ptr_size = atoi(size_str + 1);
 
-        void * new_ptr = malloc(ptr_size);
+        void *new_ptr = malloc(ptr_size);
 
-        __replay_carved_ptrs.push_back(POINTER(new_ptr, strdup(type_str + 1), ptr_size));
+        __replay_carved_ptrs.push_back(
+            POINTER(new_ptr, strdup(type_str + 1), ptr_size));
       }
     } else {
-      char * type_str = strchr(line, ':');
-      if (type_str == NULL) { 
+      char *type_str = strchr(line, ':');
+      if (type_str == NULL) {
         fprintf(stderr, "Invalid input file\n");
         std::abort();
       }
-      char * value_str = strchr(type_str + 1, ':');
-      if (value_str == NULL) { 
+      char *value_str = strchr(type_str + 1, ':');
+      if (value_str == NULL) {
         fprintf(stderr, "Invalid input file\n");
         std::abort();
       }
-      char * index_str = strchr(value_str + 1, ':');
+      char *index_str = strchr(value_str + 1, ':');
 
       *value_str = 0;
 
       type_str += 1;
       if (!strncmp(type_str, "CHAR", 4)) {
         char value = atoi(value_str + 1);
-        VAR<char> * inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<char> *inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "SHORT", 5)) {
         short value = atoi(value_str + 1);
-        VAR<short> * inputv = new VAR<short>(value, 0, INPUT_TYPE::SHORT);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<short> *inputv = new VAR<short>(value, 0, INPUT_TYPE::SHORT);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "INT", 3)) {
         int value = atoi(value_str + 1);
-        VAR<int> * inputv = new VAR<int>(value, 0, INPUT_TYPE::INT);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<int> *inputv = new VAR<int>(value, 0, INPUT_TYPE::INT);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "LONG", 4)) {
         long value = atol(value_str + 1);
-        VAR<long> * inputv = new VAR<long>(value, 0, INPUT_TYPE::LONG);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<long> *inputv = new VAR<long>(value, 0, INPUT_TYPE::LONG);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "LONGLONG", 8)) {
         long long value = atoll(value_str + 1);
-        VAR<long long> * inputv = new VAR<long long>(value, 0, INPUT_TYPE::LONGLONG);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<long long> *inputv =
+            new VAR<long long>(value, 0, INPUT_TYPE::LONGLONG);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "FLOAT", 5)) {
         float value = atof(value_str + 1);
-        VAR<float> * inputv = new VAR<float>(value, 0, INPUT_TYPE::FLOAT);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<float> *inputv = new VAR<float>(value, 0, INPUT_TYPE::FLOAT);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "DOUBLE", 6)) {
         double value = atof(value_str + 1);
-        VAR<double> * inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<double> *inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "NULLPTR", 4)) {
-        VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "FUNCPTR", 7)) {
-        char * func_name = value_str + 1;
+        char *func_name = value_str + 1;
         len = strlen(func_name);
         func_name[len - 1] = 0;
         int idx = 0;
@@ -164,38 +174,44 @@ char read_carv_file(char * data, int size) {
         for (idx = 0; idx < num_funcs; idx++) {
           auto data = __replay_func_ptrs.get_by_idx(idx);
           if (!strcmp(func_name, data->elem)) {
-            VAR<void *> * inputv = new VAR<void *>(data->key, 0, INPUT_TYPE::FUNCPTR);
-            __replay_inputs.push_back((IVAR *) inputv);
+            VAR<void *> *inputv =
+                new VAR<void *>(data->key, 0, INPUT_TYPE::FUNCPTR);
+            __replay_inputs.push_back((IVAR *)inputv);
             break;
           }
         }
 
         if (idx == num_funcs) {
-          //fprintf(stderr, "Replay error : Can't get function name : %s\n", func_name);
-          VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::FUNCPTR);
-          __replay_inputs.push_back((IVAR *) inputv);
+          // fprintf(stderr, "Replay error : Can't get function name : %s\n",
+          // func_name);
+          VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::FUNCPTR);
+          __replay_inputs.push_back((IVAR *)inputv);
         }
       } else if (!strncmp(type_str, "PTR", 3)) {
         if (index_str == NULL) {
-          //fprintf(stderr, "Invalid input file\n");
-          //std::abort();
+          // fprintf(stderr, "Invalid input file\n");
+          // std::abort();
         }
 
         int ptr_index = atoi(value_str + 1);
         int ptr_offset = atoi(index_str + 1);
-        VAR<int> * inputv = new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::PTR);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<int> *inputv =
+            new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::PTR);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else if (!strncmp(type_str, "UNKNOWN_PTR", 11)) {
-        VAR<void *> * inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
-        __replay_inputs.push_back((IVAR *) inputv);
+        VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
+        __replay_inputs.push_back((IVAR *)inputv);
       } else {
-        //fprintf(stderr, "Invalid input file\n");
-        //std::abort();
+        // fprintf(stderr, "Invalid input file\n");
+        // std::abort();
       }
     }
   }
 
-  if (line) { free(line); }
+  if (line) {
+    free(line);
+  }
   fclose(input_fp);
   return 1;
+}
 }

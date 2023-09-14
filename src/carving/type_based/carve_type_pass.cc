@@ -1,4 +1,4 @@
-#include "carve_pass.hpp"
+#include "carving/carve_pass.hpp"
 
 /* Usage
   1. Set target type names in target.txt
@@ -11,13 +11,11 @@
 namespace {
 
 class type_carver_pass : public ModulePass {
-
-public:
+ public:
   static char ID;
   type_carver_pass() : ModulePass(ID) {}
 
   bool runOnModule(Module &M) override {
-
     DEBUG0("Running type_carver_pass\n");
 
     initialize_pass_contexts(M);
@@ -30,7 +28,7 @@ public:
 
     read_probe_list("carver_probe_names.txt");
     get_carving_func_callees_and_globals(false);
-    
+
     if (!get_target_types()) {
       DEBUG0("No target type found\n");
       return false;
@@ -64,7 +62,7 @@ public:
     return "carving complex types instrumentation";
   }
 
-private:
+ private:
   bool instrument_module();
 
   bool get_target_types();
@@ -75,15 +73,14 @@ private:
   std::vector<Function *> func_list;
 
   std::set<Type *> target_types;
-  std::string      target_type_name;
+  std::string target_type_name;
 };
 
-} // namespace
+}  // namespace
 
 char type_carver_pass::ID = 0;
 
 bool type_carver_pass::instrument_module() {
-
   get_class_type_info();
 
   find_global_var_uses();
@@ -99,7 +96,9 @@ bool type_carver_pass::instrument_module() {
   Function *main_func = NULL;
 
   for (auto &F : Mod->functions()) {
-    if (is_inst_forbid_func(&F)) { continue; }
+    if (is_inst_forbid_func(&F)) {
+      continue;
+    }
     std::string func_name = F.getName().str();
 
     std::vector<Instruction *> cast_instrs;
@@ -153,6 +152,7 @@ bool type_carver_pass::instrument_module() {
         continue;
       }
 
+      IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
       Insert_mem_func_call_probe(call_instr, callee_name);
     }
 
@@ -190,14 +190,17 @@ bool type_carver_pass::instrument_module() {
 
     for (auto &BB : bbs) {
       for (auto IN = BB->rbegin(); IN != BB->rend(); IN++) {
-        Type * instr_type = IN->getType();
+        Type *instr_type = IN->getType();
 
-        if (target_types.find(instr_type) == target_types.end()) { continue; }
+        if (target_types.find(instr_type) == target_types.end()) {
+          continue;
+        }
 
         Constant *name = gen_new_string_constant("obj", IRB);
 
-        Instruction * tmp = &(*IN);
-        while (tmp->getNextNonDebugInstruction() && isa<PHINode>(tmp->getNextNonDebugInstruction())) {
+        Instruction *tmp = &(*IN);
+        while (tmp->getNextNonDebugInstruction() &&
+               isa<PHINode>(tmp->getNextNonDebugInstruction())) {
           tmp = tmp->getNextNonDebugInstruction();
         }
 
@@ -211,8 +214,9 @@ bool type_carver_pass::instrument_module() {
 
         IRB->CreateCall(carv_name_pop, {});
 
-        Constant * type_name_const = gen_new_string_constant(target_type_name, IRB);
-        Constant * func_name_const = gen_new_string_constant(func_name, IRB);
+        Constant *type_name_const =
+            gen_new_string_constant(target_type_name, IRB);
+        Constant *func_name_const = gen_new_string_constant(func_name, IRB);
         IRB->CreateCall(carv_close, {type_name_const, func_name_const});
 
         num_inserted++;
@@ -223,9 +227,11 @@ bool type_carver_pass::instrument_module() {
     if (num_inserted) {
       IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
       Constant *func_id_const = ConstantInt::get(Int32Ty, func_id++);
-      Instruction *init_probe = IRB->CreateCall(carv_func_call, {func_id_const});
+      Instruction *init_probe =
+          IRB->CreateCall(carv_func_call, {func_id_const});
 
-      DEBUG0("Inserted " << num_inserted << " carving probes in function " << func_name << "\n");
+      DEBUG0("Inserted " << num_inserted << " carving probes in function "
+                         << func_name << "\n");
     }
   }
 
@@ -265,13 +271,15 @@ bool type_carver_pass::get_target_types() {
 
   for (auto &T : Mod->getIdentifiedStructTypes()) {
     std::string type_name = T->getName().str();
-    if (type_name.substr(0, 6) == "union.") { continue; }
+    if (type_name.substr(0, 6) == "union.") {
+      continue;
+    }
     auto search = type_name.substr(7).find(".");
     if (search != std::string::npos) {
       type_name = type_name.substr(0, search + 7);
     }
     if (type_name == target_type_name) {
-      Type * ptr_type = PointerType::get(T, 0);
+      Type *ptr_type = PointerType::get(T, 0);
       target_types.insert(ptr_type);
     }
   }
@@ -279,12 +287,13 @@ bool type_carver_pass::get_target_types() {
   return target_types.size() > 0;
 }
 
-static void register_pass(const PassManagerBuilder &, legacy::PassManagerBase &PM) {
+static void register_pass(const PassManagerBuilder &,
+                          legacy::PassManagerBase &PM) {
   PM.add(new type_carver_pass());
 }
 
-static RegisterStandardPasses
-  Y(PassManagerBuilder::EP_ModuleOptimizerEarly, register_pass);
+static RegisterStandardPasses Y(PassManagerBuilder::EP_ModuleOptimizerEarly,
+                                register_pass);
 
-static RegisterStandardPasses
-  Y0(PassManagerBuilder::EP_EnabledOnOptLevel0, register_pass);
+static RegisterStandardPasses Y0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                                 register_pass);

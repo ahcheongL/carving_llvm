@@ -1,7 +1,7 @@
 #ifndef CARVE_PASS_UTILS_HPP
 #define CARVE_PASS_UTILS_HPP
 
-#include "pass.hpp"
+#include "utils/pass.hpp"
 
 void get_carving_func_callees_and_globals(bool);
 
@@ -42,29 +42,29 @@ extern FunctionCallee carv_close;
 
 extern FunctionCallee record_func_ptr_index;
 
-//Memory tracking
+// Memory tracking
 extern std::vector<AllocaInst *> tracking_allocas;
 void Insert_alloca_probe(BasicBlock &);
 void insert_dealloc_probes();
 bool Insert_mem_func_call_probe(Instruction *, std::string);
 
+void Insert_carving_main_probe(BasicBlock *, Function *,
+                               std::vector<Function *> *);
 
-void Insert_carving_main_probe(BasicBlock *, Function *, std::vector<Function *> *);
-
-BasicBlock * insert_carve_probe(Value *, BasicBlock *);
+BasicBlock *insert_carve_probe(Value *, BasicBlock *);
 
 extern std::set<std::string> struct_carvers;
 void insert_struct_carve_probe(Value *, Type *);
 void insert_struct_carve_probe_inner(Value *, Type *);
 
-BasicBlock * insert_gep_carve_probe(Value * gep_val, BasicBlock * cur_block);
-BasicBlock * insert_array_carve_probe(Value * arr_ptr_val, BasicBlock * cur_block);
+BasicBlock *insert_gep_carve_probe(Value *gep_val, BasicBlock *cur_block);
+BasicBlock *insert_array_carve_probe(Value *arr_ptr_val, BasicBlock *cur_block);
 
 void insert_check_carve_ready();
 
-extern Constant * global_carve_ready;
-extern Constant * global_cur_class_idx;
-extern Constant * global_cur_class_size;
+extern Constant *global_carve_ready;
+extern Constant *global_cur_class_idx;
+extern Constant *global_cur_class_size;
 
 void gen_class_carver();
 

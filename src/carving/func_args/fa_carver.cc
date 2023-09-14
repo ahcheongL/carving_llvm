@@ -2,11 +2,16 @@
 #define __CROWN_CARVER_DEF
 
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "utils.hpp"
+#include <iostream>
+
+#include "utils/data_utils.hpp"
 
 #define MAX_NUM_FILE 8
 #define MINSIZE 3
@@ -521,6 +526,8 @@ void __carv_func_ret_probe(char *func_name, int func_id) {
     return;
   }
 
+  std::cerr << func_name << " ret_probe called\n";
+
   class FUNC_CONTEXT *cur_context = inputs.back();
   inputs.pop_back();
   int idx = 0;
@@ -786,6 +793,7 @@ void __carv_FINI() {
   free(outdir_name);
 
   __carv_ready = false;
+  __carv_ready0 = false;
 }
 
 void __carv_open() {

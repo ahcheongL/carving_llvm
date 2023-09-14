@@ -29,133 +29,148 @@ CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
-all: lib/carve_func_args_pass.so lib/carver.a lib/carver_probe_names.txt
-all: lib/simple_unit_driver_pass.so lib/driver.a lib/driver_probe_names.txt
+all: carve_func_context carve_type_based carve_func_args \
+	unit_test extend_driver fuzz_driver clementine_driver
 
-unit_test: lib/unit_test_pass.so lib/unit_test_mock.a lib/unit_test_probe_names.txt all
-carve_type: lib/carve_type_pass.so all
-extend_driver: lib/extend_driver_pass.so lib/extend_driver.a lib/extend_driver_probe_names.txt all
-fuzz_driver: lib/fuzz_driver_pass.so lib/fuzz_driver.a lib/fuzz_driver_probe_names.txt all
-clementine_driver: lib/clementine_driver_pass.so lib/cl_driver.a all
+carve_func_context: lib/carve_func_context_pass.so lib/fc_carver.a
+carve_type_based: lib/carve_type_pass.so lib/tb_carver.a
+carve_func_args: lib/carve_func_args_pass.so lib/fa_carver.a
+
+unit_test: lib/unit_test_pass.so lib/unit_test_mock.a
+extend_driver: lib/extend_driver_pass.so lib/extend_driver.a
+fuzz_driver: lib/fuzz_driver_pass.so lib/fuzz_driver.a
+clementine_driver: lib/clementine_driver_pass.so lib/cl_driver.a
 
 tools: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
-lib/carve_func_args_pass.so: src/carving/carve_func_args_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o
+lib/carve_func_context_pass.so: \
+	src/carving/func_context/carve_func_context_pass.cc \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
+		src/utils/pass_utils.o -o $@
 
-src/carving/carver.o: src/carving/carver.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/carving/carver.cc -o $@
-
-lib/carver.a: src/carving/carver.o
+lib/carve_func_args_pass.so: \
+	src/carving/func_args/carve_func_args_pass.cc \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(AR) rsv $@ $^
+	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
+		src/utils/pass_utils.o -o $@
 
-lib/fuzz_driver_pass.so: src/drivers/fuzz_driver/fuzz_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/fc_carver.a: src/carving/func_context/fc_carver.cc src/utils/data_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/carving/func_context/fc_carver.o
+	$(AR) rsv $@ src/carving/func_context/fc_carver.o src/utils/data_utils.o
 
-src/drivers/fuzz_driver/fuzz_driver.o: src/drivers/fuzz_driver/fuzz_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/fuzz_driver/fuzz_driver_probes.cc -o $@
-
-lib/fuzz_driver.a: src/drivers/fuzz_driver/fuzz_driver.o
+lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o
 	mkdir -p lib
-	$(AR) rsv $@ $^
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/carving/func_args/fa_carver.o
+	$(AR) rsv $@ src/carving/func_args/fa_carver.o src/utils/data_utils.o
 
-src/drivers/clementine_driver/cl_driver.o: src/drivers/clementine_driver/cl_driver.cc
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/clementine_driver/cl_driver.cc -o $@
-
-lib/cl_driver.a: src/drivers/clementine_driver/cl_driver.o
+lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o
 	mkdir -p lib
-	$(AR) rsv $@ $^
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/carving/type_based/tb_carver.o
+	$(AR) rsv $@ src/carving/type_based/tb_carver.o src/utils/data_utils.o
 
-lib/clementine_driver_pass.so: src/drivers/clementine_driver/clementine_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/fuzz_driver_pass.so: src/drivers/fuzz_driver/fuzz_driver_pass.cc \
+	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-lib/simple_unit_driver_pass.so: src/drivers/simple_replay/simple_unit_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/fuzz_driver.a: src/drivers/fuzz_driver/fuzz_driver_probes.cc
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/drivers/fuzz_driver/fuzz_driver.o
+	$(AR) rsv $@ src/drivers/fuzz_driver/fuzz_driver.o
 
-src/drivers/driver.o: src/drivers/driver.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/driver.cc -o $@
-
-lib/driver.a: src/drivers/driver.o
+lib/cl_driver.a: src/drivers/clementine_driver/cl_driver.cc 
 	mkdir -p lib
-	$(AR) rsv $@ $^
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/drivers/clementine_driver/cl_driver.o
+	$(AR) rsv $@ src/drivers/clementine_driver/cl_driver.o
 
-lib/carver_probe_names.txt: src/carving/carver.o src/carving/carver_probes.txt
+lib/clementine_driver_pass.so: \
+	src/drivers/clementine_driver/clementine_driver_pass.cc \
+	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	python3 bin/get_probe_names.py $^ $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-lib/fuzz_driver_probe_names.txt: src/drivers/fuzz_driver/fuzz_driver.o src/drivers/fuzz_driver/fuzz_driver_probes.txt
+lib/simple_unit_driver_pass.so: \
+	src/drivers/simple_replay/simple_unit_driver_pass.cc \
+	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	python3 bin/get_probe_names.py $^ $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-lib/driver_probe_names.txt: src/drivers/driver.o src/drivers/driver_probe_names.txt
+lib/driver.a: src/drivers/driver.cc
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/driver.o src/drivers/driver_probe_names.txt $@
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/drivers/driver.o
+	$(AR) rsv $@ src/drivers/driver.o
 
-lib/extract_info_pass.so: src/tools/extract_info_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
+lib/extract_info_pass.so: src/tools/extract_info_pass.cc \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-lib/read_gtest.so: src/tools/read_gtest.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
+lib/read_gtest.so: src/tools/read_gtest.cc \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-src/utils/carve_pass_utils.o: src/utils/carve_pass_utils.cc include/carve_pass.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/carve_pass_utils.cc -o $@
+src/utils/carve_pass_utils.o: src/utils/carve_pass_utils.cc
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
-lib/get_call_seq.so: src/tools/get_call_seq.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
+lib/get_call_seq.so: src/tools/get_call_seq.cc \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
 lib/call_seq.a: src/tools/call_seq.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-lib/carve_type_pass.so: src/carving/carve_type_pass.cc include/carve_pass.hpp src/utils/carve_pass_utils.o src/utils/pass_utils.o include/utils.hpp
+lib/carve_type_pass.so: src/carving/type_based/carve_type_pass.cc \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/carve_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-src/utils/driver_pass_utils.o: src/utils/driver_pass_utils.cc include/driver_pass.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/driver_pass_utils.cc -o $@
+src/utils/driver_pass_utils.o: src/utils/driver_pass_utils.cc
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
-src/utils/pass_utils.o: src/utils/pass_utils.cc include/pass.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c $(MAKEFILE_DIR)/src/utils/pass_utils.cc -o $@
+src/utils/pass_utils.o: src/utils/pass_utils.cc
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
-
-lib/unit_test_pass.so: src/drivers/unit_test_mock/unit_test_mock_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
+lib/unit_test_pass.so: src/drivers/unit_test_mock/unit_test_mock_pass.cc \
+	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
 lib/unit_test_mock.a: src/drivers/unit_test_mock/unit_test_mock.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-src/drivers/unit_test_mock/unit_test_mock.o: src/drivers/unit_test_mock/unit_test_mock_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/unit_test_mock/unit_test_mock_probes.cc -o $@
+src/drivers/unit_test_mock/unit_test_mock.o: \
+	src/drivers/unit_test_mock/unit_test_mock_probes.cc
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c $< -o $@
 
-lib/unit_test_probe_names.txt: src/drivers/unit_test_mock/unit_test_mock.o src/drivers/unit_test_mock/unit_test_mock_probes.txt
+lib/extend_driver_pass.so: src/drivers/ossfuzz_extend/extend_driver_pass.cc \
+	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/unit_test_mock/unit_test_mock.o src/drivers/unit_test_mock/unit_test_mock_probes.txt $@
-
-lib/extend_driver_pass.so: src/drivers/ossfuzz_extend/extend_driver_pass.cc src/utils/driver_pass_utils.o src/utils/pass_utils.o
-	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $< src/utils/driver_pass_utils.o src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
 lib/extend_driver.a: src/drivers/ossfuzz_extend/extend_driver.o
 	mkdir -p lib
 	$(AR) rsv $@ $^
 
-src/drivers/ossfuzz_extend/extend_driver.o: src/drivers/ossfuzz_extend/extend_driver_probes.cc include/utils.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c src/drivers/ossfuzz_extend/extend_driver_probes.cc -o $@
+src/drivers/ossfuzz_extend/extend_driver.o: \
+	src/drivers/ossfuzz_extend/extend_driver_probes.cc
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c $< -o $@
 
-lib/extend_driver_probe_names.txt: src/drivers/ossfuzz_extend/extend_driver.o src/drivers/ossfuzz_extend/extend_driver_probes.txt
-	mkdir -p lib
-	python3 bin/get_probe_names.py src/drivers/ossfuzz_extend/extend_driver.o src/drivers/ossfuzz_extend/extend_driver_probes.txt $@
-
+src/utils/data_utils.o: src/utils/data_utils.cc
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
 clean:
 	rm -f lib/*.so lib/*.a src/carving/*.o drivers/*.o

@@ -1,9 +1,8 @@
-#include "driver_pass.hpp"
+#include "drivers/driver_pass.hpp"
 
 namespace {
 
 class driver_pass : public ModulePass {
-
  public:
   static char ID;
   driver_pass() : ModulePass(ID) {}
@@ -27,7 +26,7 @@ class driver_pass : public ModulePass {
   bool get_target_funcs();
   bool get_public_use_funcs();
 
-  void instrument_main_func(Function * main_func);
+  void instrument_main_func(Function *main_func);
   void instrument_unit_test_body(Function *);
 };
 
@@ -58,7 +57,9 @@ bool driver_pass::hookInstrs(Module &M) {
   gen_class_replay();
 
   for (auto &F : M) {
-    if (is_inst_forbid_func(&F)) { continue; }
+    if (is_inst_forbid_func(&F)) {
+      continue;
+    }
     std::string func_name = F.getName().str();
 
     if (func_name == "main") {
@@ -66,12 +67,14 @@ bool driver_pass::hookInstrs(Module &M) {
       continue;
     }
 
-    if (target_funcs.find(&F) == target_funcs.end()) { continue; }
+    if (target_funcs.find(&F) == target_funcs.end()) {
+      continue;
+    }
 
     instrument_unit_test_body(&F);
   }
-  
-  char * tmp = getenv("DUMP_IR");
+
+  char *tmp = getenv("DUMP_IR");
   if (tmp) {
     DEBUG0("Dumping IR...\n");
     DEBUGDUMP(Mod);
@@ -81,93 +84,106 @@ bool driver_pass::hookInstrs(Module &M) {
   return true;
 }
 
-void driver_pass::instrument_main_func(Function * main_func) {
+void driver_pass::instrument_main_func(Function *main_func) {
+  const DebugLoc *debug_loc = NULL;
 
-  const DebugLoc * debug_loc = NULL;
-
-  //get random debug info...
+  // get random debug info...
   for (auto &BB : main_func->getBasicBlockList()) {
     for (auto &IN : BB) {
       if (isa<CallInst>(&IN)) {
-        CallInst * CI = cast<CallInst>(&IN);
-        const DebugLoc & DL = CI->getDebugLoc();
+        CallInst *CI = cast<CallInst>(&IN);
+        const DebugLoc &DL = CI->getDebugLoc();
         debug_loc = &DL;
         break;
       }
     }
 
-    if (debug_loc != NULL) { break; }
+    if (debug_loc != NULL) {
+      break;
+    }
   }
 
-  IRB->SetInsertPoint(main_func->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
+  IRB->SetInsertPoint(
+      main_func->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
 
-  //Record func ptr
+  // Record func ptr
   for (auto &Func : Mod->functions()) {
-    if (Func.isIntrinsic()) { continue; }
+    if (Func.isIntrinsic()) {
+      continue;
+    }
     std::string func_name = Func.getName().str();
-    if (func_name.find("__Replay__") != std::string::npos) { continue; }
+    if (func_name.find("__Replay__") != std::string::npos) {
+      continue;
+    }
 
-    Constant * func_name_const = gen_new_string_constant(func_name, IRB);
-    Value * cast_val = IRB->CreateCast(Instruction::CastOps::BitCast
-      , &Func, Int8PtrTy);
+    Constant *func_name_const = gen_new_string_constant(func_name, IRB);
+    Value *cast_val =
+        IRB->CreateCast(Instruction::CastOps::BitCast, &Func, Int8PtrTy);
     IRB->CreateCall(record_func_ptr, {cast_val, func_name_const});
   }
 
-  //Record class type string constants
+  // Record class type string constants
   for (auto iter : class_name_map) {
     unsigned int class_size = DL->getTypeAllocSize(iter.first);
-    IRB->CreateCall(keep_class_info, {iter.second.second
-      , ConstantInt::get(Int32Ty, class_size)
-      , ConstantInt::get(Int32Ty, iter.second.first)});
+    IRB->CreateCall(keep_class_info,
+                    {iter.second.second, ConstantInt::get(Int32Ty, class_size),
+                     ConstantInt::get(Int32Ty, iter.second.first)});
   }
 
-  Value * argc = main_func->getArg(0);
-  Value * argv = main_func->getArg(1);
-  AllocaInst * argc_ptr = IRB->CreateAlloca(Int32Ty);
-  AllocaInst * argv_ptr = IRB->CreateAlloca(Int8PtrPtrTy);
+  Value *argc = main_func->getArg(0);
+  Value *argv = main_func->getArg(1);
+  AllocaInst *argc_ptr = IRB->CreateAlloca(Int32Ty);
+  AllocaInst *argv_ptr = IRB->CreateAlloca(Int8PtrPtrTy);
 
-  Value * new_argc = IRB->CreateLoad(Int32Ty, argc_ptr);
-  Value * new_argv = IRB->CreateLoad(Int8PtrPtrTy, argv_ptr);
+  Value *new_argc = IRB->CreateLoad(Int32Ty, argc_ptr);
+  Value *new_argv = IRB->CreateLoad(Int8PtrPtrTy, argv_ptr);
 
   argc->replaceAllUsesWith(new_argc);
   argv->replaceAllUsesWith(new_argv);
 
-  IRB->SetInsertPoint((Instruction *) new_argc);
+  IRB->SetInsertPoint((Instruction *)new_argc);
 
   IRB->CreateStore(argc, argc_ptr);
   IRB->CreateStore(argv, argv_ptr);
-  
-  FunctionCallee driver_input_modifier
-    = Mod->getOrInsertFunction(get_link_name("__driver_input_modifier"), VoidTy, Int32PtrTy, Int8PtrPtrPtrTy);
+
+  FunctionCallee driver_input_modifier =
+      Mod->getOrInsertFunction(get_link_name("__driver_input_modifier"), VoidTy,
+                               Int32PtrTy, Int8PtrPtrPtrTy);
 
   IRB->CreateCall(driver_input_modifier, {argc_ptr, argv_ptr});
 
-
-  //Value * argv = main_func->getArg(1);
-  //IRB->CreateCall(__inputf_open, {argv});
+  // Value * argv = main_func->getArg(1);
+  // IRB->CreateCall(__inputf_open, {argv});
 }
 
-void driver_pass::instrument_unit_test_body(Function * func) {
-
-  CallBase * api_call = NULL;
+void driver_pass::instrument_unit_test_body(Function *func) {
+  CallBase *api_call = NULL;
 
   std::string func_name = func->getName().str();
 
   for (auto &BB : func->getBasicBlockList()) {
     for (auto &IN : BB) {
       if (isa<CallBase>(&IN)) {
-        CallBase * tmp_call_instr = dyn_cast<CallBase>(&IN);
-        Function * callee = tmp_call_instr->getCalledFunction();
-        if (callee == NULL) { continue; }
-        if (callee->arg_size() == 0) { continue; }
+        CallBase *tmp_call_instr = dyn_cast<CallBase>(&IN);
+        Function *callee = tmp_call_instr->getCalledFunction();
+        if (callee == NULL) {
+          continue;
+        }
+        if (callee->arg_size() == 0) {
+          continue;
+        }
         std::string callee_name = callee->getName().str();
-        if (public_funcs.find(callee_name) == public_funcs.end()) { continue; }
+        if (public_funcs.find(callee_name) == public_funcs.end()) {
+          continue;
+        }
 
         api_call = tmp_call_instr;
         break;
       }
     }
-    if (api_call != NULL) { break; }
+    if (api_call != NULL) {
+      break;
+    }
   }
 
   if (api_call == NULL) {
@@ -177,49 +193,50 @@ void driver_pass::instrument_unit_test_body(Function * func) {
 
   IRB->SetInsertPoint(api_call);
 
-  BasicBlock * orig_block = api_call->getParent();
+  BasicBlock *orig_block = api_call->getParent();
 
-  BasicBlock * end_block = orig_block->splitBasicBlock(api_call);
+  BasicBlock *end_block = orig_block->splitBasicBlock(api_call);
 
-  BasicBlock * new_block = BasicBlock::Create(api_call->getContext(), "replay_block", func);
+  BasicBlock *new_block =
+      BasicBlock::Create(api_call->getContext(), "replay_block", func);
 
   IRB->SetInsertPoint(new_block);
 
-  Function * callee = api_call->getCalledFunction();
-  
-  Type * type_to_replace = NULL;
+  Function *callee = api_call->getCalledFunction();
+
+  Type *type_to_replace = NULL;
   int to_replace_idx = 0;
 
   int arg_idx = 0;
   for (auto &arg : callee->args()) {
-    Type * arg_type = arg.getType();
-    Value * replay_res = insert_replay_probe(arg_type, NULL);
+    Type *arg_type = arg.getType();
+    Value *replay_res = insert_replay_probe(arg_type, NULL);
 
-    if ((type_to_replace == NULL)
-      || ((!type_to_replace->isPointerTy()) && !is_func_ptr_type(arg_type))) {
+    if ((type_to_replace == NULL) ||
+        ((!type_to_replace->isPointerTy()) && !is_func_ptr_type(arg_type))) {
       type_to_replace = arg_type;
-      to_replace_idx = arg_idx;      
+      to_replace_idx = arg_idx;
     }
 
     api_call->setArgOperand(arg_idx, replay_res);
-    arg_idx ++;
+    arg_idx++;
   }
 
   IRB->CreateBr(end_block);
 
   orig_block->getTerminator()->setOperand(0, new_block);
 
-  // DEBUG0("Replace: " << func_name << " : " << callee->getName().str() << " : ");
-  // new_args[to_replace_idx]->getType()->print(llvm::errs());
+  // DEBUG0("Replace: " << func_name << " : " << callee->getName().str() << " :
+  // "); new_args[to_replace_idx]->getType()->print(llvm::errs());
   //  DEBUG0("\n");
 
-  DEBUG0("Replace: " << func_name << " : " << callee->getName().str() << " : \n");
+  DEBUG0("Replace: " << func_name << " : " << callee->getName().str()
+                     << " : \n");
 
   return;
 }
 
 bool driver_pass::runOnModule(Module &M) {
-
   DEBUG0("Running binary fuzz driver_pass\n");
 
   read_probe_list("driver_probe_names.txt");
@@ -228,8 +245,8 @@ bool driver_pass::runOnModule(Module &M) {
 
   DEBUG0("Verifying module...\n");
   std::string out;
-  llvm::raw_string_ostream  output(out);
-  bool has_error =  verifyModule(M, &output);
+  llvm::raw_string_ostream output(out);
+  bool has_error = verifyModule(M, &output);
 
   if (has_error > 0) {
     DEBUG0("IR errors : \n");
@@ -243,12 +260,15 @@ bool driver_pass::runOnModule(Module &M) {
 }
 
 bool driver_pass::get_target_funcs() {
-
   for (auto &F : Mod->functions()) {
-    if (F.isIntrinsic() || !F.size()) { continue; }
-    std::string func_name = F.getName().str();    
-    
-    if (func_name.find("TestBody") == std::string::npos) { continue; }
+    if (F.isIntrinsic() || !F.size()) {
+      continue;
+    }
+    std::string func_name = F.getName().str();
+
+    if (func_name.find("TestBody") == std::string::npos) {
+      continue;
+    }
     target_funcs.insert(&F);
   }
 
@@ -261,14 +281,17 @@ bool driver_pass::get_target_funcs() {
 }
 
 bool driver_pass::get_public_use_funcs() {
-
   std::ifstream targets("public_funcs.txt");
   if (targets.good()) {
     DEBUG0("Reading targets from public_funcs.txt\n");
     std::string line;
     while (std::getline(targets, line)) {
-      if (line.length() == 0) { continue; }
-      if (line[0] == '#') { continue; }
+      if (line.length() == 0) {
+        continue;
+      }
+      if (line[0] == '#') {
+        continue;
+      }
       public_funcs.insert(line);
     }
 
@@ -278,10 +301,10 @@ bool driver_pass::get_public_use_funcs() {
   return false;
 }
 
-static RegisterPass<driver_pass> X("driver", "Driver pass", false , false);
+static RegisterPass<driver_pass> X("driver", "Driver pass", false, false);
 
 static void registerPass(const PassManagerBuilder &,
-    legacy::PassManagerBase &PM) {
+                         legacy::PassManagerBase &PM) {
   auto p = new driver_pass();
   PM.add(p);
 }

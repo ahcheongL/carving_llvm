@@ -1,5 +1,5 @@
 
-#include "carve_pass.hpp"
+#include "carving/carve_pass.hpp"
 #include "llvm/Demangle/Demangle.h"
 
 FunctionCallee mem_allocated_probe;
@@ -156,9 +156,10 @@ static Constant *get_mem_alloc_type(Instruction *call_inst) {
     return Constant::getNullValue(Int8PtrTy);
   }
 
+  auto cur_insertpoint = IRB->GetInsertPoint();
+
   CastInst *cast_instr;
-  if ((cast_instr =
-           dyn_cast<CastInst>(call_inst->getNextNonDebugInstruction()))) {
+  if ((cast_instr = dyn_cast<CastInst>(cur_insertpoint))) {
     Type *cast_type = cast_instr->getType();
     if (isa<PointerType>(cast_type)) {
       PointerType *cast_ptr_type = dyn_cast<PointerType>(cast_type);
@@ -176,7 +177,7 @@ static Constant *get_mem_alloc_type(Instruction *call_inst) {
 
 bool Insert_mem_func_call_probe(Instruction *call_inst,
                                 std::string callee_name) {
-  IRB->SetInsertPoint(call_inst->getNextNonDebugInstruction());
+  // IRB->SetInsertPoint(call_inst->getNextNonDebugInstruction());
 
   if (callee_name == "malloc") {
     // Track malloc
@@ -435,6 +436,7 @@ void Insert_carving_main_probe(BasicBlock *entry_block, Function *F,
       continue;
     }
 
+    IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
     Insert_mem_func_call_probe(call_instr, callee->getName().str());
   }
 
