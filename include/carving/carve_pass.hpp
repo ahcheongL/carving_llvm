@@ -25,11 +25,6 @@ extern FunctionCallee carv_double_func;
 extern FunctionCallee carv_ptr_func;
 extern FunctionCallee carv_func_ptr;
 
-extern FunctionCallee carv_ptr_name_update;
-extern FunctionCallee struct_name_func;
-extern FunctionCallee carv_name_push;
-extern FunctionCallee carv_name_pop;
-
 extern FunctionCallee carv_func_call;
 extern FunctionCallee carv_func_ret;
 
@@ -40,7 +35,12 @@ extern FunctionCallee class_carver;
 extern FunctionCallee carv_open;
 extern FunctionCallee carv_close;
 
+extern FunctionCallee keep_class_info;
+
 extern FunctionCallee record_func_ptr_index;
+
+extern FunctionCallee insert_obj_info;
+extern FunctionCallee record_ofstream;
 
 // Memory tracking
 extern std::vector<AllocaInst *> tracking_allocas;

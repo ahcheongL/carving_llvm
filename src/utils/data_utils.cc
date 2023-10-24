@@ -22,13 +22,18 @@ POINTER::POINTER(void *_addr, int _size)
 POINTER::POINTER(void *_addr, const char *pointee_type, int _size)
     : addr(_addr), pointee_type(pointee_type), alloc_size(_size) {}
 
+bool POINTER::operator==(const POINTER &other) const {
+  return (addr == other.addr) && (alloc_size == other.alloc_size);
+}
+
 ///////////////////
 // IVAR
 ///////////////////
 
 IVAR::IVAR() : type(INPUT_TYPE::CHAR), name(0) {}
 IVAR::IVAR(char *name, enum INPUT_TYPE type) : name(name), type(type) {}
-IVAR::~IVAR() { free(name); }
+IVAR::~IVAR() {  // free(name);
+}
 
 ///////////////////
 // VAR
@@ -190,17 +195,6 @@ elem_type *vector<elem_type>::get(int idx) {
     return 0;
   }
   return &(data[idx]);
-}
-
-template <class elem_type>
-int vector<elem_type>::get_idx(const elem_type elem) {
-  int idx = 0;
-  for (idx = 0; idx < num_elem; idx++) {
-    if (elem == data[idx]) {
-      return idx;
-    }
-  }
-  return -1;
 }
 
 template <class elem_type>
@@ -760,3 +754,29 @@ classinfo &classinfo::operator=(classinfo &&other) {
   other.size = 0;
   return *this;
 }
+
+template class VAR<char>;
+template class VAR<short>;
+template class VAR<int>;
+template class VAR<long>;
+template class VAR<long long>;
+template class VAR<float>;
+template class VAR<double>;
+template class VAR<long double>;
+template class VAR<void *>;
+template class VAR<char *>;
+
+template class vector<IVAR *>;
+template class vector<POINTER>;
+template class vector<char *>;
+template class vector<FUNC_CONTEXT>;
+template class vector<bool>;
+
+template class map<void *, int>;
+template class map<void *, char>;
+template class map<char *, classinfo>;
+template class map<void *, char *>;
+template class map<void *, typeinfo>;
+template class map<char const *, unsigned int>;
+template class map<char *, char *>;
+template class map<char *, unsigned int>;

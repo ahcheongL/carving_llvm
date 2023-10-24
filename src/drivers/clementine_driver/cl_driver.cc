@@ -14,6 +14,12 @@
 
 using namespace std;
 
+int __cur_target_func_idx;
+
+static int filename_cmp(const void *l, const void *r) {
+  return strcmp((const char *)l, (const char *)r);
+}
+
 class classinfo {
  public:
   int class_index;
@@ -161,8 +167,15 @@ unsigned int __replay_inputs_capacity = 0;
 
 vector<POINTER> __replay_carved_ptrs;
 
+IVAR **__replay_default_inputs = NULL;
+unsigned int __replay_default_inputs_size = 0;
+unsigned int __replay_default_inputs_capacity = 0;
+
+vector<POINTER> __replay_default_carved_ptrs;
+
 // adhoc to make a set
 map<int, char> __replay_replayed_ptr;
+map<int, char> __replay_default_replayed_ptr;
 
 char *__carved_obj_dir = NULL;
 
@@ -182,6 +195,111 @@ void __driver_input_argv_modifier(int *argcptr, char ***argvptr) {
   (*argvptr)[argc] = 0;
 }
 
+static char **__tc_dir_names = NULL;
+static unsigned int __num_tc_dirs = 0;
+static char *__cl_target_func_name = NULL;
+static char *__default_tc_dir_name = NULL;
+static char *__default_tc_file_name = NULL;
+
+void __driver_select_default_file(unsigned int tc_id, unsigned int carv_id) {
+  DIR *dir = opendir(__carved_obj_dir);
+  if (dir == NULL) {
+    return;
+  }
+
+  struct dirent *ent;
+  while ((ent = readdir(dir)) != NULL) {
+    if (ent->d_type == DT_DIR) {
+      __num_tc_dirs++;
+    }
+  }
+
+  if (__num_tc_dirs == 0) {
+    fprintf(stderr, "Replay error : No dirs in directory : %s\n",
+            __carved_obj_dir);
+    return;
+  }
+
+  char **__tc_dir_names = (char **)malloc(sizeof(char *) * __num_tc_dirs);
+
+  rewinddir(dir);
+
+  int dir_idx = 0;
+  while ((ent = readdir(dir)) != NULL) {
+    if (ent->d_type == DT_DIR) {
+      __tc_dir_names[dir_idx++] = strdup(ent->d_name);
+    }
+  }
+
+  qsort(__tc_dir_names, __num_tc_dirs, sizeof(char *), filename_cmp);
+
+  int sel_dir_idx = tc_id % __num_tc_dirs;
+
+  __default_tc_dir_name = (char *)malloc(
+      strlen(__carved_obj_dir) + strlen(__tc_dir_names[sel_dir_idx]) + 2);
+
+  sprintf(__default_tc_dir_name, "%s/%s", __carved_obj_dir,
+          __tc_dir_names[sel_dir_idx]);
+  closedir(dir);
+
+  if (__cl_target_func_name == NULL) {
+    return;
+  }
+
+  dir = opendir(__default_tc_dir_name);
+  if (dir == NULL) {
+    return;
+  }
+
+  char **__target_func_files = (char **)malloc(sizeof(char *) * 16);
+  unsigned int __target_func_files_capacity = 16;
+  unsigned int __num_target_func_files = 0;
+
+  while ((ent = readdir(dir)) != NULL) {
+    if (ent->d_type != DT_REG) {
+      continue;
+    }
+
+    char *file_name = ent->d_name;
+    if (strstr(file_name, __cl_target_func_name) != NULL) {
+      if (__num_target_func_files >= __target_func_files_capacity) {
+        __target_func_files_capacity *= 2;
+        __target_func_files = (char **)realloc(
+            __target_func_files, sizeof(char *) * __target_func_files_capacity);
+      }
+
+      __target_func_files[__num_target_func_files++] = strdup(file_name);
+    }
+  }
+
+  if (__num_target_func_files == 0) {
+    fprintf(stderr,
+            "Replay error : No files for function %s in directory : %s\n",
+            __cl_target_func_name, __default_tc_dir_name);
+    return;
+  }
+
+  char *__target_func_file_name =
+      __target_func_files[carv_id % __num_target_func_files];
+
+  __default_tc_file_name = (char *)malloc(strlen(__default_tc_dir_name) +
+                                          strlen(__target_func_file_name) + 2);
+
+  snprintf(__default_tc_file_name,
+           strlen(__default_tc_dir_name) + strlen(__target_func_file_name) + 2,
+           "%s/%s", __default_tc_dir_name, __target_func_file_name);
+
+  std::cerr << "Got default tc file : " << __default_tc_file_name << "\n";
+
+  FILE *input_fp = fopen(__default_tc_file_name, "r");
+  if (input_fp == NULL) {
+    std::cerr << "Can't read input file : " << __default_tc_file_name << "\n";
+    return;
+  }
+
+  return;
+}
+
 void __driver_inputf_open(char *inputfilename) {
   if (inputfilename == NULL) {
     fprintf(stderr, "Replay error : inputfilename is NULL\n");
@@ -197,9 +315,10 @@ void __driver_inputf_open(char *inputfilename) {
     std::abort();
   }
 
-  __replay_inputs_size = 0;
-  __replay_inputs_capacity = 1024;
-  __replay_inputs = (IVAR **)malloc(sizeof(IVAR *) * __replay_inputs_capacity);
+  __replay_default_inputs_size = 0;
+  __replay_default_inputs_capacity = 1024;
+  __replay_default_inputs =
+      (IVAR **)malloc(sizeof(IVAR *) * __replay_default_inputs_capacity);
 
   char *line = NULL;
   size_t len = 0;
@@ -234,15 +353,11 @@ void __driver_inputf_open(char *inputfilename) {
 
         void *new_ptr = malloc(ptr_size);
 
-        __replay_carved_ptrs.push_back(
+        __replay_default_carved_ptrs.push_back(
             POINTER(new_ptr, strdup(type_str + 1), ptr_size));
       }
     } else {
-      char *type_str = strchr(line, ':');
-      if (type_str == NULL) {
-        fprintf(stderr, "Invalid input file\n");
-        std::abort();
-      }
+      char *type_str = line;
       char *value_str = strchr(type_str + 1, ':');
       if (value_str == NULL) {
         fprintf(stderr, "Invalid input file\n");
@@ -256,35 +371,43 @@ void __driver_inputf_open(char *inputfilename) {
       if (!strncmp(type_str, "CHAR", 4)) {
         char value = atoi(value_str + 1);
         VAR<char> *inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "SHORT", 5)) {
         short value = atoi(value_str + 1);
         VAR<short> *inputv = new VAR<short>(value, 0, INPUT_TYPE::SHORT);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "INT", 3)) {
         int value = atoi(value_str + 1);
         VAR<int> *inputv = new VAR<int>(value, 0, INPUT_TYPE::INT);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "LONG", 4)) {
         long value = atol(value_str + 1);
         VAR<long> *inputv = new VAR<long>(value, 0, INPUT_TYPE::LONG);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "LONGLONG", 8)) {
         long long value = atoll(value_str + 1);
         VAR<long long> *inputv =
             new VAR<long long>(value, 0, INPUT_TYPE::LONGLONG);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "FLOAT", 5)) {
         float value = atof(value_str + 1);
         VAR<float> *inputv = new VAR<float>(value, 0, INPUT_TYPE::FLOAT);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "DOUBLE", 6)) {
         double value = atof(value_str + 1);
         VAR<double> *inputv = new VAR<double>(value, 0, INPUT_TYPE::DOUBLE);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "NULLPTR", 7)) {
         VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::NULLPTR);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "FUNCPTR", 7)) {
         char *func_name = value_str + 1;
         len = strlen(func_name);
@@ -296,7 +419,8 @@ void __driver_inputf_open(char *inputfilename) {
           if (!strcmp(iter.second, func_name)) {
             VAR<void *> *inputv =
                 new VAR<void *>(iter.first, 0, INPUT_TYPE::FUNCPTR);
-            __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+            __replay_default_inputs[__replay_default_inputs_size++] =
+                ((IVAR *)inputv);
             found_func = true;
             break;
           }
@@ -304,7 +428,8 @@ void __driver_inputf_open(char *inputfilename) {
 
         if (!found_func) {
           VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::FUNCPTR);
-          __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+          __replay_default_inputs[__replay_default_inputs_size++] =
+              ((IVAR *)inputv);
         }
       } else if (!strncmp(type_str, "PTR", 3)) {
         if (index_str == NULL) {
@@ -316,19 +441,22 @@ void __driver_inputf_open(char *inputfilename) {
         int ptr_offset = atoi(index_str + 1);
         VAR<int> *inputv =
             new VAR<int>(ptr_index, 0, ptr_offset, INPUT_TYPE::PTR);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else if (!strncmp(type_str, "UNKNOWN_PTR", 11)) {
         VAR<void *> *inputv = new VAR<void *>(0, 0, INPUT_TYPE::UNKNOWN_PTR);
-        __replay_inputs[__replay_inputs_size++] = ((IVAR *)inputv);
+        __replay_default_inputs[__replay_default_inputs_size++] =
+            ((IVAR *)inputv);
       } else {
         // fprintf(stderr, "Invalid input file\n");
         // std::abort();
       }
 
-      if (__replay_inputs_size >= __replay_inputs_capacity) {
+      while (__replay_default_inputs_size >= __replay_default_inputs_capacity) {
         __replay_inputs_capacity *= 2;
-        __replay_inputs = (IVAR **)realloc(
-            __replay_inputs, sizeof(IVAR *) * __replay_inputs_capacity);
+        __replay_default_inputs =
+            (IVAR **)realloc(__replay_default_inputs,
+                             sizeof(IVAR *) * __replay_default_inputs_capacity);
       }
     }
   }
@@ -338,17 +466,17 @@ void __driver_inputf_open(char *inputfilename) {
   }
   fclose(input_fp);
 
-  fprintf(stderr, "Read %u inputs\n", __replay_inputs_size);
+  fprintf(stderr, "Read %u inputs\n", __replay_default_inputs_size);
   return;
 }
 
-static int filename_cmp(const void *l, const void *r) {
-  return strcmp((const char *)l, (const char *)r);
-}
-
 char *__select_replay_file(char *name, unsigned int id) {
+  std::cerr << "Selecting replay file for " << name << " with id : " << id
+            << "\n";
+
   if (__carved_obj_dir == NULL) {
     // std::abort();
+    std::cerr << "Error : Can't find carved obj dir\n";
     return 0;
   }
 
@@ -358,7 +486,7 @@ char *__select_replay_file(char *name, unsigned int id) {
 
   DIR *dir = opendir(type_dir_name);
   if (dir == NULL) {
-    // std::abort();
+    std::cerr << "Error : Can't open dir : " << type_dir_name << "\n";
     return 0;
   }
 
@@ -809,4 +937,223 @@ void __cov_fini() {
   }
   return;
 }
+
+static map<int, char *> __target_func_idx_map;
+void __record_func_idx(int idx, char *func_name) {
+  __target_func_idx_map.insert(make_pair(idx, func_name));
 }
+
+void __driver_get_target_func_name(int func_idx) {
+  __cl_target_func_name = __target_func_idx_map[func_idx];
+  std::cerr << "Got target func name : " << __cl_target_func_name << "\n";
+}
+
+// Default replay
+static int cur_default_input_idx = 0;
+char Replay_default_char() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if ((elem->type != INPUT_TYPE::CHAR)) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<char> *)elem)->input;
+}
+
+short Replay_default_short() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type != INPUT_TYPE::SHORT) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<short> *)elem)->input;
+}
+
+int Replay_default_int() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type != INPUT_TYPE::INT) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<int> *)elem)->input;
+}
+
+long Replay_default_longtype() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type != INPUT_TYPE::LONG) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<long> *)elem)->input;
+}
+
+long long Replay_default_longlong() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type != INPUT_TYPE::LONGLONG) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<long long> *)elem)->input;
+}
+
+float Replay_default_float() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type != INPUT_TYPE::FLOAT) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<float> *)elem)->input;
+}
+
+double Replay_default_double() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type != INPUT_TYPE::DOUBLE) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<double> *)elem)->input;
+}
+
+int __replay_default_cur_alloc_size = 0;
+int __replay_default_cur_class_index = -1;
+int __replay_default_cur_pointee_size = -1;
+void *__replay_default_cur_zero_address = 0;
+
+void *Replay_default_pointer(int default_idx, int default_pointee_size,
+                             char *pointee_type_name) {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    __replay_default_cur_alloc_size = 0;
+    __replay_default_cur_pointee_size = -1;
+    return 0;
+  }
+
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if (elem->type == INPUT_TYPE::NULLPTR) {
+    __replay_default_cur_alloc_size = 0;
+    __replay_default_cur_pointee_size = -1;
+    return 0;
+  }
+
+  if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
+    // alloc 1 object
+#define ALLOC_1_OBJ
+#ifdef ALLOC_1_OBJ
+    __replay_default_cur_alloc_size = 0;
+    __replay_default_cur_pointee_size = -1;
+    return malloc(default_pointee_size);
+#else
+    __replay_default_cur_alloc_size = 0;
+    __replay_default_cur_pointee_size = -1;
+    return 0;
+#endif
+  }
+
+  if (elem->type != INPUT_TYPE::PTR) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    __replay_default_cur_alloc_size = 0;
+    __replay_default_cur_pointee_size = -1;
+    return 0;
+  }
+
+  VAR<int> *elem_v = (VAR<int> *)elem;
+  int ptr_index = elem_v->input;
+  int ptr_offset = elem_v->pointer_offset;
+
+  POINTER carved_ptr = __replay_default_carved_ptrs[ptr_index];
+
+  auto search = __replay_default_replayed_ptr.find(ptr_index);
+  if (search != __replay_default_replayed_ptr.end()) {
+    __replay_default_cur_alloc_size = 0;
+    __replay_default_cur_pointee_size = -1;
+    return (char *)carved_ptr.addr + ptr_offset;
+  }
+  __replay_default_replayed_ptr.insert(make_pair(ptr_index, 0));
+
+  __replay_default_cur_alloc_size = carved_ptr.alloc_size;
+  __replay_default_cur_zero_address = carved_ptr.addr;
+
+  const char *type_name = carved_ptr.pointee_type;
+
+  __replay_default_cur_pointee_size = default_pointee_size;
+  __replay_default_cur_class_index = default_idx;
+
+  if (!strcmp(type_name, pointee_type_name)) {
+    return (char *)carved_ptr.addr + ptr_offset;
+  }
+
+  // carved ptr has different type
+  for (auto iter : __replay_class_info) {
+    if (!strcmp(iter.first, type_name)) {
+      __replay_default_cur_pointee_size = iter.second.size;
+      __replay_default_cur_class_index = iter.second.class_index;
+      break;
+    }
+  }
+
+  return (char *)carved_ptr.addr + ptr_offset;
+}
+
+void *Replay_default_func_ptr() {
+  if (__replay_default_inputs_size <= cur_default_input_idx) {
+    return 0;
+  }
+  IVAR *elem = __replay_default_inputs[cur_default_input_idx++];
+
+  if ((elem->type != INPUT_TYPE::FUNCPTR) &&
+      (elem->type != INPUT_TYPE::NULLPTR)) {
+    // fprintf(stderr, "Replay error : Invalid input type\n");
+    // std::abort();
+    return 0;
+  }
+
+  return ((VAR<void *> *)elem)->input;
+}
+
+}  // extern "C"

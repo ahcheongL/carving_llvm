@@ -14,7 +14,11 @@ enum INPUT_TYPE {
   NULLPTR,
   FUNCPTR,
   VTABLE_PTR,
-  UNKNOWN_PTR
+  UNKNOWN_PTR,
+  OBJ_INFO,
+  INPUTFILE,
+  OSTREAM,
+  OFSTREAM,
 };
 
 class POINTER {
@@ -24,6 +28,8 @@ class POINTER {
   POINTER(void *_addr, int _size);
 
   POINTER(void *_addr, const char *pointee_type, int _size);
+
+  bool operator==(const POINTER &other) const;
 
   void *addr;
   const char *pointee_type;
@@ -87,8 +93,6 @@ class vector {
   elem_type *operator[](int idx);
 
   elem_type *get(int idx);
-
-  int get_idx(const elem_type elem);
 
   int size();
 
@@ -227,5 +231,4 @@ class classinfo {
 
   classinfo &operator=(classinfo &&other);
 };
-
 #endif

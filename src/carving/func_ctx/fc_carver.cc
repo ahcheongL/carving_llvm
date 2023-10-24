@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <fstream>
 #include <iostream>
 
 #include "utils/data_utils.hpp"
@@ -13,8 +14,6 @@
 #define MAX_NUM_FILE 8
 #define MINSIZE 3
 #define MAXSIZE 24
-#define CARV_PROB 100
-#define CARV_PROB_TYPE 100
 
 static char *outdir_name = NULL;
 
@@ -48,10 +47,6 @@ static vector<POINTER> *cur_carved_ptrs = NULL;
 // static boost::container::map<void *, struct typeinfo> alloced_ptrs;
 map<void *, struct typeinfo> alloced_ptrs;
 
-// variable naming
-static vector<char *> __carv_base_names;
-static vector<bool> __need_to_free_carv_base_names;
-
 int __carv_cur_class_index = -1;
 int __carv_cur_class_size = -1;
 
@@ -65,55 +60,50 @@ static map<void *, char *> vtable_map;
 
 extern "C" {
 
+void __insert_obj_info(char *name, char *type_name) {
+  VAR<char *> *inputv = new VAR<char *>(type_name, name, INPUT_TYPE::OBJ_INFO);
+  __carve_cur_inputs->push_back((IVAR *)inputv);
+}
+
 void Carv_char(char input) {
-  VAR<char> *inputv =
-      new VAR<char>(input, strdup(*__carv_base_names.back()), INPUT_TYPE::CHAR);
+  VAR<char> *inputv = new VAR<char>(input, 0, INPUT_TYPE::CHAR);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 void Carv_short(short input) {
-  VAR<short> *inputv = new VAR<short>(input, strdup(*__carv_base_names.back()),
-                                      INPUT_TYPE::SHORT);
+  VAR<short> *inputv = new VAR<short>(input, 0, INPUT_TYPE::SHORT);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 void Carv_int(int input) {
-  VAR<int> *inputv =
-      new VAR<int>(input, strdup(*__carv_base_names.back()), INPUT_TYPE::INT);
+  VAR<int> *inputv = new VAR<int>(input, 0, INPUT_TYPE::INT);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 void Carv_longtype(long input) {
-  VAR<long> *inputv =
-      new VAR<long>(input, strdup(*__carv_base_names.back()), INPUT_TYPE::LONG);
+  VAR<long> *inputv = new VAR<long>(input, 0, INPUT_TYPE::LONG);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 void Carv_longlong(long long input) {
-  VAR<long long> *inputv = new VAR<long long>(
-      input, strdup(*__carv_base_names.back()), INPUT_TYPE::LONGLONG);
+  VAR<long long> *inputv = new VAR<long long>(input, 0, INPUT_TYPE::LONGLONG);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 void Carv_float(float input) {
-  VAR<float> *inputv = new VAR<float>(input, strdup(*__carv_base_names.back()),
-                                      INPUT_TYPE::FLOAT);
+  VAR<float> *inputv = new VAR<float>(input, 0, INPUT_TYPE::FLOAT);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 void Carv_double(double input) {
-  VAR<double> *inputv = new VAR<double>(
-      input, strdup(*__carv_base_names.back()), INPUT_TYPE::DOUBLE);
+  VAR<double> *inputv = new VAR<double>(input, 0, INPUT_TYPE::DOUBLE);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 }
 
 int Carv_pointer(void *ptr, char *type_name, int default_idx,
                  int default_size) {
-  char *updated_name = strdup(*(__carv_base_names.back()));
-
   if (ptr == NULL) {
-    VAR<void *> *inputv =
-        new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
+    VAR<void *> *inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
     return 0;
   }
@@ -121,7 +111,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   auto vtable_search = vtable_map.find(ptr);
   if (vtable_search != NULL) {
     VAR<char *> *inputv =
-        new VAR<char *>(*vtable_search, updated_name, INPUT_TYPE::VTABLE_PTR);
+        new VAR<char *>(*vtable_search, 0, INPUT_TYPE::VTABLE_PTR);
     return 0;
   }
 
@@ -135,8 +125,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     char *carved_addr_end = carved_addr + carved_ptr_size;
     if ((carved_addr <= ptr) && (ptr < carved_addr_end)) {
       int offset = ((char *)ptr) - carved_addr;
-      VAR<int> *inputv =
-          new VAR<int>(index, updated_name, offset, INPUT_TYPE::PTR);
+      VAR<int> *inputv = new VAR<int>(index, 0, offset, INPUT_TYPE::PTR);
       __carve_cur_inputs->push_back((IVAR *)inputv);
       // Won't carve again.
       return 0;
@@ -146,8 +135,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
 
   auto closest_alloc = alloced_ptrs.find_small_closest(ptr);
   if (closest_alloc == NULL) {
-    VAR<void *> *inputv =
-        new VAR<void *>(ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
+    VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
     return 0;
   }
@@ -158,8 +146,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   char *alloced_addr_end = closest_alloc_ptr_addr + closest_alloced_info->size;
 
   if (alloced_addr_end < (char *)ptr) {
-    VAR<void *> *inputv =
-        new VAR<void *>(ptr, updated_name, INPUT_TYPE::UNKNOWN_PTR);
+    VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
     return 0;
   }
@@ -182,8 +169,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
 
   cur_carved_ptrs->push_back(POINTER(ptr, type_name, ptr_alloc_size));
 
-  VAR<int> *inputv =
-      new VAR<int>(new_carved_ptr_index, updated_name, 0, INPUT_TYPE::PTR);
+  VAR<int> *inputv = new VAR<int>(new_carved_ptr_index, 0, 0, INPUT_TYPE::PTR);
   __carve_cur_inputs->push_back((IVAR *)inputv);
 
   return ptr_alloc_size;
@@ -203,42 +189,28 @@ void __add_no_stub_func(void *ptr) { no_stub_funcs.insert(ptr, 0); }
 bool __is_no_stub_func(void *ptr) { return no_stub_funcs.find(ptr) != NULL; }
 
 void __Carv_func_ptr_name(void *ptr) {
-  char *updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
-    VAR<void *> *inputv =
-        new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
+    VAR<void *> *inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
     return;
   }
 
-  VAR<char *> *inputv =
-      new VAR<char *>(*search, updated_name, INPUT_TYPE::FUNCPTR);
+  VAR<char *> *inputv = new VAR<char *>(*search, 0, INPUT_TYPE::FUNCPTR);
   __carve_cur_inputs->push_back((IVAR *)inputv);
   return;
 }
 
 void __Carv_func_ptr_index(void *ptr) {
-  char *updated_name = strdup(*__carv_base_names.back());
   auto search = func_ptr_index.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
-    VAR<void *> *inputv =
-        new VAR<void *>(NULL, updated_name, INPUT_TYPE::NULLPTR);
+    VAR<void *> *inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
     __carve_cur_inputs->push_back((IVAR *)inputv);
     return;
   }
 
-  VAR<int> *inputv = new VAR<int>(*search, updated_name, INPUT_TYPE::FUNCPTR);
+  VAR<int> *inputv = new VAR<int>(*search, 0, INPUT_TYPE::FUNCPTR);
   __carve_cur_inputs->push_back((IVAR *)inputv);
-  return;
-}
-
-void __carv_ptr_name_update(int idx) {
-  char *base_name = *(__carv_base_names.back());
-  char *update_name = (char *)malloc(sizeof(char) * 512);
-  snprintf(update_name, 512, "%s[%d]", base_name, idx);
-  __carv_base_names.push_back(update_name);
-  __need_to_free_carv_base_names.push_back(true);
   return;
 }
 
@@ -250,30 +222,6 @@ void __keep_class_info(char *class_name, int size, int index) {
 int __get_class_idx() { return __carv_cur_class_index; }
 
 int __get_class_size() { return __carv_cur_class_size; }
-
-void __carv_name_push(char *name) {
-  __carv_base_names.push_back(name);
-  __need_to_free_carv_base_names.push_back(false);
-  return;
-}
-
-void __carv_name_pop() {
-  if (*__need_to_free_carv_base_names.back()) {
-    free(*__carv_base_names.back());
-  }
-  __carv_base_names.pop_back();
-  __need_to_free_carv_base_names.pop_back();
-  return;
-}
-
-void __carv_struct_name_update(char *field_name) {
-  char *base_name = *(__carv_base_names.back());
-  char *update_name = (char *)malloc(sizeof(char) * 512);
-  snprintf(update_name, 512, "%s.%s", base_name, field_name);
-  __carv_base_names.push_back(update_name);
-  __need_to_free_carv_base_names.push_back(true);
-  return;
-}
 
 // Save ptr with size and type_name into memory `allocted_ptrs`.
 void __mem_allocated_probe(void *ptr, int size, char *type_name) {
@@ -326,15 +274,9 @@ void __carv_func_call_probe(int func_id) {
 
   inputs.push_back(new_ctx);
 
-  if ((rand() % 100) < CARV_PROB) {
-    __carve_cur_inputs = &(inputs.back()->inputs);
-    cur_carved_ptrs = &(inputs.back()->carved_ptrs);
-    __carv_ready = true;
-  } else {
-    inputs.back()->is_carved = false;
-    __carve_cur_inputs = NULL;
-    __carv_ready = false;
-  }
+  __carve_cur_inputs = &(inputs.back()->inputs);
+  cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+  __carv_ready = true;
   return;
 }
 
@@ -641,37 +583,30 @@ void __carv_func_ret_probe(char *func_name, int func_id) {
   while (idx < num_inputs) {
     IVAR *elem = *(__carve_cur_inputs->get(idx));
     if (elem->type == INPUT_TYPE::CHAR) {
-      fprintf(outfile, "%s:CHAR:%d\n", elem->name,
-              (int)(((VAR<char> *)elem)->input));
+      fprintf(outfile, "CHAR:%d\n", (int)(((VAR<char> *)elem)->input));
     } else if (elem->type == INPUT_TYPE::SHORT) {
-      fprintf(outfile, "%s:SHORT:%d\n", elem->name,
-              (int)(((VAR<short> *)elem)->input));
+      fprintf(outfile, "SHORT:%d\n", (int)(((VAR<short> *)elem)->input));
     } else if (elem->type == INPUT_TYPE::INT) {
-      fprintf(outfile, "%s:INT:%d\n", elem->name,
-              (int)(((VAR<int> *)elem)->input));
+      fprintf(outfile, "INT:%d\n", (int)(((VAR<int> *)elem)->input));
     } else if (elem->type == INPUT_TYPE::LONG) {
-      fprintf(outfile, "%s:LONG:%ld\n", elem->name, ((VAR<long> *)elem)->input);
+      fprintf(outfile, "LONG:%ld\n", ((VAR<long> *)elem)->input);
     } else if (elem->type == INPUT_TYPE::LONGLONG) {
-      fprintf(outfile, "%s:LONGLONG:%lld\n", elem->name,
-              ((VAR<long long> *)elem)->input);
+      fprintf(outfile, "LONGLONG:%lld\n", ((VAR<long long> *)elem)->input);
     } else if (elem->type == INPUT_TYPE::FLOAT) {
-      fprintf(outfile, "%s:FLOAT:%f\n", elem->name,
-              ((VAR<float> *)elem)->input);
+      fprintf(outfile, "FLOAT:%f\n", ((VAR<float> *)elem)->input);
     } else if (elem->type == INPUT_TYPE::DOUBLE) {
-      fprintf(outfile, "%s:DOUBLE:%lf\n", elem->name,
-              ((VAR<double> *)elem)->input);
+      fprintf(outfile, "DOUBLE:%lf\n", ((VAR<double> *)elem)->input);
     } else if (elem->type == INPUT_TYPE::NULLPTR) {
-      fprintf(outfile, "%s:NULL:0\n", elem->name);
+      fprintf(outfile, "NULL:0\n");
     } else if (elem->type == INPUT_TYPE::PTR) {
       VAR<int> *input = (VAR<int> *)elem;
-      fprintf(outfile, "%s:PTR:%d:%d\n", elem->name, input->input,
-              input->pointer_offset);
+      fprintf(outfile, "PTR:%d:%d\n", input->input, input->pointer_offset);
     } else if (elem->type == INPUT_TYPE::FUNCPTR) {
       VAR<char *> *input = (VAR<char *> *)elem;
-      fprintf(outfile, "%s:FUNCPTR:%s\n", elem->name, input->input);
+      fprintf(outfile, "FUNCPTR:%s\n", input->input);
     } else if (elem->type == INPUT_TYPE::VTABLE_PTR) {
       VAR<char *> *input = (VAR<char *> *)elem;
-      fprintf(outfile, "%s:VTABLE_PTR:%s\n", elem->name, input->input);
+      fprintf(outfile, "VTABLE_PTR:%s\n", input->input);
     } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
       void *addr = ((VAR<void *> *)elem)->input;
 
@@ -689,11 +624,81 @@ void __carv_func_ret_probe(char *func_name, int func_id) {
       }
 
       if (carved_idx == num_carved_ptrs) {
-        fprintf(outfile, "%s:UNKNOWN_PTR:%p\n", elem->name,
-                ((VAR<void *> *)elem)->input);
+        fprintf(outfile, "UNKNOWN_PTR:%p\n", ((VAR<void *> *)elem)->input);
       } else {
-        fprintf(outfile, "%s:PTR:%d:%d\n", elem->name, carved_idx, offset);
+        fprintf(outfile, "PTR:%d:%d\n", carved_idx, offset);
       }
+    } else if (elem->type == INPUT_TYPE::OBJ_INFO) {
+      VAR<char *> *input = (VAR<char *> *)elem;
+      fprintf(outfile, "OBJ_INFO:%s:%s\n", elem->name, input->input);
+    } else if (elem->type == INPUT_TYPE::OFSTREAM) {
+      // OFSTREAM:FILENAME:BUFSIZE:CURPOS:PTRIDX
+      VAR<char *> *input = (VAR<char *> *)elem;
+      fprintf(outfile, "OFSTREAM:%s:", input->input);
+      delete elem;
+      idx++;
+      elem = *(__carve_cur_inputs->get(idx));
+      VAR<long> *input2 = (VAR<long> *)elem;
+      fprintf(outfile, "%ld:", input2->input);
+      long buf_size = input2->input;
+      delete elem;
+      idx++;
+
+      elem = *(__carve_cur_inputs->get(idx));
+      VAR<long> *input3 = (VAR<long> *)elem;
+      fprintf(outfile, "%ld:", input3->input);
+      delete elem;
+      idx++;
+
+      if (buf_size < 0) {
+        fprintf(outfile, "\n");
+        continue;
+      }
+
+      elem = *(__carve_cur_inputs->get(idx));
+      VAR<int> *input4 = (VAR<int> *)elem;
+      fprintf(outfile, "%d\n", input4->input);
+
+      for (int idx2 = 0; idx2 < buf_size; idx2++) {
+        idx++;
+        IVAR *elem = *(__carve_cur_inputs->get(idx));
+        VAR<char> *input5 = (VAR<char> *)elem;
+        fprintf(outfile, "CHAR:%d\n", (int)input5->input);
+        delete elem;
+      }
+
+    } else if (elem->type == INPUT_TYPE::OSTREAM) {
+      // OSTREAM:BUFSIZE:CURPOS:PTRIDX
+      VAR<long> *input2 = (VAR<long> *)elem;
+      fprintf(outfile, "OSTREAM:%ld:", input2->input);
+      long buf_size = input2->input;
+      delete elem;
+      idx++;
+      elem = *(__carve_cur_inputs->get(idx));
+      VAR<long> *input3 = (VAR<long> *)elem;
+      fprintf(outfile, "%ld:", input3->input);
+
+      delete elem;
+      idx++;
+
+      if (buf_size < 0) {
+        fprintf(outfile, "\n");
+        continue;
+      }
+
+      // pointer
+      elem = *(__carve_cur_inputs->get(idx));
+      VAR<int> *input4 = (VAR<int> *)elem;
+      fprintf(outfile, "%d\n", input4->input);
+
+      for (int idx2 = 0; idx2 < buf_size; idx2++) {
+        idx++;
+        IVAR *elem = *(__carve_cur_inputs->get(idx));
+        VAR<char> *input5 = (VAR<char> *)elem;
+        fprintf(outfile, "CHAR:%d\n", (int)input5->input);
+        delete elem;
+      }
+
     } else {
       std::cerr << "Warning : unknown element type : " << elem->type << ", "
                 << elem->name << "\n";
@@ -793,194 +798,135 @@ void __carv_FINI() {
   __carv_ready0 = false;
 }
 
-void __carv_open() {
-  if (!__carv_ready) {
+map<void *, char *> ofstream_name_map;
+void __record_ofstream(void *ofs, char *name) {
+  ofstream_name_map.insert(ofs, name);
+}
+
+void __Carv_custom_class_std__basic_ofstream(std::ofstream *ofs) {
+  char *name = 0;
+  void *casted_ptr = (void *)ofs;
+  char **search = ofstream_name_map.find(casted_ptr);
+  if (search != NULL) {
+    name = *search;
+  }
+
+  VAR<char *> *inputv = new VAR<char *>(name, 0, INPUT_TYPE::OFSTREAM);
+  __carve_cur_inputs->push_back((IVAR *)inputv);
+
+  std::streambuf *rdbuf = ofs->rdbuf();
+
+  long pos = ofs->tellp();
+
+  auto rdbuf_curpos = ofs->cur;
+
+  long size = rdbuf->pubseekoff(0, ofs->end);
+  rdbuf->pubseekoff(0, ofs->beg);
+
+  VAR<long> *inputv2 = new VAR<long>(size, 0, INPUT_TYPE::OFSTREAM);
+  __carve_cur_inputs->push_back((IVAR *)inputv2);
+
+  inputv2 = new VAR<long>(pos, 0, INPUT_TYPE::OFSTREAM);
+  __carve_cur_inputs->push_back((IVAR *)inputv2);
+
+  if (size < 0) {
+    rdbuf->pubseekoff(0, rdbuf_curpos);
+    rdbuf->pubsync();
     return;
   }
 
-  std::cerr << "__carv open called\n";
+  int new_ptr_idx = cur_carved_ptrs->size();
+  cur_carved_ptrs->push_back(POINTER(0, "char *", size));
 
-  FUNC_CONTEXT new_ctx = FUNC_CONTEXT(carved_index++, 0, 0);
-  inputs.push_back(new_ctx);
-  __carve_cur_inputs = &(inputs.back()->inputs);
-  cur_carved_ptrs = &(inputs.back()->carved_ptrs);
+  char *tmp = (char *)malloc(size);
+  rdbuf->sgetn(tmp, size);
+
+  VAR<int> *inputv3 = new VAR<int>(new_ptr_idx, 0, 0, INPUT_TYPE::PTR);
+  __carve_cur_inputs->push_back((IVAR *)inputv3);
+
+  for (int idx = 0; idx < size; idx++) {
+    VAR<char> *inputv4 = new VAR<char>(tmp[idx], 0, INPUT_TYPE::OFSTREAM);
+    __carve_cur_inputs->push_back((IVAR *)inputv4);
+  }
+
+  free(tmp);
+  rdbuf->pubseekoff(0, rdbuf_curpos);
+  rdbuf->pubsync();
   return;
 }
 
-static map<const char *, unsigned int> type_counter;
-static map<const char *, unsigned int> type_idx;
-static unsigned int max_type_idx = 0;
+void __Carv_custom_class_std__basic_ostream(std::ostream *os) {
+  std::streambuf *rdbuf = os->rdbuf();
 
-void __carv_close(const char *type_name, const char *func_name) {
-  if (__carve_cur_inputs == NULL) {
+  long pos = os->tellp();
+
+  auto rdbuf_curpos = os->cur;
+
+  long size = rdbuf->pubseekoff(0, os->end);
+  rdbuf->pubseekoff(0, os->beg);
+
+  VAR<long> *inputv2 = new VAR<long>(size, 0, INPUT_TYPE::OSTREAM);
+  __carve_cur_inputs->push_back((IVAR *)inputv2);
+
+  inputv2 = new VAR<long>(pos, 0, INPUT_TYPE::OSTREAM);
+  __carve_cur_inputs->push_back((IVAR *)inputv2);
+
+  if (size < 0) {
+    rdbuf->pubseekoff(0, rdbuf_curpos);
+    rdbuf->pubsync();
     return;
   }
 
-  FUNC_CONTEXT *cur_context = inputs.back();
-  inputs.pop_back();
+  int new_ptr_idx = cur_carved_ptrs->size();
+  cur_carved_ptrs->push_back(POINTER(0, "char *", size));
 
-  int idx = 0;
-  const int num_carved_ptrs = cur_carved_ptrs->size();
-  const int num_inputs = __carve_cur_inputs->size();
+  char *tmp = (char *)malloc(size);
+  rdbuf->sgetn(tmp, size);
 
-  bool skip_write = false;
+  VAR<int> *inputv3 = new VAR<int>(new_ptr_idx, 0, 0, INPUT_TYPE::PTR);
+  __carve_cur_inputs->push_back((IVAR *)inputv3);
 
-  unsigned int cur_type_idx = 0;
-
-  unsigned int *type_idx_ptr =
-      type_idx.find(type_name);  // type_idx[type_name];
-  if (type_idx_ptr == NULL) {
-    cur_type_idx = max_type_idx;
-    type_idx.insert(type_name, max_type_idx++);
-  } else {
-    cur_type_idx = *type_idx_ptr;
+  for (int idx = 0; idx < size; idx++) {
+    VAR<char> *inputv4 = new VAR<char>(tmp[idx], 0, INPUT_TYPE::OSTREAM);
+    __carve_cur_inputs->push_back((IVAR *)inputv4);
   }
 
-  if (num_inputs <= (1 << MINSIZE)) {
-    skip_write = true;
-  } else {
-    int tmp = (1 << (MINSIZE + 1));
-    int index = 0;
-    while (num_inputs > tmp) {
-      tmp *= 2;
-      index += 1;
-    }
-
-    if (cur_type_idx >= num_type_carved) {
-      int tmp = num_type_carved;
-      while (cur_type_idx >= num_type_carved) {
-        num_type_carved *= 2;
-      }
-
-      type_carved_inputssize = (int **)realloc(type_carved_inputssize,
-                                               sizeof(int *) * num_type_carved);
-      memset(type_carved_inputssize + tmp, 0,
-             sizeof(int *) * (num_type_carved - tmp));
-    }
-
-    if (type_carved_inputssize[cur_type_idx] == 0) {
-      type_carved_inputssize[cur_type_idx] =
-          (int *)calloc(MAXSIZE - MINSIZE + 1, sizeof(int));
-    }
-
-    if (type_carved_inputssize[cur_type_idx][index] >= MAX_NUM_FILE) {
-      skip_write = true;
-    } else {
-      type_carved_inputssize[cur_type_idx][index] += 1;
-    }
-  }
-
-  if (skip_write) {
-    idx = 0;
-    while (idx < num_inputs) {
-      delete *(__carve_cur_inputs->get(idx));
-      idx++;
-    }
-
-    num_excluded += 1;
-    return;
-  }
-
-  unsigned int *type_count =
-      type_counter.find(type_name);  // type_counter[type_name];
-  if (type_count == NULL) {
-    type_counter.insert(type_name, 1);
-    type_count = type_counter.find(type_name);  // type_counter[type_name];
-  } else {
-    (*type_count)++;
-  }
-
-  char outfile_name[256];
-  snprintf(outfile_name, 256, "%s/%s_%d_%s", outdir_name, type_name,
-           (*type_count), func_name);
-  FILE *outfile = fopen(outfile_name, "w");
-
-  if (outfile == NULL) {
-    idx = 0;
-    while (idx < num_inputs) {
-      delete *(__carve_cur_inputs->get(idx));
-      idx++;
-    }
-    return;
-  }
-
-  idx = 0;
-  while (idx < num_carved_ptrs) {
-    POINTER *carved_ptr = cur_carved_ptrs->get(idx);
-    fprintf(outfile, "%d:%p:%d:%s\n", idx, carved_ptr->addr,
-            carved_ptr->alloc_size, carved_ptr->pointee_type);
-    idx++;
-  }
-
-  fprintf(outfile, "####\n");
-
-  idx = 0;
-  while (idx < num_inputs) {
-    IVAR *elem = *(__carve_cur_inputs->get(idx));
-    if (elem->type == INPUT_TYPE::CHAR) {
-      fprintf(outfile, "%s:CHAR:%d\n", elem->name,
-              (int)(((VAR<char> *)elem)->input));
-    } else if (elem->type == INPUT_TYPE::SHORT) {
-      fprintf(outfile, "%s:SHORT:%d\n", elem->name,
-              (int)(((VAR<short> *)elem)->input));
-    } else if (elem->type == INPUT_TYPE::INT) {
-      fprintf(outfile, "%s:INT:%d\n", elem->name,
-              (int)(((VAR<int> *)elem)->input));
-    } else if (elem->type == INPUT_TYPE::LONG) {
-      fprintf(outfile, "%s:LONG:%ld\n", elem->name, ((VAR<long> *)elem)->input);
-    } else if (elem->type == INPUT_TYPE::LONGLONG) {
-      fprintf(outfile, "%s:LONGLONG:%lld\n", elem->name,
-              ((VAR<long long> *)elem)->input);
-    } else if (elem->type == INPUT_TYPE::FLOAT) {
-      fprintf(outfile, "%s:FLOAT:%f\n", elem->name,
-              ((VAR<float> *)elem)->input);
-    } else if (elem->type == INPUT_TYPE::DOUBLE) {
-      fprintf(outfile, "%s:DOUBLE:%lf\n", elem->name,
-              ((VAR<double> *)elem)->input);
-    } else if (elem->type == INPUT_TYPE::NULLPTR) {
-      fprintf(outfile, "%s:NULLPTR:0\n", elem->name);
-    } else if (elem->type == INPUT_TYPE::PTR) {
-      VAR<int> *input = (VAR<int> *)elem;
-      fprintf(outfile, "%s:PTR:%d:%d\n", elem->name, input->input,
-              input->pointer_offset);
-    } else if (elem->type == INPUT_TYPE::FUNCPTR) {
-      VAR<int> *input = (VAR<int> *)elem;
-      fprintf(outfile, "%s:FUNCPTR:%d\n", elem->name, input->input);
-    } else if (elem->type == INPUT_TYPE::VTABLE_PTR) {
-      VAR<int> *input = (VAR<int> *)elem;
-      fprintf(outfile, "%s:VTABLE_PTR:%d\n", elem->name, input->input);
-    } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
-      void *addr = ((VAR<void *> *)elem)->input;
-
-      // address might be the end point of carved pointers
-      int carved_idx = 0;
-      int offset;
-      while (carved_idx < num_carved_ptrs) {
-        POINTER *carved_ptr = cur_carved_ptrs->get(carved_idx);
-        char *end_addr = (char *)carved_ptr->addr + carved_ptr->alloc_size;
-        if (end_addr == addr) {
-          offset = carved_ptr->alloc_size;
-          break;
-        }
-        carved_idx++;
-      }
-
-      if (carved_idx == num_carved_ptrs) {
-        fprintf(outfile, "%s:UNKNOWN_PTR:%p\n", elem->name,
-                ((VAR<void *> *)elem)->input);
-      } else {
-        fprintf(outfile, "%s:PTR:%d:%d\n", elem->name, carved_idx, offset);
-      }
-    } else {
-      std::cerr << "Warning : unknown element type : " << elem->type << ", "
-                << elem->name << "\n";
-    }
-
-    delete elem;
-    idx++;
-  }
-
-  fclose(outfile);
+  free(tmp);
+  rdbuf->pubseekoff(0, rdbuf_curpos);
+  rdbuf->pubsync();
   return;
 }
-}
+
+// void __Carv_custom_class_std__basic_streambuf(std::streambuf *rdbuf) {
+//   auto rdbuf_curpos = os->cur;
+
+//   long size = rdbuf->pubseekoff(0, os->end);
+//   rdbuf->pubseekoff(0, os->beg);
+
+//   VAR<long> *inputv2 = new VAR<long>(size, 0, INPUT_TYPE::OSTREAM);
+//   __carve_cur_inputs->push_back((IVAR *)inputv2);
+
+//   inputv2 = new VAR<long>(pos, 0, INPUT_TYPE::OSTREAM);
+//   __carve_cur_inputs->push_back((IVAR *)inputv2);
+
+//   int new_ptr_idx = cur_carved_ptrs->size();
+//   cur_carved_ptrs->push_back(POINTER(0, "char *", size));
+
+//   char *tmp = (char *)malloc(size);
+//   rdbuf->sgetn(tmp, size);
+
+//   VAR<int> *inputv3 = new VAR<int>(new_ptr_idx, 0, 0, INPUT_TYPE::PTR);
+//   __carve_cur_inputs->push_back((IVAR *)inputv3);
+
+//   for (int idx = 0; idx < size; idx++) {
+//     VAR<char> *inputv4 = new VAR<char>(tmp[idx], 0, INPUT_TYPE::OSTREAM);
+//     __carve_cur_inputs->push_back((IVAR *)inputv4);
+//   }
+
+//   free(tmp);
+//   rdbuf->pubseekoff(0, rdbuf_curpos);
+//   rdbuf->pubsync();
+//   return;
+// }
+
+}  // extern "C"

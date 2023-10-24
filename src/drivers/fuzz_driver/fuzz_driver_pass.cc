@@ -28,8 +28,6 @@ class driver_pass : public ModulePass {
       return true;
     }
 
-    read_probe_list("driver_probe_names.txt");
-    read_probe_list("fuzz_driver_probe_names.txt");
     get_llvm_types();
 
     get_driver_func_callees();

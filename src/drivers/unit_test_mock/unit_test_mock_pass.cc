@@ -238,9 +238,6 @@ void driver_pass::instrument_unit_test_body(Function *func) {
 
 bool driver_pass::runOnModule(Module &M) {
   DEBUG0("Running binary fuzz driver_pass\n");
-
-  read_probe_list("driver_probe_names.txt");
-  read_probe_list("unit_test_probe_names.txt");
   hookInstrs(M);
 
   DEBUG0("Verifying module...\n");

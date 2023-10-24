@@ -64,30 +64,6 @@ std::string get_link_name(std::string base_name) {
   return search->second;
 }
 
-// Parse /lib/filename and save the map at `probe_link_names`
-void read_probe_list(std::string filename) {
-  std::string file_path = __FILE__;
-  file_path = file_path.substr(0, file_path.rfind("/"));
-  file_path = file_path.substr(0, file_path.rfind("/"));
-
-  std::string probe_file_path =
-      file_path.substr(0, file_path.rfind("/")) + "/lib/" + filename;
-
-  std::ifstream list_file(probe_file_path);
-
-  std::string line;
-  while (std::getline(list_file, line)) {
-    size_t space_loc = line.find(' ');
-    probe_link_names.insert(
-        std::make_pair(line.substr(0, space_loc), line.substr(space_loc + 1)));
-  }
-
-  if (probe_link_names.size() == 0) {
-    DEBUG0("Can't find lib/" << filename << " file!\n");
-    std::abort();
-  }
-}
-
 Constant *gen_new_string_constant(std::string name, IRBuilder<> *IRB) {
   auto search = new_string_globals.find(name);
 
@@ -359,4 +335,16 @@ void check_and_dump_module() {
   }
   DEBUG0("Dumping IR...\n");
   Mod->dump();
+}
+
+std::string convert_symbol_str(std::string name) {
+  while (name.find(".") != std::string::npos) {
+    name.replace(name.find("."), 1, "_");
+  }
+
+  while (name.find(":") != std::string::npos) {
+    name.replace(name.find(":"), 1, "_");
+  }
+
+  return name;
 }

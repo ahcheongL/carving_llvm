@@ -19,23 +19,21 @@ FunctionCallee carv_longlong_func;
 FunctionCallee carv_float_func;
 FunctionCallee carv_double_func;
 FunctionCallee carv_ptr_func;
-FunctionCallee carv_ptr_name_update;
-FunctionCallee struct_name_func;
-FunctionCallee carv_name_push;
-FunctionCallee carv_name_pop;
 FunctionCallee carv_func_ptr;
 FunctionCallee carv_func_call;
 FunctionCallee carv_func_ret;
 FunctionCallee update_carved_ptr_idx;
 FunctionCallee keep_class_info;
 FunctionCallee class_carver;
-FunctionCallee carv_open;
-FunctionCallee carv_close;
 FunctionCallee record_func_ptr_index;
+FunctionCallee insert_obj_info;
+FunctionCallee record_ofstream;
 
 Constant *global_carve_ready = NULL;
 Constant *global_cur_class_idx = NULL;
 Constant *global_cur_class_size = NULL;
+
+extern std::set<std::string> custom_carvers;
 
 // Insert the probes in the module symbol table
 void get_carving_func_callees_and_globals(bool carv_func_name) {
@@ -72,14 +70,6 @@ void get_carving_func_callees_and_globals(bool carv_func_name) {
         Mod->getOrInsertFunction("__Carv_func_ptr_index", VoidTy, Int8PtrTy);
   }
 
-  carv_ptr_name_update =
-      Mod->getOrInsertFunction("__carv_ptr_name_update", VoidTy, Int32Ty);
-  struct_name_func =
-      Mod->getOrInsertFunction("__carv_struct_name_update", VoidTy, Int8PtrTy);
-  carv_name_push =
-      Mod->getOrInsertFunction("__carv_name_push", VoidTy, Int8PtrTy);
-  carv_name_pop = Mod->getOrInsertFunction("__carv_name_pop", VoidTy);
-
   carv_func_call =
       Mod->getOrInsertFunction("__carv_func_call_probe", VoidTy, Int32Ty);
   carv_func_ret = Mod->getOrInsertFunction("__carv_func_ret_probe", VoidTy,
@@ -97,12 +87,13 @@ void get_carving_func_callees_and_globals(bool carv_func_name) {
   global_cur_class_size =
       Mod->getOrInsertGlobal("__carv_cur_class_size", Int32Ty);
 
-  carv_open = Mod->getOrInsertFunction("__carv_open", VoidTy);
-  carv_close =
-      Mod->getOrInsertFunction("__carv_close", VoidTy, Int8PtrTy, Int8PtrTy);
-
   record_func_ptr_index = Mod->getOrInsertFunction("__record_func_ptr_index",
                                                    VoidTy, Int8PtrTy, Int32Ty);
+
+  insert_obj_info = Mod->getOrInsertFunction("__insert_obj_info", VoidTy,
+                                             Int8PtrTy, Int8PtrTy);
+  record_ofstream = Mod->getOrInsertFunction("__record_ofstream", VoidTy,
+                                             Int8PtrTy, Int8PtrTy);
 }
 
 std::vector<AllocaInst *> tracking_allocas;
@@ -473,11 +464,7 @@ BasicBlock *insert_array_carve_probe(Value *arr_ptr_val,
   Value *getelem_instr = IRB->CreateInBoundsGEP(
       arr_type, arr_ptr_val, {ConstantInt::get(Int32Ty, 0), index_phi});
 
-  IRB->CreateCall(carv_ptr_name_update, {index_phi});
-
   loopblock = insert_gep_carve_probe(getelem_instr, loopblock);
-
-  IRB->CreateCall(carv_name_pop, {});
 
   Value *index_update_instr =
       IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
@@ -571,12 +558,8 @@ BasicBlock *insert_carve_probe(Value *val, BasicBlock *BB) {
     auto memberoffsets = SL->getMemberOffsets();
     int idx = 0;
     for (auto _iter : memberoffsets) {
-      std::string field_name = "field" + std::to_string(idx);
       Value *extracted_val = IRB->CreateExtractValue(val, idx);
-      IRB->CreateCall(struct_name_func,
-                      gen_new_string_constant(field_name, IRB));
       cur_block = insert_carve_probe(extracted_val, cur_block);
-      IRB->CreateCall(carv_name_pop, {});
       idx++;
     }
 
@@ -657,8 +640,6 @@ BasicBlock *insert_carve_probe(Value *val, BasicBlock *BB) {
     PHINode *index_phi = IRB->CreatePHI(Int32Ty, 2);
     index_phi->addIncoming(ConstantInt::get(Int32Ty, 0), BB);
 
-    IRB->CreateCall(carv_ptr_name_update, {index_phi});
-
     Value *elem_ptr = IRB->CreateInBoundsGEP(pointee_type, val, index_phi);
 
     if (is_class_type) {
@@ -668,8 +649,6 @@ BasicBlock *insert_carve_probe(Value *val, BasicBlock *BB) {
     } else {
       loopblock = insert_gep_carve_probe(elem_ptr, loopblock);
     }
-
-    IRB->CreateCall(carv_name_pop, {});
 
     Value *index_update_instr =
         IRB->CreateAdd(index_phi, ConstantInt::get(Int32Ty, 1));
@@ -716,6 +695,19 @@ std::set<std::string> struct_carvers;
 void insert_struct_carve_probe(Value *struct_ptr, Type *type) {
   StructType *struct_type = dyn_cast<StructType>(type);
 
+  const std::string class_name = struct_type->getName().str();
+  const std::string symbol_name = convert_symbol_str(class_name);
+
+  if (custom_carvers.find(symbol_name) != custom_carvers.end()) {
+    Type *class_ptr_ty = PointerType::get(type, 0);
+    llvm::errs() << "Found symbol : " << symbol_name << "\n";
+    FunctionCallee custom_carver = Mod->getOrInsertFunction(
+        "__Carv_custom_" + symbol_name, VoidTy, class_ptr_ty);
+    IRB->CreateCall(custom_carver, {struct_ptr});
+    IRB->CreateRetVoid();
+    return;
+  }
+
   auto search2 = class_name_map.find(struct_type);
   if (search2 == class_name_map.end()) {
     insert_struct_carve_probe_inner(struct_ptr, type);
@@ -755,6 +747,8 @@ void insert_struct_carve_probe_inner(Value *struct_ptr, Type *type) {
   if (struct_name.find("::") != std::string::npos) {
     struct_name = struct_name.substr(struct_name.find("::") + 2);
   }
+
+  llvm::errs() << "Inserting class carver : " << struct_name << "\n";
 
   std::string struct_carver_name = "__Carv_" + struct_name;
   auto search = struct_carvers.find(struct_carver_name);
@@ -840,14 +834,9 @@ void insert_struct_carve_probe_inner(Value *struct_ptr, Type *type) {
 
     int elem_idx = 0;
     for (auto iter : elem_names) {
-      Constant *field_name_const = gen_new_string_constant(iter, IRB);
-      IRB->CreateCall(struct_name_func, {field_name_const});
-
       Value *gep = IRB->CreateStructGEP(struct_type, carver_param, elem_idx);
 
       cur_block = insert_gep_carve_probe(gep, cur_block);
-
-      IRB->CreateCall(carv_name_pop, {});
       elem_idx++;
     }
   }
@@ -936,9 +925,25 @@ void gen_class_carver() {
 
     StructType *class_type_ptr = class_type.first;
 
-    Value *casted_var =
-        IRB->CreateCast(Instruction::CastOps::BitCast, carving_ptr,
-                        PointerType::get(class_type_ptr, 0));
+    Type *class_ptr_ty = PointerType::get(class_type_ptr, 0);
+
+    Value *casted_var = IRB->CreateCast(Instruction::CastOps::BitCast,
+                                        carving_ptr, class_ptr_ty);
+
+    const std::string class_name = class_type_ptr->getName().str();
+    const std::string symbol_name = convert_symbol_str(class_name);
+
+    llvm::errs() << "class name : " << class_name << "\n";
+    llvm::errs() << "symbol name : " << symbol_name << "\n";
+
+    if (custom_carvers.find(symbol_name) != custom_carvers.end()) {
+      llvm::errs() << "Found symbol : " << symbol_name << "\n";
+      FunctionCallee custom_carver = Mod->getOrInsertFunction(
+          "__Carv_custom_" + symbol_name, VoidTy, class_ptr_ty);
+      IRB->CreateCall(custom_carver, {casted_var});
+      IRB->CreateRetVoid();
+      continue;
+    }
 
     insert_struct_carve_probe_inner(casted_var, class_type_ptr);
     IRB->CreateRetVoid();

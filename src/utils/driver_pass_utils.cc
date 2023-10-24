@@ -398,6 +398,7 @@ void gen_class_replay() {
   switch_inst->addCase(ConstantInt::get(Int32Ty, case_id), case_block);
   IRB->SetInsertPoint(case_block);
 
+  // TODO : check
   Value *new_value = IRB->CreateCall(replay_char_func, {});
 
   IRB->CreateStore(new_value, replaying_ptr);
@@ -405,7 +406,6 @@ void gen_class_replay() {
 
   switch_inst->setDefaultDest(case_block);
   default_BB->eraseFromParent();
-
   return;
 }
 

@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -11,13 +12,13 @@
 #include <set>
 #include <sstream>
 #include <string>
-#include <sys/time.h>
 #include <vector>
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Config/llvm-config.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/GlobalValue.h"
@@ -48,7 +49,6 @@ std::string get_type_str(Type *type);
 bool is_func_ptr_type(Type *type);
 
 std::string get_link_name(std::string);
-void read_probe_list(std::string);
 
 Constant *gen_new_string_constant(std::string, IRBuilder<> *);
 std::string find_param_name(Value *, BasicBlock *);
@@ -101,4 +101,5 @@ extern std::set<Function *> forbid_func_set;
 bool is_inst_forbid_func(Function *);
 
 void check_and_dump_module();
+std::string convert_symbol_str(std::string);
 #endif

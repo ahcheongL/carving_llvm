@@ -29,10 +29,10 @@ CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
-all: carve_func_context carve_type_based carve_func_args \
+all: carve_func_ctx carve_type_based carve_func_args \
 	unit_test extend_driver fuzz_driver clementine_driver
 
-carve_func_context: lib/carve_func_context_pass.so lib/fc_carver.a
+carve_func_ctx: lib/carve_func_ctx_pass.so lib/fc_carver.a
 carve_type_based: lib/carve_type_pass.so lib/tb_carver.a
 carve_func_args: lib/carve_func_args_pass.so lib/fa_carver.a
 
@@ -43,8 +43,8 @@ clementine_driver: lib/clementine_driver_pass.so lib/cl_driver.a
 
 tools: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
-lib/carve_func_context_pass.so: \
-	src/carving/func_context/carve_func_context_pass.cc \
+lib/carve_func_ctx_pass.so: \
+	src/carving/func_ctx/carve_func_ctx_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
@@ -57,19 +57,22 @@ lib/carve_func_args_pass.so: \
 	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
 		src/utils/pass_utils.o -o $@
 
-lib/fc_carver.a: src/carving/func_context/fc_carver.cc src/utils/data_utils.o
+lib/fc_carver.a: src/carving/func_ctx/fc_carver.cc src/utils/data_utils.o \
+	include/utils/data_utils.hpp
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
-		-c $< -o src/carving/func_context/fc_carver.o
-	$(AR) rsv $@ src/carving/func_context/fc_carver.o src/utils/data_utils.o
+		-c $< -o src/carving/func_ctx/fc_carver.o
+	$(AR) rsv $@ src/carving/func_ctx/fc_carver.o src/utils/data_utils.o
 
-lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o
+lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o \
+	include/utils/data_utils.hpp
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/func_args/fa_carver.o
 	$(AR) rsv $@ src/carving/func_args/fa_carver.o src/utils/data_utils.o
 
-lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o
+lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o\
+	include/utils/data_utils.hpp
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/type_based/tb_carver.o
@@ -92,8 +95,13 @@ lib/cl_driver.a: src/drivers/clementine_driver/cl_driver.cc
 		-c $< -o src/drivers/clementine_driver/cl_driver.o
 	$(AR) rsv $@ src/drivers/clementine_driver/cl_driver.o
 
-lib/clementine_driver_pass.so: \
+src/drivers/clementine_driver/clementine_driver_pass.o: \
 	src/drivers/clementine_driver/clementine_driver_pass.cc \
+	include/drivers/clementine_driver_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
+
+lib/clementine_driver_pass.so: \
+	src/drivers/clementine_driver/clementine_driver_pass.o \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
@@ -169,7 +177,7 @@ src/drivers/ossfuzz_extend/extend_driver.o: \
 	src/drivers/ossfuzz_extend/extend_driver_probes.cc
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c $< -o $@
 
-src/utils/data_utils.o: src/utils/data_utils.cc
+src/utils/data_utils.o: src/utils/data_utils.cc include/utils/data_utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
 clean:
@@ -178,3 +186,4 @@ clean:
 	rm -f lib/*_probe_names.txt
 	rm -rf src/drivers/*.o
 	rm -rf src/drivers/*/*.o
+	rm -rf src/carving/*/*.o

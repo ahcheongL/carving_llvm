@@ -26,7 +26,6 @@ class type_carver_pass : public ModulePass {
       func_list.push_back(&F);
     }
 
-    read_probe_list("carver_probe_names.txt");
     get_carving_func_callees_and_globals(false);
 
     if (!get_target_types()) {
@@ -208,11 +207,11 @@ bool type_carver_pass::instrument_module() {
 
         IRB->CreateCall(carv_open, {});
 
-        IRB->CreateCall(carv_name_push, {name});
+        // IRB->CreateCall(carv_name_push, {name});
 
         insert_carve_probe(&*IN, BB);
 
-        IRB->CreateCall(carv_name_pop, {});
+        // IRB->CreateCall(carv_name_pop, {});
 
         Constant *type_name_const =
             gen_new_string_constant(target_type_name, IRB);

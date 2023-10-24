@@ -9,35 +9,49 @@ args = sys.argv[1:]
 
 ld_path = utils.get_ld_path()
 
-#get carve_func_args_pass.so filepath
+# get carve_func_args_pass.so filepath
 source_path = Path(__file__).resolve()
 source_dir = str(source_path.parent.parent)
 
-#so_path = source_dir + "/lib/carve_type_pass.so"
-so_path = source_dir + "/lib/carve_func_args_pass.so"
+# so_path = source_dir + "/lib/carve_type_pass.so"
+so_path = source_dir + "/lib/carve_func_ctx_pass.so"
 
 clang_ver = utils.get_clang_version()
 if clang_ver == 15:
-  force_legacy_pm_flag = "-flegacy-pass-manager"
+    force_legacy_pm_flag = "-flegacy-pass-manager"
 else:
-  force_legacy_pm_flag = "-fno-experimental-new-pass-manager"
+    force_legacy_pm_flag = "-fno-experimental-new-pass-manager"
 
-args = ["clang++"] + args + [
-  force_legacy_pm_flag , "-ggdb", "-O0"
-  , "-Xclang", "-load", "-Xclang", so_path, "-fPIC", "-I"
-  , source_dir + "/include", "-L", source_dir + "/lib", "-l:carver.a"
-]
+args = (
+    ["clang++"]
+    + args
+    + [
+        force_legacy_pm_flag,
+        "-ggdb",
+        "-O0",
+        "-Xclang",
+        "-load",
+        "-Xclang",
+        so_path,
+        "-fPIC",
+        "-I",
+        source_dir + "/include",
+        "-L",
+        source_dir + "/lib",
+        "-l:fc_carver.a",
+    ]
+)
 
-env=os.environ.copy()
-#env["DUMP_IR"] = "1"
+env = os.environ.copy()
+# env["DUMP_IR"] = "1"
 
 print(" ".join(args))
 
-process= sp.Popen(args, env=env, stdout=sp.PIPE, stderr=sp.STDOUT, encoding="utf-8")
+process = sp.Popen(args, env=env, stdout=sp.PIPE, stderr=sp.STDOUT, encoding="utf-8")
 
 while True:
-  line = process.stdout.readline()
-  if line == '' and process.poll() != None:
-    break
+    line = process.stdout.readline()
+    if line == "" and process.poll() != None:
+        break
 
-  print(line.strip(), flush=True)
+    print(line.strip(), flush=True)
