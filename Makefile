@@ -29,12 +29,13 @@ CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
-all: carve_func_ctx carve_type_based carve_func_args \
+all: carve_func_ctx carve_type_based carve_func_args carve_model \
 	unit_test extend_driver fuzz_driver clementine_driver
 
 carve_func_ctx: lib/carve_func_ctx_pass.so lib/fc_carver.a
 carve_type_based: lib/carve_type_pass.so lib/tb_carver.a
 carve_func_args: lib/carve_func_args_pass.so lib/fa_carver.a
+carve_model: lib/carve_model_pass.so lib/m_carver.a
 
 unit_test: lib/unit_test_pass.so lib/unit_test_mock.a
 extend_driver: lib/extend_driver_pass.so lib/extend_driver.a
@@ -47,36 +48,45 @@ lib/carve_func_ctx_pass.so: \
 	src/carving/func_ctx/carve_func_ctx_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
-		src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include -shared $^ -o $@
 
 lib/carve_func_args_pass.so: \
 	src/carving/func_args/carve_func_args_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
-		src/utils/pass_utils.o -o $@
+	$(CXX) $(CXXFLAGS) -I include -shared $^ -o $@
 
-lib/fc_carver.a: src/carving/func_ctx/fc_carver.cc src/utils/data_utils.o \
-	include/utils/data_utils.hpp
+lib/carve_model_pass.so: \
+	src/carving/model/carve_model_pass.cc \
+	include/carving/carve_model_pass.hpp \
+	src/utils/carve_pass_utils.o src/utils/pass_utils.o
+	mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
+	 src/utils/pass_utils.o -o $@
+
+lib/fc_carver.a: src/carving/func_ctx/fc_carver.cc src/utils/data_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/func_ctx/fc_carver.o
 	$(AR) rsv $@ src/carving/func_ctx/fc_carver.o src/utils/data_utils.o
 
-lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o \
-	include/utils/data_utils.hpp
+lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/func_args/fa_carver.o
 	$(AR) rsv $@ src/carving/func_args/fa_carver.o src/utils/data_utils.o
 
-lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o\
-	include/utils/data_utils.hpp
+lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/type_based/tb_carver.o
 	$(AR) rsv $@ src/carving/type_based/tb_carver.o src/utils/data_utils.o
+
+lib/m_carver.a: src/carving/model/m_carver.cc src/utils/data_utils.o
+	mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
+		-c $< -o src/carving/type_based/m_carver.o
+	$(AR) rsv $@ src/carving/type_based/m_carver.o src/utils/data_utils.o
 
 lib/fuzz_driver_pass.so: src/drivers/fuzz_driver/fuzz_driver_pass.cc \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o

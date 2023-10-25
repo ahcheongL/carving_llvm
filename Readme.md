@@ -22,7 +22,7 @@
     * It is recommend to turn on debug options, but it is not necessary.
     * Example : ``CC=gclang CXX=gclang++ CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --prefix=`pwd`\gclang_install --disable-shared``
 2. `get-bc <target executable>` You can get bitcode of the executable file.
-3. (optional) `llvm-dis <target.bc>` will make LLVM IR code of the target program.
+3. (optional) `llvm-dis <target.bc>` will make human-readable LLVM IR code of the target program.
 
 ## 2. Carving Instrumentation
 

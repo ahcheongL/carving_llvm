@@ -821,26 +821,28 @@ void ClementinePass::insert_default_gep_replay_probe(Value *gep_val) {
     unsigned int elem_size = DL->getTypeAllocSize(array_elem_type);
     int idx = 0;
     for (idx = 0; idx < array_size; idx++) {
-      Value *ptr_result = insert_default_replay_probe(array_elem_type, NULL);
-      if (ptr_result != NULL) {
-        Value *array_gep = IRB->CreateInBoundsGEP(
-            array_type, gep_val,
-            {ConstantInt::get(Int32Ty, 0), ConstantInt::get(Int32Ty, idx)});
-        IRB->CreateStore(ptr_result, array_gep);
-      }
+      // TODO
+      //  Value *ptr_result = insert_default_replay_probe(array_elem_type,
+      //  NULL); if (ptr_result != NULL) {
+      //    Value *array_gep = IRB->CreateInBoundsGEP(
+      //        array_type, gep_val,
+      //        {ConstantInt::get(Int32Ty, 0), ConstantInt::get(Int32Ty, idx)});
+      //    IRB->CreateStore(ptr_result, array_gep);
+      //  }
     }
   } else {
-    Value *ptr_result = insert_default_replay_probe(gep_pointee_type, NULL);
-    if (ptr_result != NULL) {
-      Value *casted_val = IRB->CreateBitCast(ptr_result, gep_pointee_type);
-      IRB->CreateStore(casted_val, gep_val);
-    }
+    // TODO
+    //  Value *ptr_result = insert_default_replay_probe(gep_pointee_type, NULL);
+    //  if (ptr_result != NULL) {
+    //    Value *casted_val = IRB->CreateBitCast(ptr_result, gep_pointee_type);
+    //    IRB->CreateStore(casted_val, gep_val);
+    //  }
   }
 
   return;
 }
 
-Value *insert_replay_probe(Type *typeptr, Value *ptr) {
+Value *insert_replay_probe_cl(Type *typeptr, Value *ptr) {
   Value *result = NULL;
 
   if (typeptr == Int1Ty) {
@@ -871,7 +873,7 @@ Value *insert_replay_probe(Type *typeptr, Value *ptr) {
     unsigned int idx = 0;
     for (idx = 0; idx < num_elem; idx++) {
       Type *field_type = struct_type->getElementType(idx);
-      Value *carved_val = insert_replay_probe(field_type, NULL);
+      Value *carved_val = insert_replay_probe_cl(field_type, NULL);
       if (carved_val == NULL) {
         return NULL;
       }
