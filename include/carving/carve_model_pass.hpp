@@ -110,6 +110,11 @@ class CarverMPass : public llvm::ModulePass {
   llvm::FunctionCallee class_carver;
   llvm::FunctionCallee record_func_ptr_index;
 
+  llvm::FunctionCallee insert_ptr_end;
+  llvm::FunctionCallee insert_ptr_idx;
+  llvm::FunctionCallee insert_struct_begin;
+  llvm::FunctionCallee insert_struct_end;
+
   llvm::Constant *global_carve_ready;
   llvm::Constant *global_cur_class_idx;
   llvm::Constant *global_cur_class_size;

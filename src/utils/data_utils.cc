@@ -766,6 +766,7 @@ template class VAR<long double>;
 template class VAR<void *>;
 template class VAR<char *>;
 
+template class vector<int>;
 template class vector<IVAR *>;
 template class vector<POINTER>;
 template class vector<char *>;

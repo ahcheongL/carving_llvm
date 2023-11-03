@@ -72,6 +72,15 @@ bool CarverMPass::runOnModule(llvm::Module &M) {
   insert_obj_info = Mod->getOrInsertFunction("__insert_obj_info", VoidTy,
                                              Int8PtrTy, Int8PtrTy);
 
+  insert_ptr_idx =
+      Mod->getOrInsertFunction("__insert_ptr_idx", VoidTy, Int32Ty);
+  insert_ptr_end = Mod->getOrInsertFunction("__insert_ptr_end", VoidTy);
+
+  insert_struct_begin =
+      Mod->getOrInsertFunction("__insert_struct_begin", VoidTy);
+
+  insert_struct_end = Mod->getOrInsertFunction("__insert_struct_end", VoidTy);
+
   instrument_module();
 
   llvm::outs() << "Verifying module...\n";
@@ -504,6 +513,8 @@ void CarverMPass::insert_carve_probe_m(llvm::Value *val) {
     PHINode *index_phi = IRB->CreatePHI(Int32Ty, 2);
     index_phi->addIncoming(llvm::ConstantInt::get(Int32Ty, 0), orig_BB);
 
+    IRB->CreateCall(insert_ptr_idx, {index_phi});
+
     llvm::Value *elem_ptr =
         IRB->CreateInBoundsGEP(pointee_type, val, index_phi);
 
@@ -538,14 +549,21 @@ void CarverMPass::insert_carve_probe_m(llvm::Value *val) {
 
     IRB->SetInsertPoint(loopblock->getTerminator());
 
+    llvm::BasicBlock *ptr_end_block =
+        llvm::BasicBlock::Create(*Context, "ptr_end", orig_BB->getParent());
+
     llvm::Instruction *loopblock_term =
-        IRB->CreateCondBr(cmp_instr2, loopblock_start, endblock);
+        IRB->CreateCondBr(cmp_instr2, loopblock_start, ptr_end_block);
 
     loopblock_term->removeFromParent();
 
     // remove old terminator
     old_term = loopblock->getTerminator();
     ReplaceInstWithInst(old_term, loopblock_term);
+
+    IRB->SetInsertPoint(ptr_end_block);
+    IRB->CreateCall(insert_ptr_end, {});
+    IRB->CreateBr(endblock);
 
     IRB->SetInsertPoint(endblock->getFirstNonPHIOrDbgOrLifetime());
 
@@ -867,12 +885,16 @@ void CarverMPass::insert_struct_carve_probe_m_inner(llvm::Value *struct_ptr,
 
     llvm::BasicBlock *cur_block = do_carving_BB;
 
+    IRB->CreateCall(insert_struct_begin, {});
+
     llvm::Value *add_one_depth =
         IRB->CreateAdd(depth_check_val, llvm::ConstantInt::get(Int8Ty, 1));
     IRB->CreateStore(add_one_depth, depth_check_const);
 
     llvm::Instruction *depth_store_instr2 =
         IRB->CreateStore(depth_check_val, depth_check_const);
+
+    IRB->CreateCall(insert_struct_end, {});
 
     IRB->CreateRetVoid();
 
