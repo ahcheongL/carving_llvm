@@ -26,7 +26,7 @@
 
 ## 2. Carving Instrumentation
 
-1. `opt -enable-new-pm=0 -load {$PROJECT_PATH}/lib/clementine_driver_pass.so --carve < <target.bc> -o <out.bc>`
+1. `opt -enable-new-pm=0 -load {$PROJECT_PATH}/lib/carve_model_pass.so --carve < <target.bc> -o <out.bc>`
 
 2. `clang++ <out.bc> <compile flags> -o <target.carv> -L {$PROJECT_PATH}/lib -l:m_carver.a`
     * `<compile flags>` are usually shared libraries that are linked to the original target executable.
