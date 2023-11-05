@@ -1,6 +1,8 @@
 
 #include "carving/carve_func_args_pass.hpp"
 
+std::set<std::string> custom_carvers = {};
+
 char CarverFAPass::ID = 0;
 
 CarverFAPass::CarverFAPass() : llvm::ModulePass(ID), func_id(0) {}
