@@ -50,7 +50,7 @@ cmd = ["clang++", "--ld-path=" + ld_path
 #  , "-O2"
   , "-Xclang", "-load", "-Xclang", so_path, "-fPIC"
   , "-I", source_dir + "/include", "-o", outname
-  , "-L", source_dir + "/lib", inputbc, "-l:carver.a" ] + compile_args
+  , "-L", source_dir + "/lib", inputbc, "-l:fa_carver.a" ] + compile_args
 
 #opt  -enable-new-pm=0  -load ../../lib/carve_func_args_pass.so --carve < main.bc -o out.bc
 

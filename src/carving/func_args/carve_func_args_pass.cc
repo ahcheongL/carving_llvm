@@ -698,7 +698,7 @@ void CarverFAPass::instrument_main(llvm::Function *main_func) {
       continue;
     }
 
-    std::string func_name = Func.getName().str();
+    std::string func_name = llvm::demangle(Func.getName().str());
     llvm::Constant *func_name_const = gen_new_string_constant(func_name, IRB);
     llvm::Value *cast_val =
         IRB->CreateCast(llvm::Instruction::CastOps::BitCast, &Func, Int8PtrTy);

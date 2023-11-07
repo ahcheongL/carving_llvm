@@ -546,9 +546,9 @@ void __carv_close(const char *func_name) {
   //   cur_type_idx = *type_idx_ptr;
   // }
 
-  if (num_objs <= 4) {
-    skip_write = true;
-  }
+  // if (num_objs <= 4) {
+  //   skip_write = true;
+  // }
 
   if (skip_write) {
     idx = 0;
@@ -622,8 +622,8 @@ void __carv_close(const char *func_name) {
       VAR<int> *input = (VAR<int> *)elem;
       fprintf(outfile, "PTR:%d:%d\n", input->input, input->pointer_offset);
     } else if (elem->type == INPUT_TYPE::FUNCPTR) {
-      VAR<int> *input = (VAR<int> *)elem;
-      fprintf(outfile, "FUNCPTR:%d\n", input->input);
+      VAR<char *> *input = (VAR<char *> *)elem;
+      fprintf(outfile, "FUNCPTR:%s\n", input->input);
     } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
       void *addr = ((VAR<void *> *)elem)->input;
 
