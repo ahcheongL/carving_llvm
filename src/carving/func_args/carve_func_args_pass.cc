@@ -12,6 +12,9 @@ bool CarverFAPass::runOnModule(llvm::Module &M) {
 
   initialize_pass_contexts(M);
 
+  /**
+   * Initialize types (goto utils/pass_utils.cc)
+  */
   VoidTy = llvm::Type::getVoidTy(*Context);
   Int1Ty = llvm::Type::getInt1Ty(*Context);
   Int8Ty = llvm::Type::getInt8Ty(*Context);
@@ -31,6 +34,9 @@ bool CarverFAPass::runOnModule(llvm::Module &M) {
   FloatPtrTy = llvm::PointerType::get(FloatTy, 0);
   DoublePtrTy = llvm::PointerType::get(DoubleTy, 0);
 
+  /**
+   * Initialize probes (goto fa_carver.cc, util/carve_pass.hpp)
+  */
   mem_allocated_probe = Mod->getOrInsertFunction(
       "__mem_allocated_probe", VoidTy, Int8PtrTy, Int32Ty, Int8PtrTy);
   remove_probe = Mod->getOrInsertFunction("__remove_mem_allocated_probe",
@@ -126,12 +132,19 @@ void CarverFAPass::insert_global_carve_probe(llvm::Function *F) {
 }
 
 bool CarverFAPass::instrument_module() {
+  // from utils/pass_utils.cc
+  // saved in class_name_map
   get_class_type_info();
 
+  // from CarverFAPass class
+  // saved in instrument_func_sets
   get_instrument_func_set();
 
+  // from utils/pass_utils.cc
+  // for each function saved in global_var_uses
   find_global_var_uses();
 
+  // from CarverFAPass class
   gen_class_carver_fa();
 
   DEBUG0("Iterating llvm::Functions...\n");
@@ -197,7 +210,7 @@ void CarverFAPass::get_instrument_func_set() {
       continue;
     }
 
-    // TODO
+    // TODO: returns true if this function takes a variable number of arguments...?
     if (F.isVarArg()) {
       continue;
     }
@@ -207,6 +220,9 @@ void CarverFAPass::get_instrument_func_set() {
     // continue; } if (func_name.find("TestBody") == std::string::npos) {
     // continue; }
 
+    /**
+     * is it purposfully done to insert mangled function names?
+    */
     instrument_func_set.insert(func_name);
     outfile << func_name;
     std::string tmp;
@@ -849,6 +865,7 @@ void CarverFAPass::insert_struct_carve_probe_fa_inner(llvm::Value *struct_ptr,
   llvm::StructType *struct_type = llvm::dyn_cast<llvm::StructType>(type);
   const StructLayout *SL = DL->getStructLayout(struct_type);
 
+  // ex. class.std::ios_base::Init > ios_base::Init
   std::string struct_name = struct_type->getName().str();
   struct_name = struct_name.substr(struct_name.find('.') + 1);
   if (struct_name.find("::") != std::string::npos) {
@@ -856,10 +873,13 @@ void CarverFAPass::insert_struct_carve_probe_fa_inner(llvm::Value *struct_ptr,
   }
 
   std::string struct_carver_name = "__Carv_" + struct_name;
+  // struct_carvers_ defined at carve_func_args_pass.hpp
+  // type: std::set<std::string>
   auto search = struct_carvers_.find(struct_carver_name);
   llvm::FunctionCallee struct_carver = Mod->getOrInsertFunction(
       struct_carver_name, VoidTy, struct_ptr->getType());
 
+  // if such carver name for specific struct is not found
   if (search == struct_carvers_.end()) {
     struct_carvers_.insert(struct_carver_name);
 
@@ -912,6 +932,7 @@ void CarverFAPass::insert_struct_carve_probe_fa_inner(llvm::Value *struct_ptr,
     IRB->SetInsertPoint(depth_store_instr2);
 
     int elem_idx = 0;
+    // inserting carving probe for each element in struct
     for (auto iter : struct_type->elements()) {
       llvm::Value *gep =
           IRB->CreateStructGEP(struct_type, carver_param, elem_idx);
@@ -949,6 +970,7 @@ void CarverFAPass::gen_class_carver_fa() {
   SwitchInst *switch_inst =
       IRB->CreateSwitch(class_idx, default_BB, num_class_name_const + 1);
 
+  // class_name_map: std::map<StructType *, std::pair<int, Constant *>>
   for (auto class_type : class_name_map) {
     int case_id = class_type.second.first;
     llvm::BasicBlock *case_block = llvm::BasicBlock::Create(

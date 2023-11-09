@@ -1,5 +1,16 @@
 #include <dirent.h>
 
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <iostream>
+
 #include "utils/data_utils.hpp"
 
 extern "C" {
@@ -83,21 +94,20 @@ void __driver_inputf_open(char *inputfilename) {
             POINTER(new_ptr, strdup(type_str + 1), ptr_size));
       }
     } else {
-      char *type_str = strchr(line, ':');
-      if (type_str == NULL) {
-        fprintf(stderr, "Invalid input file\n");
-        std::abort();
+      if (!strncmp(line, "OBJ_INFO", 8)) {
+        continue;
       }
-      char *value_str = strchr(type_str + 1, ':');
+
+      char *type_str = line;
+
+      char *value_str = strchr(type_str, ':');
       if (value_str == NULL) {
-        fprintf(stderr, "Invalid input file\n");
+        fprintf(stderr, "Invalid input file 2\n");
         std::abort();
       }
+
       char *index_str = strchr(value_str + 1, ':');
-
-      *value_str = 0;
-
-      type_str += 1;
+      
       if (!strncmp(type_str, "CHAR", 4)) {
         char value = atoi(value_str + 1);
         VAR<char> *inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);

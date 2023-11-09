@@ -30,7 +30,8 @@ MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: carve_func_ctx carve_type_based carve_func_args carve_model \
-	unit_test extend_driver fuzz_driver clementine_driver
+	unit_test extend_driver fuzz_driver clementine_driver \
+	simple_unit_driver_pass
 
 carve_func_ctx: lib/carve_func_ctx_pass.so lib/fc_carver.a
 carve_type_based: lib/carve_type_pass.so lib/tb_carver.a
@@ -41,6 +42,8 @@ unit_test: lib/unit_test_pass.so lib/unit_test_mock.a
 extend_driver: lib/extend_driver_pass.so lib/extend_driver.a
 fuzz_driver: lib/fuzz_driver_pass.so lib/fuzz_driver.a
 clementine_driver: lib/clementine_driver_pass.so lib/cl_driver.a
+
+simple_unit_driver_pass: lib/simple_unit_driver_pass.so lib/driver.a
 
 tools: lib/extract_info_pass.so lib/read_gtest.so lib/get_call_seq.so lib/call_seq.a
 
@@ -122,11 +125,11 @@ lib/simple_unit_driver_pass.so: \
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
 
-lib/driver.a: src/drivers/driver.cc
+lib/driver.a: src/drivers/driver.cc src/utils/data_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/drivers/driver.o
-	$(AR) rsv $@ src/drivers/driver.o
+	$(AR) rsv $@ src/drivers/driver.o src/utils/data_utils.o
 
 lib/extract_info_pass.so: src/tools/extract_info_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o

@@ -37,10 +37,12 @@ class CarvingIR(unittest.TestCase):
         self.result_path = project_path / "test" / "results"
         if not self.result_path.exists():
             self.result_path.mkdir()
-
-        self.result_single_path = self.result_path / str(code).split('/')[6]
+        
+        self.result_single_path = self.result_path / str(code.parent).split('/')[-1]
         if not self.result_single_path.exists():
             self.result_single_path.mkdir()
+        
+        sp.run(["cp", code, self.result_single_path])
         
         self.carve_inputs = self.result_single_path / "carve_inputs"
         if not self.carve_inputs.exists():
@@ -131,6 +133,9 @@ class CarvingIR(unittest.TestCase):
     
     def test_12_cpp_virtual_method(self):
         self.template(project_path / "IR_example" / "12_c++_virtual_method" / "test.cc")
+    
+    def test_27_cpp_class_arr(self):
+        self.template(project_path / "IR_example" / "27_c++_class_arr" / "test.cc")
 
 
 if __name__ == "__main__":
