@@ -769,21 +769,21 @@ void __carv_close(const char *func_name) {
           fprintf(outfile, "}");
         }
       } else if (elem->type == INPUT_TYPE::CHAR) {
-        fprintf(outfile, "%d, ", (int)(((VAR<char> *)elem)->input));
+        // fprintf(outfile, "%d, ", (int)(((VAR<char> *)elem)->input));
       } else if (elem->type == INPUT_TYPE::SHORT) {
-        fprintf(outfile, "%d, ", (int)(((VAR<short> *)elem)->input));
+        // fprintf(outfile, "%d, ", (int)(((VAR<short> *)elem)->input));
       } else if (elem->type == INPUT_TYPE::INT) {
-        fprintf(outfile, "%d, ", (int)(((VAR<int> *)elem)->input));
+        // fprintf(outfile, "%d, ", (int)(((VAR<int> *)elem)->input));
       } else if (elem->type == INPUT_TYPE::LONG) {
-        fprintf(outfile, "%ld, ", ((VAR<long> *)elem)->input);
+        // fprintf(outfile, "%ld, ", ((VAR<long> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::LONGLONG) {
-        fprintf(outfile, "%lld, ", ((VAR<long long> *)elem)->input);
+        // fprintf(outfile, "%lld, ", ((VAR<long long> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::FLOAT) {
-        fprintf(outfile, "%f, ", ((VAR<float> *)elem)->input);
+        // fprintf(outfile, "%f, ", ((VAR<float> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::DOUBLE) {
-        fprintf(outfile, "%lf, ", ((VAR<double> *)elem)->input);
+        // fprintf(outfile, "%lf, ", ((VAR<double> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::NULLPTR) {
-        fprintf(outfile, "nullptr, ");
+        // fprintf(outfile, "nullptr, ");
       } else if (elem->type == INPUT_TYPE::PTR) {
         VAR<int> *input = (VAR<int> *)elem;
         int ptr_idx = input->input;
@@ -795,7 +795,8 @@ void __carv_close(const char *func_name) {
           fprintf(outfile, "p%d, ", ptr_idx);
         }
       } else if (elem->type == INPUT_TYPE::FUNCPTR) {
-        fprintf(outfile, "%s, ", ((VAR<char *> *)elem)->input);
+        fprintf(outfile, "Funcptr, ");
+        // fprintf(outfile, "%s, ", ((VAR<char *> *)elem)->input);
       }
     }
     idx++;
