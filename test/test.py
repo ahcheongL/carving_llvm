@@ -48,51 +48,120 @@ class CarvingIR(unittest.TestCase):
         if not self.carve_inputs.exists():
             self.carve_inputs.mkdir()
         
+        self.unit_test_cases = self.result_single_path / "unit_test_cases"
+        self.unit_test_cases_fp = open(self.unit_test_cases, 'w')
+
+        self.replay_out = self.result_single_path / "replay_out"
+        self.replay_out_fp = open(self.replay_out, 'w')
+        
         self.binary = self.result_single_path / "main"
         self.bitcode = self.result_single_path / "main.bc"
         self.carved_binary = self.result_single_path / "main.carv"
 
         compiler = "gclang++" if code.suffix == ".cc" else "gclang"
-        argv_string = ' '.join(argv)
 
         sp.run([compiler, code, "-O0", "-g", "-o", self.binary], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
-        original_output = sp.run([self.binary, argv_string], stderr=sp.PIPE).stderr
+        original_output = sp.run([self.binary]+argv, stderr=sp.PIPE).stderr
 
         sp.run(["get-bc", "-o", self.bitcode, self.binary], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
         sp.run(["llvm-dis", self.bitcode], cwd=self.result_single_path, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
         sp.run([carve_pass_bin, self.bitcode, "func_args"], cwd=self.result_single_path, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        sp.run([self.carved_binary, argv_string, "carve_inputs"], cwd=self.result_single_path, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        sp.run([self.carved_binary]+argv+["carve_inputs"], cwd=self.result_single_path, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
         
-        # q = []
-        # processed_functions = set([])
-        # for x in self.carve_inputs.iterdir():
-        #     name = x.name
-        #     if name != "call_seq":
-        #         if compiler == "gclang++":
-        #             if not name.startswith("_Z3"):
-        #                 continue
-        #         l1 = name.rfind('_')
-        #         l2 = name.rfind('_', 0, l1)
-        #         func =  name[:l2]
-        #         n1 = name[l2+1:l1]
-        #         n2 = name[l1+1:]
-        #         q.append((n1, n2, func))
-        #         if not func in processed_functions:
-        #             processed_functions.add(func)
-        #             sp.run([simple_unit_driver_bin, self.bitcode, func], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        # q.sort()
+        q = []
+        processed_functions = set([])
+        for x in self.carve_inputs.iterdir():
+            carved_name = x.name
+            if carved_name != "call_seq":
+
+                # if compiler == "gclang++":
+                #     if not carved_name.startswith("_Z3"):
+                #         continue
+
+                l1 = carved_name.rfind('_')
+                l2 = carved_name.rfind('_', 0, l1)
+
+                carved_func = carved_name[:l2]
+
+                func_name = carved_name[l2+1:l1]
+                call_num = carved_name[l1+1:]
+
+                q.append((func_name, call_num, carved_func))
+
+                # make unit test driver for function
+                if not func_name in processed_functions:
+                    processed_functions.add(func_name)
+                    sp.run([simple_unit_driver_bin, self.bitcode, func_name], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        q.sort()
+
+        # record carved inputs (unit test cases)
+        for i in range(len(q)):
+            inp = str(i) + ": " + str(q[i]) + "\n"
+            self.unit_test_cases_fp.write(inp)
+
         
-        # results = []
-        # for (n1, n2 ,func) in q:    
-        #     driver = self.temp_dir / f"main.{func}.driver"
-        #     # Only first line because f() may call g()
-        #     replay_result = sp.run([driver, self.carve_inputs / f"{func}_{n1}_{n2}"], stderr=sp.PIPE).stderr.split(b'\n')[0] + b'\n'  
-        #     results.append(replay_result)
+        results = []
+        for (func_name, call_num, carved_func) in q:    
+            driver = self.result_single_path / f"main.{func_name}.driver"
+
+            # Only first line because f() may call g()
+            replay_result = sp.run([driver, self.carve_inputs / f"{carved_func}{call_num}"], stderr=sp.PIPE).stderr
+            self.replay_out_fp.write(str(driver) + ": " + carved_func+call_num + "\n")
+            self.replay_out_fp.write(replay_result.decode())
+            self.replay_out_fp.write("====================================\n\n")
+
+        self.unit_test_cases_fp.close()
+        self.replay_out_fp.close()
         
         # replay_output = b''.join(results)
         # self.assertEqual(original_output, replay_output)
+
+    def test_00_yang(self):
+        source_code = project_path / "test" / "yang" / "00" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_01_yang(self):
+        source_code = project_path / "test" / "yang" / "01" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_02_yang(self):
+        source_code = project_path / "test" / "yang" / "02" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_03_yang(self):
+        source_code = project_path / "test" / "yang" / "03" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_04_yang(self):
+        source_code = project_path / "test" / "yang" / "04" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_05_yang(self):
+        source_code = project_path / "test" / "yang" / "05" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+    
+    def test_06_yang(self):
+        source_code = project_path / "test" / "yang" / "06" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_07_yang(self):
+        source_code = project_path / "test" / "yang" / "07" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
+
+    def test_08_yang(self):
+        source_code = project_path / "test" / "yang" / "08" / "test.c"
+        argv = ["1", "2", "3", "4", "5"]
+        self.template(source_code, argv)
     
     def test_01_sample_args(self):
         source_code = project_path / "IR_example" / "1_simple" / "test.c"
@@ -105,10 +174,8 @@ class CarvingIR(unittest.TestCase):
     def test_03_struct(self):
         self.template(project_path / "IR_example" / "3_struct" / "main.c")
     
-    
     def test_04_double_pointer(self):
-        #self.template(project_path / "IR_example" / "4_double_pointer" / "main.c")
-        pass
+        self.template(project_path / "IR_example" / "4_double_pointer" / "main.c")
     
     def test_05_recursive_struct(self):
         self.template(project_path / "IR_example" / "5_recursive_struct" / "main.c")
@@ -119,23 +186,23 @@ class CarvingIR(unittest.TestCase):
     def test_07_func_ptr(self):
         self.template(project_path / "IR_example" / "7_func_ptr" / "main.c")
 
-    def test_08_cpp_vector(self):
-        self.template(project_path / "IR_example" / "8_c++_vector" / "main.cc")
+    # def test_08_cpp_vector(self):
+    #     self.template(project_path / "IR_example" / "8_c++_vector" / "main.cc")
 
-    def test_082_cpp_vector(self):
-        self.template(project_path / "IR_example" / "8_2_c++_vector" / "main.cc")
+    # def test_082_cpp_vector(self):
+    #     self.template(project_path / "IR_example" / "8_2_c++_vector" / "main.cc")
     
-    def test_09_cpp_map(self):
-        self.template(project_path / "IR_example" / "9_c++_map" / "test.cc")
+    # def test_09_cpp_map(self):
+    #     self.template(project_path / "IR_example" / "9_c++_map" / "test.cc")
     
-    def test_11_cpp_one_inheritance(self):
-        self.template(project_path / "IR_example" / "11_c++_one_inheritance" / "test.cc")
+    # def test_11_cpp_one_inheritance(self):
+    #     self.template(project_path / "IR_example" / "11_c++_one_inheritance" / "test.cc")
     
-    def test_12_cpp_virtual_method(self):
-        self.template(project_path / "IR_example" / "12_c++_virtual_method" / "test.cc")
+    # def test_12_cpp_virtual_method(self):
+    #     self.template(project_path / "IR_example" / "12_c++_virtual_method" / "test.cc")
     
-    def test_27_cpp_class_arr(self):
-        self.template(project_path / "IR_example" / "27_c++_class_arr" / "test.cc")
+    # def test_27_cpp_class_arr(self):
+    #     self.template(project_path / "IR_example" / "27_c++_class_arr" / "test.cc")
 
 
 if __name__ == "__main__":

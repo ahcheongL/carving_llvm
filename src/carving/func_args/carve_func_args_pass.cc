@@ -229,7 +229,7 @@ void CarverFAPass::get_instrument_func_set() {
     llvm::raw_string_ostream output(tmp);
     F.getType()->print(output);
     outfile << " " << output.str() << "\n";
-    outfile2 << func_name << "\n";
+    outfile2 << llvm::demangle(func_name) << "\n";
   }
 
   DEBUG0("# of instrument llvm::Functions : " << instrument_func_set.size()

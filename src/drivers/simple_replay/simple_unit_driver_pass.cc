@@ -214,7 +214,7 @@ bool driver_pass::get_target_func() {
 
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) { continue; }
-    std::string func_name = F.getName().str();    
+    std::string func_name = llvm::demangle(F.getName().str());    
     if (func_name == target_name) {
       target_func = &F;
       break;
