@@ -26,6 +26,8 @@ endif
 
 CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 
+LIBFLAGS = -lLLVMDemangle
+
 MAKEFILE_PATH=$(abspath $(lastword $(MAKEFILE_LIST)))
 MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
@@ -51,13 +53,13 @@ lib/carve_func_ctx_pass.so: \
 	src/carving/func_ctx/carve_func_ctx_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include -shared $^ -o $@ $(LIBFLAGS)
 
 lib/carve_func_args_pass.so: \
 	src/carving/func_args/carve_func_args_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include -shared $^ -o $@ $(LIBFLAGS)
 
 lib/carve_model_pass.so: \
 	src/carving/model/carve_model_pass.cc \
@@ -65,7 +67,7 @@ lib/carve_model_pass.so: \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include -shared $< src/utils/carve_pass_utils.o \
-	 src/utils/pass_utils.o -o $@
+	 src/utils/pass_utils.o -o $@ $(LIBFLAGS)
 
 lib/fc_carver.a: src/carving/func_ctx/fc_carver.cc src/utils/data_utils.o
 	mkdir -p lib
@@ -117,13 +119,13 @@ lib/clementine_driver_pass.so: \
 	src/drivers/clementine_driver/clementine_driver_pass.o \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@ $(LIBFLAGS)
 
 lib/simple_unit_driver_pass.so: \
 	src/drivers/simple_replay/simple_unit_driver_pass.cc \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@ $(LIBFLAGS)
 
 lib/driver.a: src/drivers/driver.cc src/utils/data_utils.o
 	mkdir -p lib
@@ -134,7 +136,7 @@ lib/driver.a: src/drivers/driver.cc src/utils/data_utils.o
 lib/extract_info_pass.so: src/tools/extract_info_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@ $(LIBFLAGS)
 
 lib/read_gtest.so: src/tools/read_gtest.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
@@ -156,7 +158,7 @@ lib/call_seq.a: src/tools/call_seq.o
 lib/carve_type_pass.so: src/carving/type_based/carve_type_pass.cc \
 	src/utils/carve_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@ $(LIBFLAGS)
 
 src/utils/driver_pass_utils.o: src/utils/driver_pass_utils.cc
 	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
@@ -167,7 +169,7 @@ src/utils/pass_utils.o: src/utils/pass_utils.cc
 lib/unit_test_pass.so: src/drivers/unit_test_mock/unit_test_mock_pass.cc \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@ $(LIBFLAGS)
 
 lib/unit_test_mock.a: src/drivers/unit_test_mock/unit_test_mock.o
 	mkdir -p lib
@@ -180,7 +182,7 @@ src/drivers/unit_test_mock/unit_test_mock.o: \
 lib/extend_driver_pass.so: src/drivers/ossfuzz_extend/extend_driver_pass.cc \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o
 	mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -shared $^ -o $@ $(LIBFLAGS)
 
 lib/extend_driver.a: src/drivers/ossfuzz_extend/extend_driver.o
 	mkdir -p lib

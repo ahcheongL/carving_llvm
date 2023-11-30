@@ -778,6 +778,7 @@ template class map<void *, char>;
 template class map<char *, classinfo>;
 template class map<void *, char *>;
 template class map<void *, typeinfo>;
+template class map<const char *, int *>;
 template class map<char const *, unsigned int>;
 template class map<char *, char *>;
 template class map<char *, unsigned int>;
