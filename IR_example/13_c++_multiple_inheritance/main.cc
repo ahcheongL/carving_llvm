@@ -25,14 +25,15 @@ public:
 
 int foo (Child * ch) {
    int a = ch->width + ch->height;
-  return a;
+   fprintf(stderr, "%d = %d + %d\n", a, ch->width, ch->height);
+   return a;
 }
 
 int main(int argc, char * argv[]) {
-  Child child;
+   Child child;
 
-  child.setWidth(40);
+   child.setWidth(40);
 
-  int width1 = foo (&child);
-  return width1;
+   int width1 = foo(&child);
+   return width1;
 }

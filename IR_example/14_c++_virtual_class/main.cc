@@ -36,7 +36,8 @@ protected:
 };
 
 int foo (Person * p) {
-  return p->getWidth();
+   fprintf(stderr, "Person::getWidth(): %d\n", p->getWidth());
+   return p->getWidth();
 }
 
 int main(int argc, char * argv[]) {
