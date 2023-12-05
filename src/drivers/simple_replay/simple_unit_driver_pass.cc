@@ -1,6 +1,9 @@
-#include "driver_pass.hpp"
+#include "drivers/driver_pass.hpp"
 
 namespace {
+
+FunctionCallee replay_record_bb;
+FunctionCallee replay_cov_fini;
 
 class driver_pass : public ModulePass {
 
@@ -26,6 +29,15 @@ class driver_pass : public ModulePass {
 
   bool get_target_func();
   void instrument_main_func(Function * main_func);
+  bool instrument_module();
+
+  // To measure coverage
+  std::map<std::string, std::map<std::string, std::set<std::string>>>
+      file_bb_map;
+
+  void instrument_bb_cov(llvm::Function *, const std::string &, const std::string &);
+
+  static std::map<std::string, llvm::Constant *> new_string_globals;
 };
 
 }  // namespace
@@ -73,7 +85,9 @@ bool driver_pass::hookInstrs(Module &M) {
     return false;
   }
 
-  instrument_main_func(main_func);
+  instrument_module();
+
+  // instrument_main_func(main_func);
 
   char * tmp = getenv("DUMP_IR");
   if (tmp) {
@@ -84,6 +98,155 @@ bool driver_pass::hookInstrs(Module &M) {
   delete IRB;
   return true;
 }
+
+bool driver_pass::instrument_module() {
+  replay_record_bb = Mod->getOrInsertFunction("__record_bb_cov", VoidTy, Int8PtrTy,
+                                      Int8PtrTy, Int8PtrTy);
+  replay_cov_fini = Mod->getOrInsertFunction("__cov_fini", VoidTy);
+
+  Function * main_func = NULL;
+
+  for (auto &F : Mod->functions()) {
+    const std::string mangled_func_name = F.getName().str();
+    const std::string func_name = llvm::demangle(mangled_func_name);
+    // const string func_name = mangled_func_name;
+
+    if (F.isIntrinsic()) {
+      continue;
+    }
+
+    if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) {
+      continue;
+    }
+
+    if (func_name.find("__cxx_global_var_init") != std::string::npos) {
+      continue;
+    }
+
+    if (func_name == "main") {
+      instrument_main_func(&F);
+
+      std::set<llvm::ReturnInst *> ret_inst_set;
+      for (auto &BB : F) {
+        for (auto &I : BB) {
+          if (llvm::ReturnInst *ret_inst =
+                  llvm::dyn_cast<llvm::ReturnInst>(&I)) {
+            ret_inst_set.insert(ret_inst);
+          }
+        }
+      }
+
+      for (auto ret_inst : ret_inst_set) {
+        IRB->SetInsertPoint(ret_inst);
+        IRB->CreateCall(replay_cov_fini, {});
+      }
+    }
+
+    auto subp = F.getSubprogram();
+    if (subp == NULL) {
+      continue;
+    }
+
+    const std::string dirname = subp->getDirectory().str();
+    std::string filename = subp->getFilename().str();
+
+    if (dirname != "") {
+      filename = dirname + "/" + filename;
+    }
+
+    // llvm::errs() << "Instrumenting " << func_name << " in " << filename <<
+    // "\n";
+
+    if (filename.find("/usr/bin") != std::string::npos) {
+      continue;
+    }
+
+    // normal functions under test
+    instrument_bb_cov(&F, filename, func_name);
+  }
+
+  for (auto iter : file_bb_map) {
+    std::string filename = iter.first;
+
+    std::string cov_filename = filename + ".cov";
+    std::ofstream cov_file(cov_filename);
+
+    for (auto iter2 : iter.second) {
+      const std::set<std::string> &bb_set = iter2.second;
+      cov_file << "F " << iter2.first << " " << false << "\n";
+      for (auto &bb_name : bb_set) {
+        cov_file << "b " << bb_name << " " << false << "\n";
+      }
+    }
+
+    cov_file.close();
+  }
+
+  return true;
+}
+
+void driver_pass::instrument_bb_cov(llvm::Function *F, const std::string &filename,
+                                    const std::string &func_name) {
+  if (file_bb_map.find(filename) == file_bb_map.end()) {
+    file_bb_map.insert({filename, {}});
+  }
+
+  if (file_bb_map[filename].find(func_name) == file_bb_map[filename].end()) {
+    file_bb_map[filename].insert({func_name, {}});
+  }
+
+  llvm::Constant *filename_const = gen_new_string_constant(filename, IRB);
+  llvm::Constant *func_name_const = gen_new_string_constant(func_name, IRB);
+
+  std::set<std::string> &cur_bb_set = file_bb_map[filename][func_name];
+
+  llvm::errs() << "Instrumenting " << func_name << " in " << filename << "\n";
+
+  int bb_index = 0;
+  for (auto &BB : F->getBasicBlockList()) {
+    llvm::Instruction *first_inst = BB.getFirstNonPHIOrDbgOrLifetime();
+    if (first_inst == NULL) {
+      continue;
+    }
+
+    if (llvm::isa<llvm::LandingPadInst>(first_inst)) {
+      continue;
+    }
+
+    // string BB_name = BB.getName().str();
+    std::string BB_name = func_name + "_" + std::to_string(bb_index++);
+
+    cur_bb_set.insert(BB_name);
+
+    IRB->SetInsertPoint(first_inst);
+    llvm::Constant *bb_name_const = gen_new_string_constant(BB_name, IRB);
+    IRB->CreateCall(replay_record_bb,
+                    {filename_const, func_name_const, bb_name_const});
+  }
+
+  // Insert cov fini
+  for (auto &BB : F->getBasicBlockList()) {
+    for (auto &IN : BB) {
+      if (!llvm::isa<llvm::CallInst>(IN)) {
+        continue;
+      }
+
+      llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&IN);
+      llvm::Function *called_func = call_inst->getCalledFunction();
+      if (called_func == NULL) {
+        continue;
+      }
+
+      std::string called_func_name = called_func->getName().str();
+      if (called_func_name != "exit") {
+        continue;
+      }
+      IRB->SetInsertPoint(call_inst);
+      IRB->CreateCall(replay_cov_fini, {});
+    }
+  }
+}
+
 
 void driver_pass::instrument_main_func(Function * main_func) {
 
@@ -214,7 +377,7 @@ bool driver_pass::get_target_func() {
 
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) { continue; }
-    std::string func_name = F.getName().str();    
+    std::string func_name = llvm::demangle(F.getName().str());    
     if (func_name == target_name) {
       target_func = &F;
       break;

@@ -26,6 +26,9 @@ extern FunctionCallee __replay_fini;
 
 extern FunctionCallee class_replay;
 
+extern FunctionCallee replay_record_bb;
+extern FunctionCallee replay_cov_fini;
+
 extern Constant *global_cur_class_index;
 extern Constant *global_cur_class_size;
 extern Constant *global_ptr_alloc_size;

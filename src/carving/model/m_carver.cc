@@ -15,6 +15,8 @@
 #define MINSIZE 3
 #define MAXSIZE 24
 
+#define HASH_MAX_NUM_FILE 8192
+
 static char *outdir_name = NULL;
 
 static int carved_index = 0;
@@ -540,18 +542,20 @@ void __carv_open(const char *func_name) {
     return;
   }
 
-  unsigned int *func_count = func_file_counter.find(func_name);
-  if (func_count != NULL) {
-    if (*func_count > 100) {
-      return;
-    }
-  }
+  // unsigned int *func_count = func_file_counter.find(func_name);
+  // if (func_count != NULL) {
+  //   if (*func_count > 100) {
+  //     return;
+  //   }
+  // }
 
   assert(carved_objs.size() == 0);
   assert(carved_ptrs.size() == 0);
   __carv_opened = true;
   return;
 }
+
+static map<const char *, int *> func_result_hash;
 
 // Count # of objs of each type
 void __carv_close(const char *func_name) {
@@ -578,6 +582,12 @@ void __carv_close(const char *func_name) {
   } else {
     cur_cnt = *func_count;
     (*func_count)++;
+  }
+
+  if (cur_cnt == 1) {
+    int *res_hash = (int *)malloc(sizeof(int) * HASH_MAX_NUM_FILE);
+    memset(res_hash, 0, sizeof(int) * HASH_MAX_NUM_FILE);
+    func_result_hash.insert(func_name, res_hash);
   }
 
   char outfile_name[256];
@@ -753,9 +763,6 @@ void __carv_close(const char *func_name) {
       } else if (elem->type == INPUT_TYPE::PTR_IDX) {
         VAR<int> *input = (VAR<int> *)elem;
         int ptr_offset = input->input;
-        if (ptr_offset != 0) {
-          fprintf(outfile, "\n");
-        }
         fprintf(outfile, "\np%d[%d] = ", cur_ptr_idx, ptr_offset);
         use_bracket = 0;
       } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
@@ -769,21 +776,21 @@ void __carv_close(const char *func_name) {
           fprintf(outfile, "}");
         }
       } else if (elem->type == INPUT_TYPE::CHAR) {
-        // fprintf(outfile, "%d, ", (int)(((VAR<char> *)elem)->input));
+        fprintf(outfile, "%d, ", (int)(((VAR<char> *)elem)->input));
       } else if (elem->type == INPUT_TYPE::SHORT) {
-        // fprintf(outfile, "%d, ", (int)(((VAR<short> *)elem)->input));
+        fprintf(outfile, "%d, ", (int)(((VAR<short> *)elem)->input));
       } else if (elem->type == INPUT_TYPE::INT) {
-        // fprintf(outfile, "%d, ", (int)(((VAR<int> *)elem)->input));
+        fprintf(outfile, "%d, ", (int)(((VAR<int> *)elem)->input));
       } else if (elem->type == INPUT_TYPE::LONG) {
-        // fprintf(outfile, "%ld, ", ((VAR<long> *)elem)->input);
+        fprintf(outfile, "%ld, ", ((VAR<long> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::LONGLONG) {
-        // fprintf(outfile, "%lld, ", ((VAR<long long> *)elem)->input);
+        fprintf(outfile, "%lld, ", ((VAR<long long> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::FLOAT) {
-        // fprintf(outfile, "%f, ", ((VAR<float> *)elem)->input);
+        fprintf(outfile, "%f, ", ((VAR<float> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::DOUBLE) {
-        // fprintf(outfile, "%lf, ", ((VAR<double> *)elem)->input);
+        fprintf(outfile, "%lf, ", ((VAR<double> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::NULLPTR) {
-        // fprintf(outfile, "nullptr, ");
+        fprintf(outfile, "nullptr, ");
       } else if (elem->type == INPUT_TYPE::PTR) {
         VAR<int> *input = (VAR<int> *)elem;
         int ptr_idx = input->input;
@@ -795,8 +802,8 @@ void __carv_close(const char *func_name) {
           fprintf(outfile, "p%d, ", ptr_idx);
         }
       } else if (elem->type == INPUT_TYPE::FUNCPTR) {
-        fprintf(outfile, "Funcptr, ");
-        // fprintf(outfile, "%s, ", ((VAR<char *> *)elem)->input);
+        // fprintf(outfile, "Funcptr, ");
+        fprintf(outfile, "%s, ", ((VAR<char *> *)elem)->input);
       }
     }
     idx++;
@@ -805,6 +812,33 @@ void __carv_close(const char *func_name) {
   fclose(outfile);
   carved_objs.clear();
   carved_ptrs.clear();
+
+  // compute hash
+
+  int *res_hash = *(func_result_hash.find(func_name));
+  int hash_val = 0;
+  FILE *hashfile = fopen(outfile_name, "rb");
+  if (hashfile == NULL) {
+    return;
+  }
+
+  char buf[4096];
+  int read_size;
+  while ((read_size = fread(buf, 1, 4096, hashfile)) > 0) {
+    int idx = 0;
+    while (idx < read_size) {
+      hash_val += buf[idx++];
+      hash_val = hash_val % HASH_MAX_NUM_FILE;
+    }
+  }
+
+  fclose(hashfile);
+
+  if (res_hash[hash_val] == 0) {
+    res_hash[hash_val] = 1;
+  } else {
+    unlink(outfile_name);
+  }
   return;
 }
-}
+}  // extern "C"

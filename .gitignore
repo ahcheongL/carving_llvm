@@ -45,3 +45,7 @@ func_types.txt
 target_funcs.txt
 test/map_test
 test/boost_map
+test/results
+test/yang
+
+subject/

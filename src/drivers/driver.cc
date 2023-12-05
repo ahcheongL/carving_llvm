@@ -1,5 +1,18 @@
 #include <dirent.h>
 
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <iostream>
+#include <map>
+#include <fstream>
+
 #include "utils/data_utils.hpp"
 
 extern "C" {
@@ -8,6 +21,104 @@ map<char *, classinfo> __replay_class_info;
 
 // Function pointer names
 static map<void *, char *> __replay_func_ptrs;
+
+// coverage
+static std::map<char *, std::map<std::string, std::map<std::string, bool>>> __replay_coverage_info;
+
+void __record_bb_cov(char *file_name, char *func_name, char *bb_name) {
+  if (__replay_coverage_info.find(file_name) == __replay_coverage_info.end()) {
+    __replay_coverage_info.insert(
+        std::make_pair(file_name, std::map<std::string, std::map<std::string, bool>>()));
+  }
+
+  std::map<std::string, std::map<std::string, bool>> &file_info = __replay_coverage_info[file_name];
+  if (file_info.find(func_name) == file_info.end()) {
+    file_info.insert(std::make_pair(func_name, std::map<std::string, bool>()));
+  }
+
+  std::map<std::string, bool> &func_info = file_info[func_name];
+  if (func_info.find(bb_name) == func_info.end()) {
+    func_info.insert(std::make_pair(bb_name, true));
+  }
+
+  return;
+}
+
+void __cov_fini() {
+  for (auto iter : __replay_coverage_info) {
+    const std::string cov_file_name = std::string(iter.first) + ".cov";
+
+    std::map<std::string, std::map<std::string, bool>> &file_info = iter.second;
+
+    std::ifstream cov_file_in(cov_file_name, std::ios::in);
+
+    if (cov_file_in.is_open()) {
+      std::string type;
+      std::string name;
+      bool is_covered = false;
+      std::string cur_func = "";
+      std::string line;
+      while (getline(cov_file_in, line)) {
+        auto pos1 = line.find(" ");
+
+        if (pos1 == std::string::npos) {
+          break;
+        }
+
+        auto pos2 = line.find_last_of(" ");
+
+        if (pos2 == std::string::npos) {
+          break;
+        }
+
+        if (pos1 == pos2) {
+          break;
+        }
+
+        type = line.substr(0, pos1);
+        name = line.substr(pos1 + 1, pos2 - pos1 - 1);
+        is_covered = line.substr(pos2 + 1) == "1";
+        if (type == "F") {
+          if (file_info.find(name) == file_info.end()) {
+            file_info.insert(std::make_pair(name, std::map<std::string, bool>()));
+          }
+
+          cur_func = name;
+        } else {
+          if (file_info[cur_func].find(name) == file_info[cur_func].end()) {
+            file_info[cur_func].insert(make_pair(name, is_covered));
+          } else if (is_covered) {
+            file_info[cur_func][name] = true;
+          }
+        }
+      }
+    }
+    cov_file_in.close();
+
+    std::ofstream cov_file_out(cov_file_name, std::ios::out);
+
+    for (auto iter2 : file_info) {
+      bool is_func_covered = false;
+      const std::map<std::string, bool> &func_info = iter2.second;
+
+      for (auto iter3 : func_info) {
+        if (iter3.second) {
+          is_func_covered = true;
+          break;
+        }
+      }
+
+      cov_file_out << "F " << iter2.first << " " << is_func_covered << "\n";
+
+      for (auto iter3 : func_info) {
+        cov_file_out << "B " << iter3.first << " " << iter3.second << "\n";
+      }
+    }
+
+    cov_file_out.close();
+  }
+  return;
+}
 
 vector<IVAR *> __replay_inputs;
 vector<POINTER> __replay_carved_ptrs;
@@ -83,21 +194,20 @@ void __driver_inputf_open(char *inputfilename) {
             POINTER(new_ptr, strdup(type_str + 1), ptr_size));
       }
     } else {
-      char *type_str = strchr(line, ':');
-      if (type_str == NULL) {
-        fprintf(stderr, "Invalid input file\n");
-        std::abort();
+      if (!strncmp(line, "OBJ_INFO", 8)) {
+        continue;
       }
-      char *value_str = strchr(type_str + 1, ':');
+
+      char *type_str = line;
+
+      char *value_str = strchr(type_str, ':');
       if (value_str == NULL) {
-        fprintf(stderr, "Invalid input file\n");
+        fprintf(stderr, "Invalid input file 2\n");
         std::abort();
       }
+
       char *index_str = strchr(value_str + 1, ':');
-
-      *value_str = 0;
-
-      type_str += 1;
+      
       if (!strncmp(type_str, "CHAR", 4)) {
         char value = atoi(value_str + 1);
         VAR<char> *inputv = new VAR<char>(value, 0, INPUT_TYPE::CHAR);

@@ -7,6 +7,12 @@ const DataLayout *DL;
 IRBuilder<> *IRB;
 DebugInfoFinder DbgFinder;
 
+/**
+ * comment from yang
+ * this function: initialize_pass_contexts,
+ * initializes module context
+ * and insertlocation at main function entry instruction
+*/
 void initialize_pass_contexts(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &dataLayout = M.getDataLayout();
