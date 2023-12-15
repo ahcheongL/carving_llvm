@@ -24,6 +24,9 @@ FunctionCallee __replay_fini;
 
 FunctionCallee class_replay;
 
+FunctionCallee replay_replay_bb;
+FunctionCallee replay_cov_fini;
+
 Constant *global_cur_class_index = NULL;
 Constant *global_cur_class_size = NULL;
 Constant *global_ptr_alloc_size = NULL;

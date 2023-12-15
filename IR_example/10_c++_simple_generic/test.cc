@@ -9,7 +9,7 @@ T add(T a, T b) {
 
 int main(int argc, char * argv[]) {
 
-  int d = add ( 2, 5);
+  int d = add(2, 5);
 
   return d + 4;
 }

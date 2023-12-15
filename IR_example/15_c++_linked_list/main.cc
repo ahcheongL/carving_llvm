@@ -9,7 +9,8 @@ public:
   class Node * next;
 };
 
-void foo(class Node *) {
+void foo(class Node * a) {
+  fprintf(stderr, "%d\n", a->elem);
   return;
 }
 
