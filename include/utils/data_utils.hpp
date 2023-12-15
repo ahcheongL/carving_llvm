@@ -34,11 +34,14 @@ class POINTER {
 
   POINTER(void *_addr, const char *pointee_type, int _size);
 
+  POINTER(void *_addr, const char *pointee_type, int _size, int _elem_size);
+
   bool operator==(const POINTER &other) const;
 
-  void *addr;
-  const char *pointee_type;
-  int alloc_size;
+  void *addr = 0;
+  const char *pointee_type = 0;
+  int alloc_size = 0;
+  int elem_size = 1;
 };
 
 class IVAR {
@@ -109,7 +112,6 @@ class vector {
 
   ~vector();
 
- private:
   elem_type *data;
   int capacity;
   int num_elem;
@@ -176,6 +178,8 @@ class FUNC_CONTEXT {
  public:
   FUNC_CONTEXT();
 
+  FUNC_CONTEXT(int _carved_idx, int _func_call_idx, const char *func_name);
+
   FUNC_CONTEXT(int _carved_idx, int _func_call_idx, int _func_id);
 
   FUNC_CONTEXT(const FUNC_CONTEXT &other);
@@ -190,11 +194,14 @@ class FUNC_CONTEXT {
 
   vector<IVAR *> inputs;
   vector<POINTER> carved_ptrs;
-  int carved_ptr_begin_idx;
-  int carving_index;
-  int func_call_idx;
-  int func_id;
-  bool is_carved;
+  vector<void *> loaded_ptrs;
+
+  const char *func_name = nullptr;
+  int carved_ptr_begin_idx = 0;
+  int carving_index = 0;
+  int func_call_idx = 0;
+  int func_id = 0;
+  bool is_carved = false;
 };
 
 class typeinfo {
