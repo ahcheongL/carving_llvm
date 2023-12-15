@@ -668,63 +668,133 @@ static void dump_result(const char *func_name, char remove_dup) {
   }
 
   // raw
-  // idx = 0;
-  // while (idx < num_objs) {
-  //   IVAR *elem = *(carved_objs->get(idx));
 
-  //   if (elem->type == INPUT_TYPE::CHAR) {
-  //     fprintf(outfile, "char %d\n", (int)(((VAR<char> *)elem)->input));
-  //   } else if (elem->type == INPUT_TYPE::SHORT) {
-  //     fprintf(outfile, "short %d\n", (int)(((VAR<short> *)elem)->input));
-  //   } else if (elem->type == INPUT_TYPE::INT) {
-  //     fprintf(outfile, "int %d\n", (int)(((VAR<int> *)elem)->input));
-  //   } else if (elem->type == INPUT_TYPE::LONG) {
-  //     fprintf(outfile, "long %ld\n", ((VAR<long> *)elem)->input);
-  //   } else if (elem->type == INPUT_TYPE::LONGLONG) {
-  //     fprintf(outfile, "long long %lld\n", ((VAR<long long> *)elem)->input);
-  //   } else if (elem->type == INPUT_TYPE::FLOAT) {
-  //     fprintf(outfile, "float %f\n", ((VAR<float> *)elem)->input);
-  //   } else if (elem->type == INPUT_TYPE::DOUBLE) {
-  //     fprintf(outfile, "double %lf\n", ((VAR<double> *)elem)->input);
-  //   } else if (elem->type == INPUT_TYPE::NULLPTR) {
-  //     fprintf(outfile, "nullptr\n");
-  //   } else if (elem->type == INPUT_TYPE::PTR) {
-  //     VAR<int> *input = (VAR<int> *)elem;
-  //     int ptr_idx = input->input;
-  //     POINTER *carved_ptr = carved_ptrs->get(ptr_idx);
+  vector<void *> *loaded_ptrs = &(cur_context->loaded_ptrs);
+  const int num_loaded_ptrs = loaded_ptrs->size();
 
-  //     if (input->pointer_offset == 0) {
-  //       fprintf(outfile, "%s p%d[%d], %p\n", carved_ptr->pointee_type,
-  //       ptr_idx,
-  //               carved_ptr->alloc_size, carved_ptr->addr);
-  //     } else {
-  //       fprintf(outfile, "%s * p%d + %d\n", carved_ptr->pointee_type,
-  //       ptr_idx,
-  //               input->pointer_offset);
-  //     }
-  //   } else if (elem->type == INPUT_TYPE::FUNCPTR) {
-  //     VAR<char *> *input = (VAR<char *> *)elem;
-  //     fprintf(outfile, "%s\n", input->input);
-  //   } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
-  //     fprintf(outfile, "?\n");
-  //   } else if (elem->type == INPUT_TYPE::PTR_BEGIN) {
-  //     VAR<int> *input = (VAR<int> *)elem;
-  //     fprintf(outfile, "PTR_BEGIN %d\n", input->input);
-  //   } else if (elem->type == INPUT_TYPE::PTR_IDX) {
-  //     VAR<int> *input = (VAR<int> *)elem;
-  //     fprintf(outfile, "PTR_IDX %d\n", input->input);
-  //   } else if (elem->type == INPUT_TYPE::PTR_END) {
-  //     fprintf(outfile, "PTR_END %d\n", ((VAR<int> *)elem)->input);
-  //   } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
-  //     fprintf(outfile, "STRUCT_BEGIN\n");
-  //   } else if (elem->type == INPUT_TYPE::STRUCT_END) {
-  //     fprintf(outfile, "STRUCT_END\n");
-  //   }
-  //   idx++;
-  // }
+  fprintf(outfile, "loaded pointers : %d\n", num_loaded_ptrs);
+
+  idx = 0;
+  while (idx < num_loaded_ptrs) {
+    fprintf(outfile, "  [%d] : %p\n", idx, loaded_ptrs->data[idx]);
+    idx++;
+  }
+
+  fprintf(outfile, "###############\n");
+
+  vector<void *> visit_ptr_stack;
+  vector<int> visit_elem_size_stack;
+
+  bool print_obj = true;
+
+  idx = 0;
+  while (idx < num_objs) {
+    IVAR *elem = *(carved_objs->get(idx));
+
+    if (elem->type == INPUT_TYPE::CHAR) {
+      if (print_obj) {
+        fprintf(outfile, "char %d\n", (int)(((VAR<char> *)elem)->input));
+      }
+    } else if (elem->type == INPUT_TYPE::SHORT) {
+      if (print_obj) {
+        fprintf(outfile, "short %d\n", (int)(((VAR<short> *)elem)->input));
+      }
+    } else if (elem->type == INPUT_TYPE::INT) {
+      if (print_obj) {
+        fprintf(outfile, "int %d\n", (int)(((VAR<int> *)elem)->input));
+      }
+    } else if (elem->type == INPUT_TYPE::LONG) {
+      if (print_obj) {
+        fprintf(outfile, "long %ld\n", ((VAR<long> *)elem)->input);
+      }
+    } else if (elem->type == INPUT_TYPE::LONGLONG) {
+      if (print_obj) {
+        fprintf(outfile, "long long %lld\n", ((VAR<long long> *)elem)->input);
+      }
+    } else if (elem->type == INPUT_TYPE::FLOAT) {
+      if (print_obj) {
+        fprintf(outfile, "float %f\n", ((VAR<float> *)elem)->input);
+      }
+    } else if (elem->type == INPUT_TYPE::DOUBLE) {
+      if (print_obj) {
+        fprintf(outfile, "double %lf\n", ((VAR<double> *)elem)->input);
+      }
+    } else if (elem->type == INPUT_TYPE::NULLPTR) {
+      if (print_obj) {
+        fprintf(outfile, "nullptr\n");
+      }
+    } else if (elem->type == INPUT_TYPE::PTR) {
+      VAR<int> *input = (VAR<int> *)elem;
+      int ptr_idx = input->input;
+      POINTER *carved_ptr = carved_ptrs->get(ptr_idx);
+
+      if (input->pointer_offset == 0) {
+        if (print_obj) {
+          fprintf(outfile, "%s p%d[%d], %p\n", carved_ptr->pointee_type,
+                  ptr_idx, carved_ptr->alloc_size, carved_ptr->addr);
+        }
+        visit_ptr_stack.push_back((char *)carved_ptr->addr -
+                                  carved_ptr->elem_size);
+        visit_elem_size_stack.push_back(carved_ptr->elem_size);
+      } else if (print_obj) {
+        fprintf(outfile, "%s * p%d + %d\n", carved_ptr->pointee_type, ptr_idx,
+                input->pointer_offset);
+      }
+    } else if (elem->type == INPUT_TYPE::FUNCPTR) {
+      VAR<char *> *input = (VAR<char *> *)elem;
+      if (print_obj) {
+        fprintf(outfile, "%s\n", input->input);
+      }
+    } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
+      if (print_obj) {
+        fprintf(outfile, "?\n");
+      }
+    } else if (elem->type == INPUT_TYPE::PTR_BEGIN) {
+      VAR<int> *input = (VAR<int> *)elem;
+      fprintf(outfile, "PTR_BEGIN %d\n", input->input);
+    } else if (elem->type == INPUT_TYPE::PTR_IDX) {
+      VAR<int> *input = (VAR<int> *)elem;
+
+      void **cur_ptr = visit_ptr_stack.back();
+      *cur_ptr = (char *)*cur_ptr + *(visit_elem_size_stack.back());
+
+      void *cur_ptr_val = *cur_ptr;
+      int idx2 = 0;
+      for (idx2 = 0; idx2 < num_loaded_ptrs; idx2++) {
+        if (loaded_ptrs->data[idx2] == cur_ptr_val) {
+          break;
+        }
+      }
+
+      print_obj = false;
+
+      if (idx2 != num_loaded_ptrs) {
+        print_obj = true;
+      }
+
+      if (print_obj) {
+        fprintf(outfile, "PTR_IDX %d\n", input->input);
+      }
+
+    } else if (elem->type == INPUT_TYPE::PTR_END) {
+      fprintf(outfile, "PTR_END %d\n", ((VAR<int> *)elem)->input);
+      visit_ptr_stack.pop_back();
+      visit_elem_size_stack.pop_back();
+    } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
+      if (print_obj) {
+        fprintf(outfile, "STRUCT_BEGIN\n");
+      }
+    } else if (elem->type == INPUT_TYPE::STRUCT_END) {
+      if (print_obj) {
+        fprintf(outfile, "STRUCT_END\n");
+      }
+    }
+    idx++;
+  }
 
   // // raw end
-  // fprintf(outfile, "\n############\n");
+
+  fprintf(outfile, "####################\n");
 
   vector<int> ptr_stack;
 
@@ -789,13 +859,10 @@ static void dump_result(const char *func_name, char remove_dup) {
 
   int inner_ptr_idx = -1;
 
-  bool print_obj = false;
+  print_obj = false;
 
   int cur_ptr_elem_size = 1;
   char *cur_ptr_addr = 0;
-
-  vector<void *> *loaded_ptrs = &(cur_context->loaded_ptrs);
-  const int num_loaded_ptrs = loaded_ptrs->size();
 
   // Print loaded ptrs
   // fprintf(stderr, "loaded ptrs : %d\n", loaded_ptrs->size());
@@ -817,15 +884,14 @@ static void dump_result(const char *func_name, char remove_dup) {
           cur_ptr_elem_size = carved_ptr->elem_size;
           cur_ptr_addr = (char *)carved_ptr->addr;
           cur_ptr_addr -= cur_ptr_elem_size;
+          fprintf(outfile, "p%d = {", cur_ptr_idx);
         }
-        fprintf(outfile, "p%d = {", cur_ptr_idx);
       } else if (elem->type == INPUT_TYPE::PTR_END) {
         VAR<int> *input = (VAR<int> *)elem;
         if (input->input == inner_ptr_idx) {
           print_obj = true;
           inner_ptr_idx = -1;
         }
-        fprintf(outfile, "}\n");
       }
     } else {
       if (elem->type == INPUT_TYPE::PTR_BEGIN) {
@@ -838,6 +904,7 @@ static void dump_result(const char *func_name, char remove_dup) {
         print_obj = false;
         cur_ptr_idx++;
         idx = prev_obj_idx;
+        fprintf(outfile, "}\n");
       } else if (elem->type == INPUT_TYPE::PTR_IDX) {
         VAR<int> *input = (VAR<int> *)elem;
         int ptr_offset = input->input;
