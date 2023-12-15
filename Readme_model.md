@@ -1,5 +1,7 @@
 # Carving by instrumenting LLVM IR code for machine learning
 
+Now it tries to print only data it reads during the execution.
+
 ## Prerequisite
 
 1. Clang/LLVM, developed on version 13.0.1, not tested on other versions.
@@ -34,7 +36,17 @@
 
 3. It will generate an executable named as like `target.carv`.
 
+4. If you need the executable to dump the result for each load instruction (e.g., in case of unit-level crash),
+use `-crash` option.
+`opt -enable-new-pm=0 -load {$PROJECT_PATH}/lib/carve_model_pass.so --carve -crash < <target.bc> -o <out.bc>`
+
 ## 3. Run carving
 
 1. `mkdir <carved_ctx_dir>`
 2. `<target.carv> <args> <carved_ctx_dir>`; Run the new carving executable as same as the original executable, but add a directory path at the end to store all carved contexts.
+
+
+## 4. Test
+
+You can find the test of model feature in `test/model_test`.
+Try running `bash run_test.sh`.

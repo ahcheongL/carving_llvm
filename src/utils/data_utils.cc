@@ -14,13 +14,19 @@
 // POINTER
 ///////////////////
 
-POINTER::POINTER() : addr(0), pointee_type(0), alloc_size(0) {}
+POINTER::POINTER() {}
 
-POINTER::POINTER(void *_addr, int _size)
-    : addr(_addr), pointee_type(0), alloc_size(_size) {}
+POINTER::POINTER(void *_addr, int _size) : addr(_addr), alloc_size(_size) {}
 
 POINTER::POINTER(void *_addr, const char *pointee_type, int _size)
     : addr(_addr), pointee_type(pointee_type), alloc_size(_size) {}
+
+POINTER::POINTER(void *_addr, const char *pointee_type, int _size,
+                 int _elem_size)
+    : addr(_addr),
+      pointee_type(pointee_type),
+      alloc_size(_size),
+      elem_size(_elem_size) {}
 
 bool POINTER::operator==(const POINTER &other) const {
   return (addr == other.addr) && (alloc_size == other.alloc_size);
@@ -620,6 +626,17 @@ FUNC_CONTEXT::FUNC_CONTEXT()
       func_id(0),
       is_carved(false) {}
 
+FUNC_CONTEXT::FUNC_CONTEXT(int _carved_idx, int _func_call_idx,
+                           const char *func_name_)
+    : carving_index(_carved_idx),
+      func_call_idx(_func_call_idx),
+      carved_ptr_begin_idx(0),
+      inputs(),
+      carved_ptrs(),
+      loaded_ptrs(),
+      func_name(func_name_),
+      is_carved(true) {}
+
 FUNC_CONTEXT::FUNC_CONTEXT(int _carved_idx, int _func_call_idx, int _func_id)
     : carving_index(_carved_idx),
       func_call_idx(_func_call_idx),
@@ -636,7 +653,9 @@ FUNC_CONTEXT::FUNC_CONTEXT(const FUNC_CONTEXT &other)
       inputs(other.inputs),
       carved_ptrs(other.carved_ptrs),
       func_id(other.func_id),
-      is_carved(other.is_carved) {}
+      is_carved(other.is_carved),
+      loaded_ptrs(other.loaded_ptrs),
+      func_name(other.func_name) {}
 
 FUNC_CONTEXT::FUNC_CONTEXT(FUNC_CONTEXT &&other)
     : carving_index(other.carving_index),
@@ -645,7 +664,9 @@ FUNC_CONTEXT::FUNC_CONTEXT(FUNC_CONTEXT &&other)
       inputs(other.inputs),
       carved_ptrs(other.carved_ptrs),
       func_id(other.func_id),
-      is_carved(other.is_carved) {}
+      is_carved(other.is_carved),
+      loaded_ptrs(other.loaded_ptrs),
+      func_name(other.func_name) {}
 
 FUNC_CONTEXT &FUNC_CONTEXT::operator=(const FUNC_CONTEXT &other) {
   carving_index = other.carving_index;
@@ -655,6 +676,8 @@ FUNC_CONTEXT &FUNC_CONTEXT::operator=(const FUNC_CONTEXT &other) {
   carved_ptrs = other.carved_ptrs;
   func_id = other.func_id;
   is_carved = other.is_carved;
+  func_name = other.func_name;
+  loaded_ptrs = other.loaded_ptrs;
   return *this;
 }
 
@@ -666,6 +689,8 @@ FUNC_CONTEXT &FUNC_CONTEXT::operator=(FUNC_CONTEXT &&other) {
   carved_ptrs = other.carved_ptrs;
   func_id = other.func_id;
   is_carved = other.is_carved;
+  func_name = other.func_name;
+  loaded_ptrs = other.loaded_ptrs;
   return *this;
 }
 
@@ -772,6 +797,7 @@ template class vector<POINTER>;
 template class vector<char *>;
 template class vector<FUNC_CONTEXT>;
 template class vector<bool>;
+template class vector<void *>;
 
 template class map<void *, int>;
 template class map<void *, char>;

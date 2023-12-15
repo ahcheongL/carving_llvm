@@ -47,3 +47,6 @@ test/map_test
 test/boost_map
 test/results
 test/yang
+
+test/model_test/main
+test/model_test/carv_out

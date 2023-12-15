@@ -115,6 +115,8 @@ class CarverMPass : public llvm::ModulePass {
   llvm::FunctionCallee insert_struct_begin;
   llvm::FunctionCallee insert_struct_end;
 
+  llvm::FunctionCallee load_addr_probe;
+
   llvm::Constant *global_carve_ready;
   llvm::Constant *global_cur_class_idx;
   llvm::Constant *global_cur_class_size;

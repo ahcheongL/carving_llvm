@@ -3,6 +3,10 @@
 
 std::set<std::string> custom_carvers;
 
+static cl::opt<bool> crash_cl("crash",
+                              cl::desc("save result at each load instrunction"),
+                              cl::init(false));
+
 char CarverMPass::ID = 0;
 
 CarverMPass::CarverMPass() : llvm::ModulePass(ID), func_id(0) {}
@@ -80,6 +84,9 @@ bool CarverMPass::runOnModule(llvm::Module &M) {
       Mod->getOrInsertFunction("__insert_struct_begin", VoidTy);
 
   insert_struct_end = Mod->getOrInsertFunction("__insert_struct_end", VoidTy);
+
+  load_addr_probe = Mod->getOrInsertFunction("__carv_mark_load_address", VoidTy,
+                                             Int8PtrTy, Int8Ty);
 
   instrument_module();
 
@@ -212,6 +219,7 @@ void CarverMPass::instrument_func(llvm::Function *func) {
   std::string func_name = func->getName().str();
 
   std::vector<llvm::Instruction *> cast_instrs;
+  std::vector<llvm::LoadInst *> load_instrs;
   std::vector<llvm::CallInst *> call_instrs;
   std::vector<llvm::Instruction *> ret_instrs;
   std::vector<llvm::InvokeInst *> invoke_instrs;
@@ -226,6 +234,8 @@ void CarverMPass::instrument_func(llvm::Function *func) {
         ret_instrs.push_back(&IN);
       } else if (llvm::isa<llvm::InvokeInst>(&IN)) {
         invoke_instrs.push_back(llvm::dyn_cast<llvm::InvokeInst>(&IN));
+      } else if (llvm::isa<llvm::LoadInst>(&IN)) {
+        load_instrs.push_back(llvm::dyn_cast<llvm::LoadInst>(&IN));
       }
     }
   }
@@ -278,6 +288,9 @@ void CarverMPass::instrument_func(llvm::Function *func) {
   IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
   llvm::Constant *func_id_const = llvm::ConstantInt::get(Int32Ty, func_id++);
 
+  llvm::Constant *func_name_const =
+      gen_new_string_constant(demangled_func_name, IRB);
+
   // Main argc argv handling
   if (demangled_func_name == "main") {
     instrument_main(func);
@@ -290,9 +303,6 @@ void CarverMPass::instrument_func(llvm::Function *func) {
     int param_idx = 0;
 
     insert_check_carve_ready();
-
-    llvm::Constant *func_name_const =
-        gen_new_string_constant(demangled_func_name, IRB);
 
     IRB->CreateCall(carv_open, {func_name_const});
 
@@ -311,8 +321,6 @@ void CarverMPass::instrument_func(llvm::Function *func) {
 
     llvm::BasicBlock *insert_block = IRB->GetInsertBlock();
     insert_global_carve_probe(func);
-
-    IRB->CreateCall(carv_close, {func_name_const});
   }
 
   DEBUG0("Insert memory tracking for " << demangled_func_name << "\n");
@@ -377,9 +385,22 @@ void CarverMPass::instrument_func(llvm::Function *func) {
     }
   }
 
+  for (auto load_instr : load_instrs) {
+    IRB->SetInsertPoint(load_instr);
+    llvm::Value *casted_ptr =
+        IRB->CreateCast(llvm::Instruction::CastOps::BitCast,
+                        load_instr->getPointerOperand(), Int8PtrTy);
+
+    bool is_crash = crash_cl.getValue();
+
+    llvm::Value *bool_val = llvm::ConstantInt::get(Int8Ty, is_crash);
+    IRB->CreateCall(load_addr_probe, {casted_ptr, bool_val});
+  }
+
   // Probing at return
   for (auto ret_instr : ret_instrs) {
     IRB->SetInsertPoint(ret_instr);
+    IRB->CreateCall(carv_close, {func_name_const});
     insert_dealloc_probes();
   }
 
