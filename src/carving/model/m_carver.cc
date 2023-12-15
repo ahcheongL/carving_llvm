@@ -780,6 +780,10 @@ static void dump_result(const char *func_name, char remove_dup) {
       fprintf(outfile, "PTR_END %d\n", ((VAR<int> *)elem)->input);
       visit_ptr_stack.pop_back();
       visit_elem_size_stack.pop_back();
+
+      if (visit_ptr_stack.size() == 0) {
+        print_obj = true;
+      }
     } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
       if (print_obj) {
         fprintf(outfile, "STRUCT_BEGIN\n");
