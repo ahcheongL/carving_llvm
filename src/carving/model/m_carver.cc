@@ -703,29 +703,31 @@ static void dump_result(const char *func_name, char remove_dup) {
     if (elem->type == INPUT_TYPE::PTR_BEGIN){
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
-      str = format_with_indent("PTR_BEGIN", false);
+      ss << "PTR_BEGIN" << ' ' << ptr_idx;
+      str = format_with_indent(ss.str(), false);
       depth++;
     } else if (elem->type == INPUT_TYPE::PTR_END){
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
+      ss << "PTR_END" << ' ' << ptr_idx;
       depth--;
-      str = format_with_indent("PTR_END", false);
+      str = format_with_indent(ss.str(), false);
     }
     else {
       if (elem->type == INPUT_TYPE::CHAR) {
-        ss << "char" << ' ' << (int)(((VAR<char> *)elem)->input);  
+        ss << "i8" << ' ' << (int)(((VAR<char> *)elem)->input);  
       } else if (elem->type == INPUT_TYPE::SHORT) {
-        ss << "short" << ' ' << (int)(((VAR<short> *)elem)->input);
+        ss << "i16" << ' ' << (int)(((VAR<short> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::INT) {
-        ss << "int" << ' ' << (int)(((VAR<int> *)elem)->input);
+        ss << "i32" << ' ' << (int)(((VAR<int> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::LONG) {
-        ss << "long" << ' ' << ((VAR<long> *)elem)->input;
+        ss << "i32" << ' ' << ((VAR<long> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::LONGLONG) {
-        ss << "long long" << ' ' << ((VAR<long long> *)elem)->input;
+        ss << "i64" << ' ' << ((VAR<long long> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::FLOAT) {
-        ss << "float" << ' ' << ((VAR<float> *)elem)->input;
+        ss << "f32" << ' ' << ((VAR<float> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::DOUBLE) {
-        ss << "double" << ' ' << ((VAR<double> *)elem)->input;
+        ss << "f64" << ' ' << ((VAR<double> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::NULLPTR) {
         ss << "nullptr";
       } else if (elem->type == INPUT_TYPE::PTR) {
@@ -740,7 +742,7 @@ static void dump_result(const char *func_name, char remove_dup) {
                                     carved_ptr->elem_size);
           visit_elem_size_stack.push_back(carved_ptr->elem_size);
         } else {
-          ss << carved_ptr->pointee_type << " * p" << ptr_idx << " + "
+          ss << carved_ptr->pointee_type << " *p" << ptr_idx << '+'
             << input->pointer_offset;
         }
       } else if (elem->type == INPUT_TYPE::FUNCPTR) {
