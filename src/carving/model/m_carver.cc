@@ -198,9 +198,14 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
       return 0;
     }
 
-    VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
+    // VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
+
+    // Let's try size 1.
+    carved_ptrs->push_back(POINTER(ptr, type_name, default_size, default_size));
+
+    VAR<int> *inputv = new VAR<int>(carved_ptrs->size(), 0, 0, INPUT_TYPE::PTR);
     carved_objs->push_back((IVAR *)inputv);
-    return 0;
+    return default_size;
   }
 
   char *closest_alloc_ptr_addr = (char *)closest_alloc->key;
@@ -216,9 +221,14 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
       return 0;
     }
 
-    VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
+    // VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
+
+    // Let's try size 1.
+    carved_ptrs->push_back(POINTER(ptr, type_name, default_size, default_size));
+
+    VAR<int> *inputv = new VAR<int>(carved_ptrs->size(), 0, 0, INPUT_TYPE::PTR);
     carved_objs->push_back((IVAR *)inputv);
-    return 0;
+    return default_size;
   }
 
   int ptr_alloc_size = alloced_addr_end - ((char *)ptr);
@@ -688,34 +698,33 @@ static void dump_result(const char *func_name, char remove_dup) {
 
   bool print_obj = true;
   int depth = 0;
-  auto format_with_indent = [&depth] (std::string str, bool reached){
+  auto format_with_indent = [&depth](std::string str, bool reached) {
     std::string indent(2 * depth, ' ');
     std::stringstream ss;
     ss << (reached ? '%' : '-') << ' ' << indent << str << '\n';
     return ss.str();
   };
 
-  for (int idx=0; idx < num_objs; ++idx) {
+  for (int idx = 0; idx < num_objs; ++idx) {
     IVAR *elem = *(carved_objs->get(idx));
     std::stringstream ss;
     std::string str;
 
-    if (elem->type == INPUT_TYPE::PTR_BEGIN){
+    if (elem->type == INPUT_TYPE::PTR_BEGIN) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
       ss << "PTR_BEGIN" << ' ' << ptr_idx;
       str = format_with_indent(ss.str(), false);
       depth++;
-    } else if (elem->type == INPUT_TYPE::PTR_END){
+    } else if (elem->type == INPUT_TYPE::PTR_END) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
       ss << "PTR_END" << ' ' << ptr_idx;
       depth--;
       str = format_with_indent(ss.str(), false);
-    }
-    else {
+    } else {
       if (elem->type == INPUT_TYPE::CHAR) {
-        ss << "i8" << ' ' << (int)(((VAR<char> *)elem)->input);  
+        ss << "i8" << ' ' << (int)(((VAR<char> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::SHORT) {
         ss << "i16" << ' ' << (int)(((VAR<short> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::INT) {
@@ -737,13 +746,13 @@ static void dump_result(const char *func_name, char remove_dup) {
 
         if (input->pointer_offset == 0) {
           ss << carved_ptr->pointee_type << ' ' << "p" << ptr_idx << '['
-            << carved_ptr->alloc_size << ']';
+             << carved_ptr->alloc_size << ']';
           visit_ptr_stack.push_back((char *)carved_ptr->addr -
                                     carved_ptr->elem_size);
           visit_elem_size_stack.push_back(carved_ptr->elem_size);
         } else {
           ss << carved_ptr->pointee_type << " *p" << ptr_idx << '+'
-            << input->pointer_offset;
+             << input->pointer_offset;
         }
       } else if (elem->type == INPUT_TYPE::FUNCPTR) {
         VAR<char *> *input = (VAR<char *> *)elem;
