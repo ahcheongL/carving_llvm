@@ -1,10 +1,10 @@
-#include<utils.hpp>
+#include <assert.h>
 
+#include <random>
+#include <set>
+#include <vector>
 
-#include<assert.h>
-#include<vector>
-#include<random>
-#include<set>
+#include "utils/data_utils.hpp"
 
 map<int, int> tmp;
 
@@ -12,7 +12,7 @@ std::set<int> inserted_keys;
 std::set<int> removed_keys;
 std::set<int> keys;
 
-int main(int argc, char * argv[]) {
+int main(int argc, char* argv[]) {
   srand(time(NULL));
   unsigned int idx;
   for (idx = 0; idx < 100; idx++) {
@@ -22,27 +22,28 @@ int main(int argc, char * argv[]) {
     keys.insert(random_val);
     inserted_keys.insert(random_val);
     int map_size = tmp.size();
-    
+
     assert(tmp.nodes[0].parent == NULL);
     unsigned int idx2;
-    for (idx2 = 0; idx2 < map_size; idx2++) {      
+    for (idx2 = 0; idx2 < map_size; idx2++) {
       if (tmp.nodes[idx2].parent != NULL) {
-        map<int,int>::data_node * parent = tmp.nodes[idx2].parent;
+        map<int, int>::data_node* parent = tmp.nodes[idx2].parent;
         assert(parent >= tmp.nodes && parent < tmp.nodes + map_size);
-        assert((parent->left == &tmp.nodes[idx2]) || (parent->right == &tmp.nodes[idx2]));
+        assert((parent->left == &tmp.nodes[idx2]) ||
+               (parent->right == &tmp.nodes[idx2]));
         assert(tmp.find(tmp.nodes[idx2].key) == &(tmp.nodes[idx2].elem));
       }
 
       if (tmp.nodes[idx2].left != NULL) {
         assert(tmp.nodes[idx2].key > tmp.nodes[idx2].left->key);
-        assert (tmp.nodes[idx2].left >= tmp.nodes);
-        assert (tmp.nodes[idx2].left < tmp.nodes + map_size);
+        assert(tmp.nodes[idx2].left >= tmp.nodes);
+        assert(tmp.nodes[idx2].left < tmp.nodes + map_size);
       }
 
       if (tmp.nodes[idx2].right != NULL) {
         assert(tmp.nodes[idx2].key < tmp.nodes[idx2].right->key);
-        assert (tmp.nodes[idx2].right >= tmp.nodes);
-        assert (tmp.nodes[idx2].right < tmp.nodes + map_size);
+        assert(tmp.nodes[idx2].right >= tmp.nodes);
+        assert(tmp.nodes[idx2].right < tmp.nodes + map_size);
       }
     }
   }
@@ -62,11 +63,12 @@ int main(int argc, char * argv[]) {
     assert(keys.size() == tmp.size());
 
     unsigned int idx2;
-    for (idx2 = 0; idx2 < tmp.size(); idx2++) {      
+    for (idx2 = 0; idx2 < tmp.size(); idx2++) {
       if (tmp.nodes[idx2].parent != NULL) {
         assert(tmp.nodes[idx2].parent - tmp.nodes < tmp.size());
-        map<int,int>::data_node * parent = tmp.nodes[idx2].parent;
-        assert((parent->left == &tmp.nodes[idx2]) || (parent->right == &tmp.nodes[idx2]));
+        map<int, int>::data_node* parent = tmp.nodes[idx2].parent;
+        assert((parent->left == &tmp.nodes[idx2]) ||
+               (parent->right == &tmp.nodes[idx2]));
         assert(tmp.find(tmp.nodes[idx2].key) == &(tmp.nodes[idx2].elem));
       }
 
@@ -78,8 +80,6 @@ int main(int argc, char * argv[]) {
         assert(tmp.nodes[idx2].key < tmp.nodes[idx2].right->key);
       }
     }
-
-    
   }
 
   assert(keys.size() == tmp.size());
@@ -97,11 +97,12 @@ int main(int argc, char * argv[]) {
     tmp.remove(key);
 
     unsigned int idx2;
-    for (idx2 = 0; idx2 < tmp.size(); idx2++) {      
+    for (idx2 = 0; idx2 < tmp.size(); idx2++) {
       if (tmp.nodes[idx2].parent != NULL) {
         assert(tmp.nodes[idx2].parent - tmp.nodes < tmp.size());
-        map<int,int>::data_node * parent = tmp.nodes[idx2].parent;
-        assert((parent->left == &tmp.nodes[idx2]) || (parent->right == &tmp.nodes[idx2]));
+        map<int, int>::data_node* parent = tmp.nodes[idx2].parent;
+        assert((parent->left == &tmp.nodes[idx2]) ||
+               (parent->right == &tmp.nodes[idx2]));
         assert(tmp.find(tmp.nodes[idx2].key) == &(tmp.nodes[idx2].elem));
       }
 

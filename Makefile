@@ -33,7 +33,7 @@ MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: carve_func_ctx carve_type_based carve_func_args carve_model \
 	unit_test extend_driver fuzz_driver clementine_driver \
-	simple_unit_driver_pass
+	simple_unit_driver_pass 
 
 carve_func_ctx: lib/carve_func_ctx_pass.so lib/fc_carver.a
 carve_type_based: lib/carve_type_pass.so lib/tb_carver.a
@@ -87,11 +87,12 @@ lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o
 		-c $< -o src/carving/type_based/tb_carver.o
 	$(AR) rsv $@ src/carving/type_based/tb_carver.o src/utils/data_utils.o
 
-lib/m_carver.a: src/carving/model/m_carver.cc src/utils/data_utils.o
+lib/m_carver.a: src/carving/model/m_carver.cc \
+	src/utils/data_utils.o src/utils/ptr_map.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/type_based/m_carver.o
-	$(AR) rsv $@ src/carving/type_based/m_carver.o src/utils/data_utils.o
+	$(AR) rsv $@ src/carving/type_based/m_carver.o src/utils/data_utils.o src/utils/ptr_map.o
 
 lib/fuzz_driver_pass.so: src/drivers/fuzz_driver/fuzz_driver_pass.cc \
 	src/utils/driver_pass_utils.o src/utils/pass_utils.o
@@ -193,6 +194,9 @@ src/drivers/ossfuzz_extend/extend_driver.o: \
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils -c $< -o $@
 
 src/utils/data_utils.o: src/utils/data_utils.cc include/utils/data_utils.hpp
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
+
+src/utils/ptr_map.o: src/utils/ptr_map.cc include/utils/ptr_map.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
 clean:

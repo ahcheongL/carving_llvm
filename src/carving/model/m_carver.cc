@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include "utils/data_utils.hpp"
+#include "utils/ptr_map.hpp"
 
 #define MAX_NUM_FILE 8
 #define MINSIZE 3
@@ -31,8 +32,8 @@ static vector<IVAR *> *carved_objs = NULL;
 static vector<POINTER> *carved_ptrs = NULL;
 
 // memory info
-// static boost::container::map<void *, struct typeinfo> alloced_ptrs;
-map<void *, struct typeinfo> alloced_ptrs;
+ptr_map alloced_ptrs;
+// map<void *, struct typeinfo> alloced_ptrs;
 
 int __carv_cur_class_index = -1;
 int __carv_cur_class_size = -1;
@@ -189,8 +190,10 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     return 0;
   }
 
-  auto closest_alloc = alloced_ptrs.find_small_closest(ptr);
-  if (closest_alloc == NULL) {
+  ptr_map::rbtree_node *ptr_node = alloced_ptrs.find(ptr);
+  if (ptr_node == NULL) {
+    // We could not found the memory info.
+
     auto search = func_ptrs.find(ptr);
     if (search != NULL) {
       VAR<char *> *inputv = new VAR<char *>(*search, 0, INPUT_TYPE::FUNCPTR);
@@ -208,36 +211,15 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     return default_size;
   }
 
-  char *closest_alloc_ptr_addr = (char *)closest_alloc->key;
-  typeinfo *closest_alloced_info = &closest_alloc->elem;
+  char *alloc_ptr = (char *)ptr_node->key_;
+  int ptr_alloc_size = ptr_node->alloc_size_;
 
-  char *alloced_addr_end = closest_alloc_ptr_addr + closest_alloced_info->size;
-
-  if (alloced_addr_end < (char *)ptr) {
-    auto search = func_ptrs.find(ptr);
-    if (search != NULL) {
-      VAR<char *> *inputv = new VAR<char *>(*search, 0, INPUT_TYPE::FUNCPTR);
-      carved_objs->push_back((IVAR *)inputv);
-      return 0;
-    }
-
-    // VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
-
-    // Let's try size 1.
-    carved_ptrs->push_back(POINTER(ptr, type_name, default_size, default_size));
-
-    VAR<int> *inputv = new VAR<int>(carved_ptrs->size(), 0, 0, INPUT_TYPE::PTR);
-    carved_objs->push_back((IVAR *)inputv);
-    return default_size;
-  }
-
-  int ptr_alloc_size = alloced_addr_end - ((char *)ptr);
   int new_carved_ptr_index = carved_ptrs->size();
 
   __carv_cur_class_index = default_idx;
   __carv_cur_class_size = default_size;
 
-  char *name_ptr = closest_alloced_info->type_name;
+  char *name_ptr = ptr_node->type_name_;
   if (name_ptr != NULL) {
     auto search = class_info.find(name_ptr);
     if ((search != NULL) && ((ptr_alloc_size % search->size) == 0)) {
@@ -290,15 +272,12 @@ int __get_class_idx() { return __carv_cur_class_index; }
 int __get_class_size() { return __carv_cur_class_size; }
 
 // Save ptr with size and type_name into memory `allocted_ptrs`.
-void __mem_allocated_probe(void *ptr, int size, char *type_name) {
+void __mem_allocated_probe(void *ptr, int alloc_size, char *type_name) {
   if (!__carv_ready) {
     return;
   }
-  struct typeinfo tmp {
-    type_name, size
-  };
-  // alloced_ptrs[ptr] = tmp;
-  alloced_ptrs.insert(ptr, tmp);
+
+  alloced_ptrs.insert(ptr, type_name, alloc_size);
   return;
 }
 

@@ -1,5 +1,5 @@
-#ifndef __CROWN_CARVE_HEADER
-#define __CROWN_CARVE_HEADER
+#ifndef __CARVING_DATA_UTILS_HPP
+#define __CARVING_DATA_UTILS_HPP
 
 enum INPUT_TYPE {
   CHAR,
