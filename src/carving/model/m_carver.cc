@@ -201,14 +201,17 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
       return 0;
     }
 
-    // VAR<void *> *inputv = new VAR<void *>(ptr, 0, INPUT_TYPE::UNKNOWN_PTR);
+    VAR<void *> *inputv =
+        new VAR<void *>(ptr, type_name, INPUT_TYPE::UNKNOWN_PTR);
 
     // Let's try size 1.
-    carved_ptrs->push_back(POINTER(ptr, type_name, default_size, default_size));
+    // carved_ptrs->push_back(POINTER(ptr, type_name, default_size,
+    // default_size));
 
-    VAR<int> *inputv = new VAR<int>(carved_ptrs->size(), 0, 0, INPUT_TYPE::PTR);
+    // VAR<int> *inputv = new VAR<int>(carved_ptrs->size(), 0, 0,
+    // INPUT_TYPE::PTR);
     carved_objs->push_back((IVAR *)inputv);
-    return default_size;
+    return 0;
   }
 
   char *alloc_ptr = (char *)ptr_node->key_;
@@ -737,7 +740,7 @@ static void dump_result(const char *func_name, char remove_dup) {
         VAR<char *> *input = (VAR<char *> *)elem;
         ss << "func" << ' ' << input->input;
       } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
-        ss << "?";
+        ss << "?:" << elem->name;
       } else if (elem->type == INPUT_TYPE::PTR_IDX) {
         VAR<int> *input = (VAR<int> *)elem;
 

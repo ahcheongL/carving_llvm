@@ -36,9 +36,11 @@ int main() {
     assert(node->alloc_size_ == 4 + i);
   }
 
+  delete map1;
+
   chrono::steady_clock::time_point ptr_map_end = chrono::steady_clock::now();
 
-  cout << "ptr_map time taken : "
+  cout << "new map (ptr_map) time taken : "
        << chrono::duration_cast<chrono::milliseconds>(ptr_map_end - begin)
               .count()
        << " ms" << endl;
@@ -73,6 +75,8 @@ int main() {
     assert(node2 != nullptr);
     assert(node2->size == 4 + i);
   }
+
+  delete map2;
 
   chrono::steady_clock::time_point map_end = chrono::steady_clock::now();
   cout << "old map time taken: "
