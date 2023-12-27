@@ -198,7 +198,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   LOCK_SHM_MAP();
 
   if (ptr == NULL) {
-    VAR<void *> *inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
+    VAR<void *> *inputv = new VAR<void *>(NULL, type_name, INPUT_TYPE::NULLPTR);
     carved_objs->push_back((IVAR *)inputv);
     UNLOCK_SHM_MAP();
     return 0;
@@ -855,6 +855,11 @@ static void dump_result(const char *func_name, char remove_dup) {
         ss << "f64" << ' ' << ((VAR<double> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::NULLPTR) {
         ss << "nullptr";
+        if (elem->name == NULL){
+          ss << ":" << "func";
+        } else {
+          ss << ":" << elem->name;
+        }
       } else if (elem->type == INPUT_TYPE::PTR) {
         VAR<int> *input = (VAR<int> *)elem;
         int ptr_idx = input->input;
