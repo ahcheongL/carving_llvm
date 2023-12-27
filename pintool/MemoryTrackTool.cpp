@@ -93,8 +93,6 @@ VOID* MallocWrapperInTool(size_t size) {
     return res;
   }
 
-  cerr << "Adding malloc entry : " << res << "," << size << endl;
-
   ((int*)shm_map)[0] = cur_num_entry + 1;
 
   shm_entry* entry = &((shm_entry*)shm_map)[cur_num_entry + 1];
@@ -126,8 +124,6 @@ VOID FreeWrapperInTool(void* p) {
     return;
   }
 
-  cerr << "Adding free entry : " << p << endl;
-
   ((int*)shm_map)[0] = cur_num_entry + 1;
 
   shm_entry* entry = &((shm_entry*)shm_map)[cur_num_entry + 1];
@@ -139,7 +135,6 @@ VOID FreeWrapperInTool(void* p) {
 
 VOID EXITWarpperInTool(int code) {
   enable_record = false;
-  cerr << "Exit wrapper called\n";
 
   shmctl(shm_id, IPC_RMID, 0);
   unsetenv(SHM_ID_ENV);

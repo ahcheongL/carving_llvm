@@ -34,7 +34,7 @@ class ptr_map {
     rbtree_node *left_ = 0;
     rbtree_node *right_ = 0;
     rbtree_node *parent_ = 0;
-    enum rbtree_node_color color_ = BLACK;
+    enum rbtree_node_color color_ = RED;
 
     rbtree_node(void *key, char *type_name, int alloc_size);
     ~rbtree_node();
@@ -78,6 +78,8 @@ class ptr_map {
   void delete_case4(rbtree_node *n);
   void delete_case5(rbtree_node *n);
   void delete_case6(rbtree_node *n);
+
+  void print_tree(rbtree_node *n);
 };
 
 #endif

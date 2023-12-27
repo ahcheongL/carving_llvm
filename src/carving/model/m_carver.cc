@@ -19,12 +19,6 @@
 #define SHM_ID_ENV "CARVING_SHM_ID"
 #define NUM_SHM_ENTRY 1024
 
-typedef struct shm_entry_ {
-  char *ptr;
-  int size;
-  char is_malloc;
-} shm_entry;
-
 #define MAX_NUM_FILE 8
 #define MINSIZE 3
 #define MAXSIZE 24
@@ -42,6 +36,12 @@ static map<void *, char *> func_ptrs;
 static vector<FUNC_CONTEXT> inputs;
 static vector<IVAR *> *carved_objs = NULL;
 static vector<POINTER> *carved_ptrs = NULL;
+
+typedef struct shm_entry_ {
+  char *ptr;
+  int size;
+  char is_malloc;
+} shm_entry;
 
 char *ptr_alloc_shm_map = NULL;
 
@@ -352,10 +352,7 @@ void __remove_mem_allocated_probe(void *ptr) {
 void __fetch_mem_alloc() {
   int cur_num_entry = ((int *)ptr_alloc_shm_map)[0];
   int idx = 0;
-
   LOCK_SHM_MAP();
-
-  std::cerr << "fetch mem alloc, cur_num_entry : " << cur_num_entry << "\n";
 
   for (idx = 0; idx < cur_num_entry; idx++) {
     shm_entry *entry = &((shm_entry *)ptr_alloc_shm_map)[idx + 1];
@@ -366,112 +363,8 @@ void __fetch_mem_alloc() {
     }
   }
   ((int *)ptr_alloc_shm_map)[0] = 0;
+
   UNLOCK_SHM_MAP();
-}
-
-// Currently not using due to overhead...
-static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
-  int idx1, idx2, idx3, idx4, idx5;
-  bool changed = true;
-  while (changed) {
-    changed = false;
-    idx1 = begin_idx;
-    while (idx1 < end_idx) {
-      int idx2 = idx1 + 1;
-      POINTER *cur_carved_ptr = carved_ptrs->get(idx1);
-      char *addr1 = (char *)cur_carved_ptr->addr;
-      int size1 = cur_carved_ptr->alloc_size;
-      if (size1 == 0) {
-        idx1++;
-        continue;
-      }
-      char *end_addr1 = addr1 + size1;
-      const char *type1 = cur_carved_ptr->pointee_type;
-
-      while (idx2 < end_idx) {
-        POINTER *cur_carved_ptr2 = carved_ptrs->get(idx2);
-        char *addr2 = (char *)cur_carved_ptr2->addr;
-        int size2 = cur_carved_ptr2->alloc_size;
-        if (size2 == 0) {
-          idx2++;
-          continue;
-        }
-        char *end_addr2 = addr2 + size2;
-        const char *type2 = cur_carved_ptr2->pointee_type;
-        if (type1 != type2) {
-          idx2++;
-          continue;
-        }
-        int offset = -1;
-        int remove_ptr_idx;
-        int replacing_ptr_idx;
-        POINTER *remove_ptr;
-        if ((addr1 <= addr2) && (addr2 < end_addr1)) {
-          offset = addr2 - addr1;
-          remove_ptr_idx = idx2;
-          replacing_ptr_idx = idx1;
-          remove_ptr = cur_carved_ptr2;
-        } else if ((addr2 <= addr1) && (addr1 < end_addr2)) {
-          offset = addr1 - addr2;
-          remove_ptr_idx = idx1;
-          replacing_ptr_idx = idx2;
-          remove_ptr = cur_carved_ptr;
-        }
-
-        if (offset != -1) {
-          // remove remove_ptr in inputs;
-          int idx3 = 0;
-          int num_inputs = carved_objs->size();
-          while (idx3 < num_inputs) {
-            IVAR *tmp_input = *(carved_objs->get(idx3));
-            if (tmp_input->type == INPUT_TYPE::PTR) {
-              VAR<int> *tmp_inputt = (VAR<int> *)tmp_input;
-              if (tmp_inputt->input == remove_ptr_idx) {
-                int old_offset = tmp_inputt->pointer_offset;
-                tmp_inputt->input = replacing_ptr_idx;
-                tmp_inputt->pointer_offset = offset + old_offset;
-                if (old_offset == 0) {
-                  // remove element carved results
-                  char *var_name = tmp_input->name;
-                  size_t var_name_len = strlen(var_name);
-                  char *check_name = (char *)malloc(var_name_len + 2);
-                  memcpy(check_name, var_name, var_name_len);
-                  check_name[var_name_len] = '[';
-                  check_name[var_name_len + 1] = 0;
-                  int idx4 = idx3 + 1;
-                  while (idx4 < num_inputs) {
-                    IVAR *next_input = *(carved_objs->get(idx4));
-                    if (strncmp(check_name, next_input->name,
-                                var_name_len + 1) != 0) {
-                      break;
-                    }
-                    idx4++;
-                  }
-                  free(check_name);
-                  int idx5 = idx3 + 1;
-                  while (idx5 < idx4) {
-                    delete *(carved_objs->get(idx3 + 1));
-                    carved_objs->remove(idx3 + 1);
-                    idx5++;
-                  }
-                  num_inputs = carved_objs->size();
-                }
-              }
-            }
-            idx3++;
-          }
-          remove_ptr->alloc_size = 0;
-          changed = true;
-          break;
-        }
-        idx2++;
-      }
-
-      if (changed) break;
-      idx1++;
-    }
-  }
-  return;
 }
 
 static map<char *, char *> file_save_hash_map;
@@ -496,45 +389,6 @@ void __carv_file(char *file_name) {
     memset(hash_vec, 0, sizeof(char) * 256);
     file_save_hash_map.insert(file_name, hash_vec);
   }
-
-  // char *hash_vec = *(file_save_hash_map.find(file_name));
-
-  // char file_outdir_name[256];
-  // snprintf(file_outdir_name, 256, "%s/carved_file_%s", outdir_name,
-  // file_name);
-
-  // mkdir(file_outdir_name, 0777);
-
-  // char outfile_name[256];
-  // snprintf(outfile_name, 256, "%s/carved_file_%s/%d", outdir_name, file_name,
-  //          file_idx++);
-
-  // FILE *outfile = fopen(outfile_name, "wb");
-  // if (outfile == NULL) {
-  //   fclose(target_file);
-  //   return;
-  // }
-
-  // char buf[4096];
-  // int read_size;
-  // int hash_val = 0;
-  // while ((read_size = fread(buf, 1, 4096, target_file)) > 0) {
-  //   fwrite(buf, 1, read_size, outfile);
-  //   int idx = 0;
-  //   while (idx < read_size) {
-  //     hash_val += buf[idx++];
-  //     hash_val = hash_val % 256;
-  //   }
-  // }
-
-  // fclose(target_file);
-  // fclose(outfile);
-
-  // if (hash_vec[hash_val] == 0) {
-  //   hash_vec[hash_val] = 1;
-  // } else {
-  //   unlink(outfile_name);
-  // }
 
   unsigned int *file_idx_ptr = file_save_idx_map.find(file_name);
   if (file_idx_ptr == NULL) {
@@ -721,8 +575,6 @@ void __carv_close(const char *func_name) {
 
   LOCK_SHM_MAP();
 
-  std::cerr << "carv_close : " << func_name << "\n";
-
   if (!(carved_objs == NULL || (carved_objs->size() == 0))) {
     UNLOCK_SHM_MAP();
     dump_result(func_name, 1);
@@ -855,8 +707,9 @@ static void dump_result(const char *func_name, char remove_dup) {
         ss << "f64" << ' ' << ((VAR<double> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::NULLPTR) {
         ss << "nullptr";
-        if (elem->name == NULL){
-          ss << ":" << "func";
+        if (elem->name == NULL) {
+          ss << ":"
+             << "func";
         } else {
           ss << ":" << elem->name;
         }

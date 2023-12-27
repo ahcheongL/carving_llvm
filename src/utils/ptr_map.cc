@@ -2,6 +2,7 @@
 #include "utils/ptr_map.hpp"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,6 +67,8 @@ void ptr_map::insert(void *key, char *type_name, int alloc_size) {
   unsigned int root_hash =
       (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
 
+  // TODO check memory boundary
+
   rbtree_node *root = roots[root_hash];
 
   if (root == 0) {
@@ -77,9 +80,7 @@ void ptr_map::insert(void *key, char *type_name, int alloc_size) {
 
   rbtree_node *n = root;
   while (1) {
-    // We should not include the end point here...
-    if ((n->key_ <= key) &&
-        (((unsigned long)n->key_ + n->alloc_size_) > (unsigned long)key)) {
+    if (key == n->key_) {
       delete new_node;
 
       // Overlapping memory regions... how?
@@ -107,12 +108,18 @@ void ptr_map::insert(void *key, char *type_name, int alloc_size) {
     }
   }
 
+  // assert(new_node->parent_ != nullptr);
+
   insert_case2(new_node);
+
+  // fprintf(stderr, "Printing after insert\n");
+  // print_tree(roots[root_hash]);
 
   unsigned int cache_hash =
       (((key_v >> CACHE_ENTRY_SHIFT) ^ (key_v)) & CACHE_ENTRY_MASK);
   cache[cache_hash].node_ = new_node;
   cache[cache_hash].availability_ = true;
+  return;
 }
 
 void ptr_map::insert_case1(rbtree_node *n) {
@@ -158,6 +165,9 @@ void ptr_map::insert_case4(rbtree_node *n) {
   }
 
   // case 5
+
+  parent = n->parent_;
+  grandp = n->get_grandparent();
 
   parent->color_ = BLACK;
   grandp->color_ = RED;
@@ -284,6 +294,8 @@ void ptr_map::remove(void *key) {
     return;
   }
 
+  rbtree_node *node_to_delete = node;
+
   if (node->left_ != nullptr && node->right_ != nullptr) {
     rbtree_node *pred = node->left_;
     while (pred->right_ != nullptr) {
@@ -295,19 +307,26 @@ void ptr_map::remove(void *key) {
     node->alloc_size_ = pred->alloc_size_;
 
     // Remove pred instead.
-    node = pred;
+    node_to_delete = pred;
   }
 
   //   assert(node->right_ == nullptr || node->left_ == nullptr);
 
-  rbtree_node *child = node->right_ == nullptr ? node->left_ : node->right_;
-  if (node->color_ == rbtree_node_color::BLACK) {
-    node->color_ = child == nullptr ? rbtree_node_color::BLACK : child->color_;
-    delete_case1(node);
+  rbtree_node *child = node_to_delete->right_ == nullptr
+                           ? node_to_delete->left_
+                           : node_to_delete->right_;
+
+  // assert(node_to_delete->right_ == nullptr || node_to_delete->left_ ==
+  // nullptr);
+
+  if (node_to_delete->color_ == rbtree_node_color::BLACK) {
+    node_to_delete->color_ =
+        child == nullptr ? rbtree_node_color::BLACK : child->color_;
+    delete_case1(node_to_delete);
   }
 
-  if (node->parent_ == nullptr) {
-    unsigned long key_v = (unsigned long)node->key_;
+  if (node_to_delete->parent_ == nullptr) {
+    unsigned long key_v = (unsigned long)node_to_delete->key_;
     unsigned int root_hash =
         (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
 
@@ -317,18 +336,25 @@ void ptr_map::remove(void *key) {
       child->color_ = rbtree_node_color::BLACK;
     }
   } else {
-    if (node == node->parent_->left_) {
-      node->parent_->left_ = child;
+    if (node_to_delete == node_to_delete->parent_->left_) {
+      node_to_delete->parent_->left_ = child;
     } else {
-      node->parent_->right_ = child;
+      node_to_delete->parent_->right_ = child;
     }
   }
 
   if (child != nullptr) {
-    child->parent_ = node->parent_;
+    child->parent_ = node_to_delete->parent_;
   }
 
-  delete node;
+  unsigned long key_v2 = (unsigned long)node_to_delete->key_;
+  unsigned int root_hash =
+      (((key_v2 >> ROOT_ENTRY_SHIFT) ^ (key_v2)) & ROOT_ENTRY_MASK);
+
+  delete node_to_delete;
+
+  // fprintf(stderr, "Printing after delete\n");
+  // print_tree(roots[root_hash]);
   return;
 }
 
@@ -344,11 +370,9 @@ void ptr_map::delete_case2(rbtree_node *n) {
   rbtree_node *s =
       n->parent_->left_ == n ? n->parent_->right_ : n->parent_->left_;
 
-  if (s == nullptr) {
-    return;
-  }
+  assert(s != nullptr);
 
-  if (s != nullptr && s->color_ == rbtree_node_color::RED) {
+  if (s->color_ == rbtree_node_color::RED) {
     n->parent_->color_ = rbtree_node_color::RED;
     s->color_ = rbtree_node_color::BLACK;
     if (n == n->parent_->left_) {
@@ -441,4 +465,31 @@ void ptr_map::delete_case6(rbtree_node *n) {
     s->left_->color_ = rbtree_node_color::BLACK;
     rotate_right(n->parent_);
   }
+}
+
+static void print_tree_sub(ptr_map::rbtree_node *node, int depth) {
+  if (node == nullptr) {
+    return;
+  }
+
+  for (int i = 0; i < depth; i++) {
+    fprintf(stderr, " ");
+  }
+
+  fprintf(stderr, "%p, color: %d, key: %p, left: %p, right : %p\n", node,
+          node->color_, node->key_, node->left_, node->right_);
+  print_tree_sub(node->left_, depth + 1);
+  print_tree_sub(node->right_, depth + 1);
+}
+
+void ptr_map::print_tree(rbtree_node *node) {
+  fprintf(stderr, "Print tree : %p\n", node);
+
+  if (node == nullptr) {
+    return;
+  }
+
+  print_tree_sub(node, 0);
+
+  fprintf(stderr, "End of tree\n");
 }
