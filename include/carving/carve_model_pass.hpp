@@ -74,10 +74,11 @@ class CarverMPass : public llvm::ModulePass {
 
   void insert_alloca_probe(llvm::BasicBlock &);
   void insert_dealloc_probes();
-  bool insert_mem_func_call_probe(llvm::Instruction *, std::string);
   Constant *get_mem_alloc_type(llvm::Instruction *call_inst);
 
   void insert_check_carve_ready();
+
+  bool need_malloc_check(llvm::Function *);
 
   int func_id;
 
@@ -91,6 +92,8 @@ class CarverMPass : public llvm::ModulePass {
 
   llvm::FunctionCallee mem_allocated_probe;
   llvm::FunctionCallee remove_probe;
+
+  llvm::FunctionCallee fetch_mem_alloc;
 
   llvm::FunctionCallee record_func_ptr;
 

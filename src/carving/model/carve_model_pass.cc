@@ -40,6 +40,8 @@ bool CarverMPass::runOnModule(llvm::Module &M) {
   remove_probe = Mod->getOrInsertFunction("__remove_mem_allocated_probe",
                                           VoidTy, Int8PtrTy);
 
+  fetch_mem_alloc = Mod->getOrInsertFunction("__fetch_mem_alloc", VoidTy);
+
   record_func_ptr = Mod->getOrInsertFunction("__record_func_ptr", VoidTy,
                                              Int8PtrTy, Int8PtrTy);
 
@@ -145,12 +147,6 @@ bool CarverMPass::instrument_module() {
 // Analyze existing llvm::Functions and write on func_types.txt and
 // target_funcs.txt.
 void CarverMPass::get_instrument_func_set() {
-  // Control file containing the llvm::Functions to carve
-  std::ifstream targets("targets.txt");
-
-  // std::ofstream outfile("func_types.txt");
-  // std::ofstream outfile2("target_funcs.txt");
-
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) {
       continue;
@@ -198,12 +194,6 @@ void CarverMPass::get_instrument_func_set() {
     // continue; }
 
     instrument_func_set.insert(func_name);
-    // outfile << func_name;
-    // std::string tmp;
-    // llvm::raw_string_ostream output(tmp);
-    // F.getType()->print(output);
-    // outfile << " " << output.str() << "\n";
-    // outfile2 << func_name << "\n";
   }
 
   DEBUG0("# of instrument llvm::Functions : " << instrument_func_set.size()
@@ -244,39 +234,44 @@ void CarverMPass::instrument_func(llvm::Function *func) {
   llvm::BasicBlock &entry_block = func->getEntryBlock();
   insert_alloca_probe(entry_block);
 
-  if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
-    // Perform only memory tracking
-    for (llvm::CallInst *call_instr : call_instrs) {
-      llvm::Function *callee = call_instr->getCalledFunction();
-      if ((callee == NULL) || (callee->isDebugInfoForProfiling())) {
-        continue;
-      }
-      std::string callee_name = callee->getName().str();
-      if (callee_name == "__cxa_allocate_exception") {
-        continue;
-      }
-
-      if (callee_name == "__cxa_throw") {
-        // exception handling
-        IRB->SetInsertPoint(call_instr);
-
-        insert_dealloc_probes();
-
-        // Insert fini
-        if (func_name == "main") {
-          IRB->CreateCall(__carv_fini, {});
-        }
-      }
-
-      IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
-      insert_mem_func_call_probe(call_instr, callee_name);
+  // Perform memory tracking
+  for (llvm::CallInst *call_instr : call_instrs) {
+    llvm::Function *callee = call_instr->getCalledFunction();
+    if ((callee == NULL) || (callee->isDebugInfoForProfiling())) {
+      continue;
     }
 
+    string callee_name = callee->getName().str();
+    if (callee_name == "__cxa_allocate_exception") {
+      continue;
+    } else if (callee_name == "__cxa_throw") {
+      // exception handling
+      IRB->SetInsertPoint(call_instr);
+
+      insert_dealloc_probes();
+
+      // Insert fini
+      if (func_name == "main") {
+        IRB->CreateCall(__carv_fini, {});
+      }
+      continue;
+    }
+
+    if (!need_malloc_check(callee)) {
+      continue;
+    }
+
+    llvm::errs() << "Inserting for " << callee_name << "\n";
+
+    IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
+    IRB->CreateCall(fetch_mem_alloc, {});
+  }
+
+  if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
     for (auto ret_instr : ret_instrs) {
       IRB->SetInsertPoint(ret_instr);
       insert_dealloc_probes();
     }
-
     tracking_allocas.clear();
     return;
   }
@@ -323,68 +318,7 @@ void CarverMPass::instrument_func(llvm::Function *func) {
     insert_global_carve_probe(func);
   }
 
-  DEBUG0("Insert memory tracking for " << demangled_func_name << "\n");
-
-  // Call instr probing
-  for (auto call_instr : call_instrs) {
-    // insert new/free probe, return llvm::Value probe
-    llvm::Function *callee = call_instr->getCalledFunction();
-    if (callee == NULL) {
-      continue;
-    }
-
-    if (callee->isDebugInfoForProfiling()) {
-      continue;
-    }
-
-    std::string callee_name = callee->getName().str();
-    if (callee_name == "__cxa_allocate_exception") {
-      continue;
-    }
-
-    if (callee_name == "exit") {
-      IRB->SetInsertPoint(call_instr);
-      IRB->CreateCall(__carv_fini, {});
-    } else if (callee_name == "__cxa_throw") {
-      // exception handling
-      IRB->SetInsertPoint(call_instr);
-
-      insert_dealloc_probes();
-      // Insert fini
-      if (func_name == "main") {
-        IRB->CreateCall(__carv_fini, {});
-      }
-    } else {
-      IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
-      insert_mem_func_call_probe(call_instr, callee_name);
-    }
-  }
-
-  for (auto invoke_instr : invoke_instrs) {
-    // insert new/free probe, return llvm::Value probe
-    llvm::Function *callee = invoke_instr->getCalledFunction();
-    if (callee == NULL) {
-      continue;
-    }
-
-    if (callee->isDebugInfoForProfiling()) {
-      continue;
-    }
-
-    std::string callee_name = callee->getName().str();
-    if (callee_name == "__cxa_allocate_exception") {
-      continue;
-    }
-
-    if (callee_name == "__cxa_throw") {
-      //...?
-    } else {
-      IRB->SetInsertPoint(
-          invoke_instr->getNormalDest()->getFirstNonPHIOrDbgOrLifetime());
-      insert_mem_func_call_probe(invoke_instr, callee_name);
-    }
-  }
-
+  // Gather addresses the is loaded
   for (auto load_instr : load_instrs) {
     IRB->SetInsertPoint(load_instr);
     llvm::Value *casted_ptr =
@@ -718,19 +652,6 @@ void CarverMPass::instrument_main(llvm::Function *main_func) {
         keep_class_info,
         {iter.second.second, llvm::ConstantInt::get(Int32Ty, class_size),
          llvm::ConstantInt::get(Int32Ty, iter.second.first)});
-  }
-
-  for (auto call_instr : call_instrs) {
-    llvm::Function *callee = call_instr->getCalledFunction();
-    if (callee == NULL) {
-      continue;
-    }
-    if (callee->isDebugInfoForProfiling()) {
-      continue;
-    }
-
-    IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
-    insert_mem_func_call_probe(call_instr, callee->getName().str());
   }
 
   for (auto ret_instr : ret_instrs) {
@@ -1077,87 +998,6 @@ void CarverMPass::insert_dealloc_probes() {
   }
 }
 
-bool CarverMPass::insert_mem_func_call_probe(llvm::Instruction *call_inst,
-                                             std::string callee_name) {
-  // IRB->SetInsertPoint(call_inst->getNextNonDebugInstruction());
-
-  if (callee_name == "malloc") {
-    // Track malloc
-    llvm::Constant *type_name_const = get_mem_alloc_type(call_inst);
-
-    llvm::Value *size = call_inst->getOperand(0);
-    if (size->getType() == Int64Ty) {
-      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    }
-    IRB->CreateCall(mem_allocated_probe, {call_inst, size, type_name_const});
-    return true;
-  } else if (callee_name == "realloc") {
-    // Track realloc
-    llvm::Constant *type_name_const = get_mem_alloc_type(call_inst);
-    IRB->CreateCall(remove_probe, {call_inst->getOperand(0)});
-    llvm::Value *size = call_inst->getOperand(1);
-    if (size->getType() == Int64Ty) {
-      size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    }
-    IRB->CreateCall(mem_allocated_probe, {call_inst, size, type_name_const});
-    return true;
-  } else if (callee_name == "free") {
-    IRB->CreateCall(remove_probe, {call_inst->getOperand(0)});
-    return true;
-  } else if (callee_name == "llvm.memcpy.p0i8.p0i8.i64") {
-    // Get some hint from memory related functions
-    //  Value * size = IN.getOperand(2);
-    //  if (size->getType() == Int64Ty) {
-    //    size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    //  }
-    //  std::vector<Value *> args {IN.getOperand(0), size};
-    //  IRB->CreateCall(mem_allocated_probe, args);
-  } else if (callee_name == "llvm.memmove.p0i8.p0i8.i64") {
-    // Value * size = IN.getOperand(2);
-    // if (size->getType() == Int64Ty) {
-    //   size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    // }
-    // std::vector<Value *> args {IN.getOperand(0), size};
-    // IRB->CreateCall(mem_allocated_probe, args);
-  } else if (callee_name == "strlen") {
-    // Value * add_one = IRB->CreateAdd(&IN, ConstantInt::get(Int64Ty, 1));
-    // Value * size = IRB->CreateCast(Instruction::CastOps::Trunc, add_one,
-    // Int32Ty); std::vector<Value *> args {IN.getOperand(0), size};
-    // IRB->CreateCall(mem_allocated_probe, args);
-  } else if (callee_name == "strncpy") {
-    // Value * size = IN.getOperand(2);
-    // if (size->getType() == Int64Ty) {
-    //   size = IRB->CreateCast(Instruction::CastOps::Trunc, size, Int32Ty);
-    // }
-    // std::vector<Value *> args {IN.getOperand(0), size};
-    // IRB->CreateCall(mem_allocated_probe, args);
-  } else if (callee_name == "strcpy") {
-    // std::vector<Value *> strlen_args;
-    // strlen_args.push_back(IN.getOperand(0));
-    // Value * strlen_result = IRB->CreateCall(strlen_callee, strlen_args);
-    // Value * add_one = IRB->CreateAdd(strlen_result,
-    // ConstantInt::get(Int64Ty, 1)); std::vector<Value *> args
-    // {IN.getOperand(0), add_one}; IRB->CreateCall(mem_allocated_probe,
-    // args);
-  } else if ((callee_name == "_Znwm") || (callee_name == "_Znam")) {
-    // new operator
-    Constant *type_name_const = get_mem_alloc_type(call_inst);
-
-    Value *size = call_inst->getOperand(0);
-    if (size->getType() == Int64Ty) {
-      size = IRB->CreateCast(llvm::Instruction::CastOps::Trunc, size, Int32Ty);
-    }
-    IRB->CreateCall(mem_allocated_probe, {call_inst, size, type_name_const});
-    return true;
-  } else if ((callee_name == "_ZdlPv") || (callee_name == "_ZdaPv")) {
-    // delete operator
-    IRB->CreateCall(remove_probe, {call_inst->getOperand(0)});
-    return true;
-  }
-
-  return false;
-}
-
 Constant *CarverMPass::get_mem_alloc_type(llvm::Instruction *call_inst) {
   if (call_inst == NULL) {
     return llvm::Constant::getNullValue(Int8PtrTy);
@@ -1207,6 +1047,24 @@ void CarverMPass::insert_global_carve_probe(llvm::Function *F) {
   }
 
   return;
+}
+
+bool CarverMPass::need_malloc_check(llvm::Function *func) {
+  string func_name = func->getName().str();
+  if (func_name == "malloc" || func_name == "calloc" ||
+      func_name == "realloc" || func_name == "free") {
+    return true;
+  }
+
+  if (func->isIntrinsic()) {
+    return false;
+  }
+
+  if (func->size() == 0) {
+    return true;
+  }
+
+  return false;
 }
 
 static llvm::RegisterPass<CarverMPass> X("carve", "Carve pass", false, false);

@@ -33,7 +33,7 @@ MAKEFILE_DIR:=$(dir $(MAKEFILE_PATH))
 
 all: carve_func_ctx carve_type_based carve_func_args carve_model \
 	unit_test extend_driver fuzz_driver clementine_driver \
-	simple_unit_driver_pass 
+	simple_unit_driver_pass pintool
 
 carve_func_ctx: lib/carve_func_ctx_pass.so lib/fc_carver.a
 carve_type_based: lib/carve_type_pass.so lib/tb_carver.a
@@ -75,11 +75,13 @@ lib/fc_carver.a: src/carving/func_ctx/fc_carver.cc src/utils/data_utils.o
 		-c $< -o src/carving/func_ctx/fc_carver.o
 	$(AR) rsv $@ src/carving/func_ctx/fc_carver.o src/utils/data_utils.o
 
-lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o
+lib/fa_carver.a: src/carving/func_args/fa_carver.cc src/utils/data_utils.o \
+	src/utils/ptr_map.o
 	mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I include/ -I src/utils \
 		-c $< -o src/carving/func_args/fa_carver.o
-	$(AR) rsv $@ src/carving/func_args/fa_carver.o src/utils/data_utils.o
+	$(AR) rsv $@ src/carving/func_args/fa_carver.o \
+		src/utils/data_utils.o src/utils/ptr_map.o
 
 lib/tb_carver.a: src/carving/type_based/tb_carver.cc src/utils/data_utils.o
 	mkdir -p lib
@@ -199,6 +201,11 @@ src/utils/data_utils.o: src/utils/data_utils.cc include/utils/data_utils.hpp
 src/utils/ptr_map.o: src/utils/ptr_map.cc include/utils/ptr_map.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
+pintool: pintool/obj-intel64/MemoryTrackTool.so
+
+pintool/obj-intel64/MemoryTrackTool.so: pintool/MemoryTrackTool.cpp
+	cd pintool && $(MAKE) obj-intel64/MemoryTrackTool.so
+
 clean:
 	rm -f lib/*.so lib/*.a src/carving/*.o drivers/*.o
 	rm -f src/utils/*.o
@@ -206,3 +213,4 @@ clean:
 	rm -rf src/drivers/*.o
 	rm -rf src/drivers/*/*.o
 	rm -rf src/carving/*/*.o
+	cd pintool && $(MAKE) clean

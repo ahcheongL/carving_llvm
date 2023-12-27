@@ -18,6 +18,10 @@ int main (int argc, char * argv []) {
   shapevec.push_back(Shape(1043, 24));
  
   foo( intvec, shapevec);
+
+
+  int * a = (int *) malloc(10);
+
   return 0;
 }
 

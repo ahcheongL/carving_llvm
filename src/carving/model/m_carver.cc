@@ -3,15 +3,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include "utils/data_utils.hpp"
 #include "utils/ptr_map.hpp"
+
+#define SHM_ID_ENV "CARVING_SHM_ID"
+#define NUM_SHM_ENTRY 1024
+
+typedef struct shm_entry_ {
+  char *ptr;
+  int size;
+  char is_malloc;
+} shm_entry;
 
 #define MAX_NUM_FILE 8
 #define MINSIZE 3
@@ -30,6 +42,11 @@ static map<void *, char *> func_ptrs;
 static vector<FUNC_CONTEXT> inputs;
 static vector<IVAR *> *carved_objs = NULL;
 static vector<POINTER> *carved_ptrs = NULL;
+
+char *ptr_alloc_shm_map = NULL;
+
+#define LOCK_SHM_MAP() ((char *)ptr_alloc_shm_map)[4] = 1
+#define UNLOCK_SHM_MAP() ((char *)ptr_alloc_shm_map)[4] = 0
 
 // memory info
 ptr_map alloced_ptrs;
@@ -52,16 +69,20 @@ void __insert_obj_info(char *name, char *type_name) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<char *> *inputv = new VAR<char *>(type_name, name, INPUT_TYPE::OBJ_INFO);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void __insert_ptr_idx(int idx) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<int> *inputv = new VAR<int>(idx, 0, INPUT_TYPE::PTR_IDX);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 static vector<int> carved_ptr_index_stack;
@@ -70,82 +91,102 @@ void __insert_ptr_end() {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   int ptr_idx = *carved_ptr_index_stack.back();
   carved_ptr_index_stack.pop_back();
   VAR<int> *inputv = new VAR<int>(ptr_idx, 0, INPUT_TYPE::PTR_END);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void __insert_struct_begin() {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<int> *inputv = new VAR<int>(0, 0, INPUT_TYPE::STRUCT_BEGIN);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void __insert_struct_end() {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<int> *inputv = new VAR<int>(0, 0, INPUT_TYPE::STRUCT_END);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_char(char input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<char> *inputv = new VAR<char>(input, 0, INPUT_TYPE::CHAR);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_short(short input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<short> *inputv = new VAR<short>(input, 0, INPUT_TYPE::SHORT);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_int(int input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<int> *inputv = new VAR<int>(input, 0, INPUT_TYPE::INT);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_longtype(long input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<long> *inputv = new VAR<long>(input, 0, INPUT_TYPE::LONG);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_longlong(long long input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<long long> *inputv = new VAR<long long>(input, 0, INPUT_TYPE::LONGLONG);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_float(float input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<float> *inputv = new VAR<float>(input, 0, INPUT_TYPE::FLOAT);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 void Carv_double(double input) {
   if (!__carv_opened) {
     return;
   }
+  LOCK_SHM_MAP();
   VAR<double> *inputv = new VAR<double>(input, 0, INPUT_TYPE::DOUBLE);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
 }
 
 int Carv_pointer(void *ptr, char *type_name, int default_idx,
@@ -154,9 +195,12 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     return 0;
   }
 
+  LOCK_SHM_MAP();
+
   if (ptr == NULL) {
     VAR<void *> *inputv = new VAR<void *>(NULL, 0, INPUT_TYPE::NULLPTR);
     carved_objs->push_back((IVAR *)inputv);
+    UNLOCK_SHM_MAP();
     return 0;
   }
 
@@ -176,6 +220,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
       VAR<int> *inputv = new VAR<int>(index, 0, offset, INPUT_TYPE::PTR);
       carved_objs->push_back((IVAR *)inputv);
       // Won't carve again.
+      UNLOCK_SHM_MAP();
       return 0;
     } else if (ptr == carved_addr_end) {
       end_index = index;
@@ -187,6 +232,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
   if (end_index != -1) {
     VAR<int> *inputv = new VAR<int>(end_index, 0, end_offset, INPUT_TYPE::PTR);
     carved_objs->push_back((IVAR *)inputv);
+    UNLOCK_SHM_MAP();
     return 0;
   }
 
@@ -198,19 +244,15 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     if (search != NULL) {
       VAR<char *> *inputv = new VAR<char *>(*search, 0, INPUT_TYPE::FUNCPTR);
       carved_objs->push_back((IVAR *)inputv);
+      UNLOCK_SHM_MAP();
       return 0;
     }
 
     VAR<void *> *inputv =
         new VAR<void *>(ptr, type_name, INPUT_TYPE::UNKNOWN_PTR);
 
-    // Let's try size 1.
-    // carved_ptrs->push_back(POINTER(ptr, type_name, default_size,
-    // default_size));
-
-    // VAR<int> *inputv = new VAR<int>(carved_ptrs->size(), 0, 0,
-    // INPUT_TYPE::PTR);
     carved_objs->push_back((IVAR *)inputv);
+    UNLOCK_SHM_MAP();
     return 0;
   }
 
@@ -243,6 +285,7 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
 
   carved_ptr_index_stack.push_back(new_carved_ptr_index);
 
+  UNLOCK_SHM_MAP();
   return ptr_alloc_size;
 }
 
@@ -251,23 +294,33 @@ void __Carv_func_ptr_name(void *ptr) {
     return;
   }
 
+  LOCK_SHM_MAP();
+
   auto search = func_ptrs.find(ptr);
   if ((ptr == NULL) || (search == NULL)) {
     VAR<void *> *inputv = new VAR<void *>(NULL, NULL, INPUT_TYPE::NULLPTR);
     carved_objs->push_back((IVAR *)inputv);
+    UNLOCK_SHM_MAP();
     return;
   }
 
   VAR<char *> *inputv = new VAR<char *>(*search, NULL, INPUT_TYPE::FUNCPTR);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
   return;
 }
 
-void __record_func_ptr(void *ptr, char *name) { func_ptrs.insert(ptr, name); }
+void __record_func_ptr(void *ptr, char *name) {
+  LOCK_SHM_MAP();
+  func_ptrs.insert(ptr, name);
+  UNLOCK_SHM_MAP();
+}
 
 void __keep_class_info(char *class_name, int size, int index) {
+  LOCK_SHM_MAP();
   classinfo tmp(index, size);
   class_info.insert(class_name, tmp);
+  UNLOCK_SHM_MAP();
 }
 
 int __get_class_idx() { return __carv_cur_class_index; }
@@ -280,7 +333,9 @@ void __mem_allocated_probe(void *ptr, int alloc_size, char *type_name) {
     return;
   }
 
+  LOCK_SHM_MAP();
   alloced_ptrs.insert(ptr, type_name, alloc_size);
+  UNLOCK_SHM_MAP();
   return;
 }
 
@@ -288,10 +343,33 @@ void __remove_mem_allocated_probe(void *ptr) {
   if (!__carv_ready) {
     return;
   }
-  // alloced_ptrs.erase(ptr);
+  LOCK_SHM_MAP();
   alloced_ptrs.remove(ptr);
+  UNLOCK_SHM_MAP();
 }
 
+// Fetch memory allocation and deallocation info from Pin tool
+void __fetch_mem_alloc() {
+  int cur_num_entry = ((int *)ptr_alloc_shm_map)[0];
+  int idx = 0;
+
+  LOCK_SHM_MAP();
+
+  std::cerr << "fetch mem alloc, cur_num_entry : " << cur_num_entry << "\n";
+
+  for (idx = 0; idx < cur_num_entry; idx++) {
+    shm_entry *entry = &((shm_entry *)ptr_alloc_shm_map)[idx + 1];
+    if (entry->is_malloc) {
+      alloced_ptrs.insert(entry->ptr, 0, entry->size);
+    } else {
+      alloced_ptrs.remove(entry->ptr);
+    }
+  }
+  ((int *)ptr_alloc_shm_map)[0] = 0;
+  UNLOCK_SHM_MAP();
+}
+
+// Currently not using due to overhead...
 static void carved_ptr_postprocessing(int begin_idx, int end_idx) {
   int idx1, idx2, idx3, idx4, idx5;
   bool changed = true;
@@ -404,9 +482,12 @@ void __carv_file(char *file_name) {
     return;
   }
 
+  LOCK_SHM_MAP();
+
   unsigned int file_idx = 0;
   FILE *target_file = fopen(file_name, "rb");
   if (target_file == NULL) {
+    UNLOCK_SHM_MAP();
     return;
   }
 
@@ -470,6 +551,7 @@ void __carv_file(char *file_name) {
   FILE *outfile = fopen(outfile_name, "wb");
   if (outfile == NULL) {
     fclose(target_file);
+    UNLOCK_SHM_MAP();
     return;
   }
 
@@ -484,12 +566,43 @@ void __carv_file(char *file_name) {
 
   VAR<int> *inputv = new VAR<int>(file_idx, file_name, INPUT_TYPE::INPUTFILE);
   carved_objs->push_back((IVAR *)inputv);
+  UNLOCK_SHM_MAP();
   return;
 }
 
 static int num_excluded = 0;
 
+extern char **environ;
+
 void __carver_argv_modifier(int *argcptr, char ***argvptr) {
+  // Get shared memory pointer
+  pid_t pid = getpid();
+  std::string shm_id_fn = "/tmp/pin_shm_id_" + std::to_string(pid);
+  std::ifstream shm_id_file(shm_id_fn);
+
+  if (!shm_id_file.is_open()) {
+    std::cerr << "Error: Can't open shm_id file\n";
+    exit(1);
+  }
+
+  char shm_id_str[256];
+  shm_id_file >> shm_id_str;
+  shm_id_file.close();
+
+  unlink(shm_id_fn.c_str());
+
+  int shm_id = atoi(shm_id_str);
+
+  ptr_alloc_shm_map = (char *)shmat(shm_id, 0, 0);
+
+  if (ptr_alloc_shm_map == NULL) {
+    std::cerr << "Error: Failed to attach shared memory, errno : "
+              << strerror(errno) << "\n";
+    exit(1);
+  }
+
+  LOCK_SHM_MAP();
+
   int argc = (*argcptr) - 1;
   *argcptr = argc;
 
@@ -521,6 +634,7 @@ void __carver_argv_modifier(int *argcptr, char ***argvptr) {
   // Write argc, argv values, TODO
 
   __carv_ready = true;
+  UNLOCK_SHM_MAP();
   return;
 }
 
@@ -537,6 +651,8 @@ void __carv_open(const char *func_name) {
   if (!__carv_ready) {
     return;
   }
+
+  LOCK_SHM_MAP();
 
   unsigned int cur_cnt = 0;
   unsigned int *func_count = func_file_counter.find(func_name);
@@ -558,6 +674,7 @@ void __carv_open(const char *func_name) {
 
   assert(carved_objs->size() == 0);
   assert(carved_ptrs->size() == 0);
+  UNLOCK_SHM_MAP();
   return;
 }
 
@@ -570,17 +687,22 @@ void __carv_mark_load_address(const char *ptr, const char is_crash) {
     return;
   }
 
+  LOCK_SHM_MAP();
+
   int idx = 0;
   vector<void *> *loaded_ptrs = &(inputs.back()->loaded_ptrs);
   const int size = loaded_ptrs->size();
 
   for (idx = 0; idx < size; idx++) {
     if (loaded_ptrs->data[idx] == ptr) {
+      UNLOCK_SHM_MAP();
       return;
     }
   }
 
   loaded_ptrs->push_back((void *)ptr);
+
+  UNLOCK_SHM_MAP();
 
   if (is_crash) {
     dump_result(inputs.back()->func_name, 0);
@@ -597,8 +719,14 @@ void __carv_close(const char *func_name) {
     return;
   }
 
+  LOCK_SHM_MAP();
+
+  std::cerr << "carv_close : " << func_name << "\n";
+
   if (!(carved_objs == NULL || (carved_objs->size() == 0))) {
+    UNLOCK_SHM_MAP();
     dump_result(func_name, 1);
+    LOCK_SHM_MAP();
   }
 
   if (carved_objs != NULL) {
@@ -622,10 +750,14 @@ void __carv_close(const char *func_name) {
     carved_objs = &(next_ctx->inputs);
     carved_ptrs = &(next_ctx->carved_ptrs);
   }
+
+  UNLOCK_SHM_MAP();
   return;
 }
 
 static void dump_result(const char *func_name, char remove_dup) {
+  LOCK_SHM_MAP();
+
   class FUNC_CONTEXT *cur_context = inputs.back();
   const int cur_carving_index = cur_context->carving_index;
   const int cur_func_call_idx = cur_context->func_call_idx;
@@ -634,6 +766,7 @@ static void dump_result(const char *func_name, char remove_dup) {
     std::cerr << "Error: Returning func_name != cur_context->func_name\n";
     std::cerr << "Returning func : " << func_name << "\n";
     std::cerr << "Missing func name : " << cur_context->func_name << "\n";
+    UNLOCK_SHM_MAP();
     return;
   }
 
@@ -655,6 +788,7 @@ static void dump_result(const char *func_name, char remove_dup) {
   FILE *outfile = fopen(outfile_name, "w");
 
   if (outfile == NULL) {
+    UNLOCK_SHM_MAP();
     return;
   }
 
@@ -952,6 +1086,7 @@ static void dump_result(const char *func_name, char remove_dup) {
     int hash_val = 0;
     FILE *hashfile = fopen(outfile_name, "rb");
     if (hashfile == NULL) {
+      UNLOCK_SHM_MAP();
       return;
     }
 
@@ -974,6 +1109,7 @@ static void dump_result(const char *func_name, char remove_dup) {
     }
   }
 
+  UNLOCK_SHM_MAP();
   return;
 }
 }  // extern "C"
