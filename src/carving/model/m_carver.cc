@@ -61,6 +61,8 @@ char __carv_depth = 0;
 
 static map<char *, classinfo> class_info;
 
+static map<const char *, int *> func_result_hash;
+
 extern "C" {
 
 static void dump_result(const char *func_name, char remove_dup);
@@ -424,9 +426,7 @@ void __carv_file(char *file_name) {
   return;
 }
 
-static int num_excluded = 0;
-
-extern char **environ;
+void *shmat(int, const void *, int);
 
 void __carver_argv_modifier(int *argcptr, char ***argvptr) {
   // Get shared memory pointer
@@ -496,6 +496,14 @@ void __carv_FINI() {
   char buffer[256];
   free(outdir_name);
 
+  int idx = 0;
+  int num_hash_objs = func_result_hash.size();
+  for (idx = 0; idx < num_hash_objs; idx++) {
+    auto search = func_result_hash.get_by_idx(idx);
+    int *hash_ptr = search->elem;
+    free(hash_ptr);
+  }
+
   __carv_ready = false;
 }
 
@@ -564,8 +572,6 @@ void __carv_mark_load_address(const char *ptr, const char is_crash) {
 
   return;
 }
-
-static map<const char *, int *> func_result_hash;
 
 // Count # of objs of each type
 void __carv_close(const char *func_name) {
@@ -953,8 +959,9 @@ static void dump_result(const char *func_name, char remove_dup) {
     while ((read_size = fread(buf, 1, 4096, hashfile)) > 0) {
       int idx = 0;
       while (idx < read_size) {
-        hash_val += buf[idx++];
+        hash_val += buf[idx];
         hash_val = hash_val % HASH_MAX_NUM_FILE;
+        idx += 16;
       }
     }
 

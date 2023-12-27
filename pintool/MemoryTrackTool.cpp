@@ -29,7 +29,11 @@ using std::endl;
 #define MALLOC_LIB "libc.so"
 
 #define SHM_ID_ENV "CARVING_SHM_ID"
-#define NUM_SHM_ENTRY 1024
+#define NUM_SHM_ENTRY 32768
+
+int shmget(key_t key, size_t size, int shmflg);
+void* shmat(int, const void*, int);
+int shmctl(int, int, struct shmid_ds*);
 
 typedef struct shm_entry_ {
   char* ptr;

@@ -199,7 +199,7 @@ src/utils/data_utils.o: src/utils/data_utils.cc include/utils/data_utils.hpp
 	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
 
 src/utils/ptr_map.o: src/utils/ptr_map.cc include/utils/ptr_map.hpp
-	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@
+	$(CXX) $(CXXFLAGS) -I include/ -c $< -o $@ 
 
 pintool: pintool/obj-intel64/MemoryTrackTool.so
 

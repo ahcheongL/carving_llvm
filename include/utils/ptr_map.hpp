@@ -79,7 +79,7 @@ class ptr_map {
   void delete_case5(rbtree_node *n);
   void delete_case6(rbtree_node *n);
 
-  void print_tree(rbtree_node *n);
+  void print_tree(rbtree_node *n, unsigned int);
 };
 
 #endif

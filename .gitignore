@@ -55,3 +55,6 @@ carv_out/
 main
 
 pin/
+
+*.afl
+*.out

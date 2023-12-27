@@ -71,7 +71,7 @@ void ptr_map::insert(void *key, char *type_name, int alloc_size) {
 
   rbtree_node *root = roots[root_hash];
 
-  if (root == 0) {
+  if (root == nullptr) {
     root = new_node;
     root->color_ = BLACK;
     roots[root_hash] = root;
@@ -258,11 +258,15 @@ ptr_map::rbtree_node *ptr_map::find(void *key) {
     return nullptr;
   }
 
-  unsigned long n_key = (unsigned long)n->key_;
-
   while (n != nullptr) {
+    unsigned long n_key = (unsigned long)n->key_;
+
     // Should we include the end point here?
     if ((n_key <= key_v) && ((n_key + n->alloc_size_) > (unsigned long)key)) {
+      cache_hash =
+          (((n_key >> CACHE_ENTRY_SHIFT) ^ (n_key)) & CACHE_ENTRY_MASK);
+      cache[cache_hash].node_ = n;
+      cache[cache_hash].availability_ = true;
       return n;
     } else if (key_v < n_key) {
       n = n->left_;
@@ -297,11 +301,10 @@ void ptr_map::remove(void *key) {
       return;
     }
 
-    unsigned long n_key = (unsigned long)n->key_;
-
     while (n != nullptr) {
-      // Should we include the end point here?
-      if ((n_key <= key_v) && ((n_key + n->alloc_size_) > (unsigned long)key)) {
+      unsigned long n_key = (unsigned long)n->key_;
+
+      if (n->key_ == key) {
         node = n;
         break;
       } else if (key_v < n_key) {
@@ -348,7 +351,6 @@ void ptr_map::remove(void *key) {
   }
 
   if (node_to_delete->parent_ == nullptr) {
-    unsigned long key_v = (unsigned long)node_to_delete->key_;
     unsigned int root_hash =
         (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
 
@@ -369,14 +371,9 @@ void ptr_map::remove(void *key) {
     child->parent_ = node_to_delete->parent_;
   }
 
-  unsigned long key_v2 = (unsigned long)node_to_delete->key_;
-  unsigned int root_hash =
-      (((key_v2 >> ROOT_ENTRY_SHIFT) ^ (key_v2)) & ROOT_ENTRY_MASK);
-
+  node_to_delete->left_ = nullptr;
+  node_to_delete->right_ = nullptr;
   delete node_to_delete;
-
-  // fprintf(stderr, "Printing after delete\n");
-  // print_tree(roots[root_hash]);
   return;
 }
 
@@ -504,8 +501,8 @@ static void print_tree_sub(ptr_map::rbtree_node *node, int depth) {
   print_tree_sub(node->right_, depth + 1);
 }
 
-void ptr_map::print_tree(rbtree_node *node) {
-  fprintf(stderr, "Print tree : %p\n", node);
+void ptr_map::print_tree(rbtree_node *node, unsigned int root_hash) {
+  fprintf(stderr, "Print tree : root : %p, hash : %u\n", node, root_hash);
 
   if (node == nullptr) {
     return;
@@ -513,5 +510,5 @@ void ptr_map::print_tree(rbtree_node *node) {
 
   print_tree_sub(node, 0);
 
-  fprintf(stderr, "End of tree\n");
+  fprintf(stderr, "\n");
 }
