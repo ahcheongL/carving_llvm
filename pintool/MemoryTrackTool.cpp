@@ -29,7 +29,7 @@ using std::endl;
 #define MALLOC_LIB "libc.so"
 
 #define SHM_ID_ENV "CARVING_SHM_ID"
-#define NUM_SHM_ENTRY 32768
+#define NUM_SHM_ENTRY 131072
 
 int shmget(key_t key, size_t size, int shmflg);
 void* shmat(int, const void*, int);
@@ -93,7 +93,7 @@ VOID* MallocWrapperInTool(size_t size) {
   int cur_num_entry = ((int*)shm_map)[0];
 
   if (cur_num_entry >= (NUM_SHM_ENTRY - 1)) {
-    cerr << "Warn: Too many malloc/free calls" << endl;
+    // cerr << "Warn: Too many malloc/free calls" << endl;
     return res;
   }
 
