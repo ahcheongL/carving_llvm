@@ -11,7 +11,12 @@ Now it tries to print only data it reads during the execution.
 
 2. [gllvm](https://github.com/SRI-CSL/gllvm), needed to get whole program bitcode
 
-3. Python 3.6+, make
+3. Python 3.6+
+
+4. make
+
+5. Intel [Pin](https://www.intel.com/content/www/us/en/developer/articles/tool/pin-a-dynamic-binary-instrumentation-tool.html) \
+    execute `install_pin.sh` to install Pin.
 
 ## Build
   `make`
@@ -28,9 +33,9 @@ Now it tries to print only data it reads during the execution.
 
 ## 2. Carving Instrumentation
 
-1. `opt -enable-new-pm=0 -load {$PROJECT_PATH}/lib/carve_model_pass.so --carve < <target.bc> -o <out.bc>`
+1. `opt -enable-new-pm=0 -load {$CARVING_PATH}/lib/carve_model_pass.so --carve < <target.bc> -o <out.bc>`
 
-2. `clang++ <out.bc> <compile flags> -o <target.carv> -L {$PROJECT_PATH}/lib -l:m_carver.a`
+2. `clang++ <out.bc> <compile flags> -o <target.carv> -L {$CARVING_PATH}/lib -l:m_carver.a`
     * `<compile flags>` are usually shared libraries that are linked to the original target executable.
     * You can get list of shared linked shared libraries by running `ldd <target executable>`, if libpthread.so is linked, you need to put `-lpthread` as compile flags
 
@@ -38,12 +43,13 @@ Now it tries to print only data it reads during the execution.
 
 4. If you need the executable to dump the result for each load instruction (e.g., in case of unit-level crash),
 use `-crash` option.
-`opt -enable-new-pm=0 -load {$PROJECT_PATH}/lib/carve_model_pass.so --carve -crash < <target.bc> -o <out.bc>`
+`opt -enable-new-pm=0 -load {$CARVING_PATH}/lib/carve_model_pass.so --carve -crash < <target.bc> -o <out.bc>`
 
 ## 3. Run carving
 
 1. `mkdir <carved_ctx_dir>`
-2. `<target.carv> <args> <carved_ctx_dir>`; Run the new carving executable as same as the original executable, but add a directory path at the end to store all carved contexts.
+2. `{$CARVING_PATH}/pin -t {$CARVING_PATH}/pintool/obj-intel64/MemoryTrackTool.so -- <target.carv> <args> <carved_ctx_dir>` \
+    Run the new carving executable as same as the original executable, but add a directory path at the end to store all carved contexts.
 
 
 ## 4. Test
