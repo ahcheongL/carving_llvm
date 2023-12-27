@@ -242,6 +242,8 @@ ptr_map::rbtree_node *ptr_map::find(void *key) {
 
   if (cache[cache_hash].availability_ == true) {
     unsigned long cache_key_v = (unsigned long)cache[cache_hash].node_->key_;
+
+    // Include the end point
     if (cache_key_v <= key_v &&
         (cache_key_v + cache[cache_hash].node_->alloc_size_) >= key_v) {
       return cache[cache_hash].node_;
@@ -259,7 +261,7 @@ ptr_map::rbtree_node *ptr_map::find(void *key) {
   unsigned long n_key = (unsigned long)n->key_;
 
   while (n != nullptr) {
-    // Should we include the end point?
+    // Should we include the end point here?
     if ((n_key <= key_v) && ((n_key + n->alloc_size_) > (unsigned long)key)) {
       return n;
     } else if (key_v < n_key) {
@@ -287,7 +289,27 @@ void ptr_map::remove(void *key) {
   }
 
   if (node == nullptr) {
-    node = find(key);
+    unsigned int root_hash =
+        (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
+
+    rbtree_node *n = roots[root_hash];
+    if (n == nullptr) {
+      return;
+    }
+
+    unsigned long n_key = (unsigned long)n->key_;
+
+    while (n != nullptr) {
+      // Should we include the end point here?
+      if ((n_key <= key_v) && ((n_key + n->alloc_size_) > (unsigned long)key)) {
+        node = n;
+        break;
+      } else if (key_v < n_key) {
+        n = n->left_;
+      } else {
+        n = n->right_;
+      }
+    }
   }
 
   if (node == nullptr) {
