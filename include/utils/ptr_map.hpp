@@ -1,21 +1,11 @@
 #ifndef __PTR_MAP_HPP
 #define __PTR_MAP_HPP
 
-#define MAX_CACHE_ENTRY 65536
-#define CACHE_ENTRY_SHIFT 32
-#define CACHE_ENTRY_MASK 0xffff
+#define MAX_CACHE_ENTRY (1 << 16)
+#define CACHE_HASH(key) ((((unsigned long)key) >> 16) & 0xffff)
 
-#define CACHE_HASH(key)                                                   \
-  (((((unsigned long)key) >> CACHE_ENTRY_SHIFT) ^ ((unsigned long)key)) & \
-   CACHE_ENTRY_MASK)
-
-#define ROOT_ENTRY 65536
-#define ROOT_ENTRY_SHIFT 32
-#define ROOT_ENTRY_MASK 0xffff
-
-#define ROOT_HASH(key)                                                   \
-  (((((unsigned long)key) >> ROOT_ENTRY_SHIFT) ^ ((unsigned long)key)) & \
-   ROOT_ENTRY_MASK)
+#define ROOT_ENTRY (1 << 16)
+#define ROOT_HASH(key) ((((unsigned long)key) >> 16) & 0xffff)
 
 // A red-black tree with caching for fast memory allocation tracking.
 // Inspired from FuZZan

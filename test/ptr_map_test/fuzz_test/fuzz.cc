@@ -111,6 +111,9 @@ int main(int argc, char **argv) {
         ptr_map::rbtree_node *node = map1->find(key);
         assert(node != nullptr);
 
+        assert(node->key_ <= key);
+        assert(((char *)node->key_ + node->alloc_size_) >= key);
+
         std::map<void *, int>::iterator std_it = std_map.find(key);
         assert(std_it != std_map.end());
 

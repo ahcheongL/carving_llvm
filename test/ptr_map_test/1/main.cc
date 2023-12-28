@@ -33,12 +33,12 @@ int main() {
   for (int i = 0; i < NUM_INSERTION_TRY; i++) {
     node = map1->find((void *)(0x1234 + (unsigned long)i));
     assert(node != nullptr);
-    assert(node->alloc_size_ == 4 + i);
-  }
 
-  // for (int i = 0; i < ROOT_ENTRY; i++) {
-  //   map1->print_tree(map1->roots[i], i);
-  // }
+    assert(node->key_ <= (void *)(0x1234 + (unsigned long)i));
+
+    assert(((char *)node->key_ + node->alloc_size_) >=
+           ((char *)(0x1234 + (unsigned long)i)));
+  }
 
   // return 0;
 

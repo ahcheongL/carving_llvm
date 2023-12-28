@@ -483,7 +483,8 @@ void ptr_map::print_tree_sub(rbtree_node *node, unsigned int depth) {
   }
 
   std::cerr << node << ":"
-            << "color : " << node->color_ << ", key : " << node->key_
+            << "color : " << (node->color_ ? "R" : "B")
+            << ", key : " << node->key_ << ", size : " << node->alloc_size_
             << ", left : " << node->left_ << ", right : " << node->right_
             << std::endl;
 
