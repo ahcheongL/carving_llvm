@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <iostream>
+
 //////////////////////
 // ptr_map::rbtree_node
 ///////////////////////
@@ -63,9 +65,7 @@ ptr_map::~ptr_map() {
 void ptr_map::insert(void *key, char *type_name, int alloc_size) {
   rbtree_node *new_node = new rbtree_node(key, type_name, alloc_size);
 
-  unsigned long key_v = (unsigned long)key;
-  unsigned int root_hash =
-      (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
+  unsigned int root_hash = ROOT_HASH(key);
 
   // TODO check memory boundary
 
@@ -112,11 +112,7 @@ void ptr_map::insert(void *key, char *type_name, int alloc_size) {
 
   insert_case2(new_node);
 
-  // fprintf(stderr, "Printing after insert\n");
-  // print_tree(roots[root_hash]);
-
-  unsigned int cache_hash =
-      (((key_v >> CACHE_ENTRY_SHIFT) ^ (key_v)) & CACHE_ENTRY_MASK);
+  unsigned int cache_hash = CACHE_HASH(key);
   cache[cache_hash].node_ = new_node;
   cache[cache_hash].availability_ = true;
   return;
@@ -199,10 +195,7 @@ void ptr_map::rotate_left(rbtree_node *n) {
       parent->right_ = child;
     }
   } else {
-    unsigned long key_v = (unsigned long)n->key_;
-    unsigned int root_hash =
-        (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
-
+    unsigned int root_hash = ROOT_HASH(n->key_);
     roots[root_hash] = child;
   }
 }
@@ -227,18 +220,14 @@ void ptr_map::rotate_right(rbtree_node *n) {
       parent->left_ = child;
     }
   } else {
-    unsigned long key_v = (unsigned long)n->key_;
-    unsigned int root_hash =
-        (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
-
+    unsigned int root_hash = ROOT_HASH(n->key_);
     roots[root_hash] = child;
   }
 }
 
 ptr_map::rbtree_node *ptr_map::find(void *key) {
+  unsigned int cache_hash = CACHE_HASH(key);
   unsigned long key_v = (unsigned long)key;
-  unsigned int cache_hash =
-      (((key_v >> CACHE_ENTRY_SHIFT) ^ (key_v)) & CACHE_ENTRY_MASK);
 
   if (cache[cache_hash].availability_ == true) {
     unsigned long cache_key_v = (unsigned long)cache[cache_hash].node_->key_;
@@ -250,8 +239,7 @@ ptr_map::rbtree_node *ptr_map::find(void *key) {
     }
   }
 
-  unsigned int root_hash =
-      (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
+  unsigned int root_hash = ROOT_HASH(key_v);
 
   rbtree_node *n = roots[root_hash];
   if (n == nullptr) {
@@ -262,9 +250,8 @@ ptr_map::rbtree_node *ptr_map::find(void *key) {
     unsigned long n_key = (unsigned long)n->key_;
 
     // Should we include the end point here?
-    if ((n_key <= key_v) && ((n_key + n->alloc_size_) > (unsigned long)key)) {
-      cache_hash =
-          (((n_key >> CACHE_ENTRY_SHIFT) ^ (n_key)) & CACHE_ENTRY_MASK);
+    if ((n_key <= key_v) && ((n_key + n->alloc_size_) > key_v)) {
+      cache_hash = CACHE_HASH(n_key);
       cache[cache_hash].node_ = n;
       cache[cache_hash].availability_ = true;
       return n;
@@ -280,8 +267,9 @@ ptr_map::rbtree_node *ptr_map::find(void *key) {
 
 void ptr_map::remove(void *key) {
   unsigned long key_v = (unsigned long)key;
-  unsigned int cache_hash =
-      (((key_v >> CACHE_ENTRY_SHIFT) ^ (key_v)) & CACHE_ENTRY_MASK);
+
+  unsigned int root_hash = ROOT_HASH(key_v);
+  unsigned int cache_hash = CACHE_HASH(key_v);
 
   rbtree_node *node = nullptr;
 
@@ -293,9 +281,6 @@ void ptr_map::remove(void *key) {
   }
 
   if (node == nullptr) {
-    unsigned int root_hash =
-        (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
-
     rbtree_node *n = roots[root_hash];
     if (n == nullptr) {
       return;
@@ -331,6 +316,11 @@ void ptr_map::remove(void *key) {
     node->type_name_ = pred->type_name_;
     node->alloc_size_ = pred->alloc_size_;
 
+    if ((cache[cache_hash].availability_ == true) &&
+        (cache[cache_hash].node_ == pred)) {
+      cache[cache_hash].node_ = node;
+    }
+
     // Remove pred instead.
     node_to_delete = pred;
   }
@@ -351,9 +341,6 @@ void ptr_map::remove(void *key) {
   }
 
   if (node_to_delete->parent_ == nullptr) {
-    unsigned int root_hash =
-        (((key_v >> ROOT_ENTRY_SHIFT) ^ (key_v)) & ROOT_ENTRY_MASK);
-
     roots[root_hash] = child;
 
     if (child != nullptr) {
@@ -486,23 +473,27 @@ void ptr_map::delete_case6(rbtree_node *n) {
   }
 }
 
-static void print_tree_sub(ptr_map::rbtree_node *node, int depth) {
+void ptr_map::print_tree_sub(rbtree_node *node, unsigned int depth) {
   if (node == nullptr) {
     return;
   }
 
   for (int i = 0; i < depth; i++) {
-    fprintf(stderr, " ");
+    std::cerr << "  ";
   }
 
-  fprintf(stderr, "%p, color: %d, key: %p, left: %p, right : %p\n", node,
-          node->color_, node->key_, node->left_, node->right_);
+  std::cerr << node << ":"
+            << "color : " << node->color_ << ", key : " << node->key_
+            << ", left : " << node->left_ << ", right : " << node->right_
+            << std::endl;
+
   print_tree_sub(node->left_, depth + 1);
   print_tree_sub(node->right_, depth + 1);
 }
 
 void ptr_map::print_tree(rbtree_node *node, unsigned int root_hash) {
-  fprintf(stderr, "Print tree : root : %p, hash : %u\n", node, root_hash);
+  std::cerr << "Print tree : root : " << node << ", hash : " << root_hash
+            << std::endl;
 
   if (node == nullptr) {
     return;
@@ -510,5 +501,20 @@ void ptr_map::print_tree(rbtree_node *node, unsigned int root_hash) {
 
   print_tree_sub(node, 0);
 
-  fprintf(stderr, "\n");
+  std::cerr << std::endl;
+}
+
+void ptr_map::print_cache() {
+  int num_enabled_entry = 0;
+
+  for (int i = 0; i < MAX_CACHE_ENTRY; i++) {
+    if (cache[i].availability_ == true) {
+      std::cerr << "Cache : " << i << ", key : " << cache[i].node_->key_
+                << ", node : " << cache[i].node_ << std::endl;
+      num_enabled_entry++;
+    }
+  }
+
+  std::cerr << "Num enabled entry : " << num_enabled_entry << std::endl;
+  return;
 }

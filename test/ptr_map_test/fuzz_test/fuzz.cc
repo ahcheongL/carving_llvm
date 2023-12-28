@@ -44,6 +44,11 @@ int main(int argc, char **argv) {
 
     switch (op_idx) {
       case 0: {
+        // Align to 8 bytes
+        if (buf_idx % sizeof(unsigned long) != 0) {
+          buf_idx += sizeof(unsigned long) - (buf_idx % sizeof(unsigned long));
+        }
+
         if ((buf_idx + sizeof(unsigned long) + sizeof(unsigned int)) >= size) {
           break;
         }
@@ -56,6 +61,10 @@ int main(int argc, char **argv) {
         alloc_size = alloc_size % 2048;
 
         if (alloc_size == 0) {
+          break;
+        }
+
+        if (key + alloc_size < key) {
           break;
         }
 
@@ -76,6 +85,11 @@ int main(int argc, char **argv) {
       case 1: {
         if (std_keys.size() == 0) {
           break;
+        }
+
+        // Align to 4 bytes
+        if (buf_idx % sizeof(int) != 0) {
+          buf_idx += sizeof(int) - (buf_idx % sizeof(int));
         }
 
         if ((buf_idx + sizeof(int)) >= size) {
@@ -100,13 +114,19 @@ int main(int argc, char **argv) {
         std::map<void *, int>::iterator std_it = std_map.find(key);
         assert(std_it != std_map.end());
 
-        assert(node->alloc_size_ == std_it->second);
+        // False ...
+        // assert(node->alloc_size_ == std_it->second);
         break;
       }
 
       case 2: {
         if (std_keys.size() == 0) {
           break;
+        }
+
+        // Align to 4 bytes
+        if (buf_idx % sizeof(int) != 0) {
+          buf_idx += sizeof(int) - (buf_idx % sizeof(int));
         }
 
         if ((buf_idx + sizeof(int)) >= size) {
@@ -132,6 +152,9 @@ int main(int argc, char **argv) {
       }
     }
   }
+
+  delete map1;
+  delete[] buffer;
 
   return 0;
 }

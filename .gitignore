@@ -58,3 +58,6 @@ pin/
 
 *.afl
 *.out
+*.asan
+*.afl
+*.udb

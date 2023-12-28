@@ -5,9 +5,17 @@
 #define CACHE_ENTRY_SHIFT 32
 #define CACHE_ENTRY_MASK 0xffff
 
+#define CACHE_HASH(key)                                                   \
+  (((((unsigned long)key) >> CACHE_ENTRY_SHIFT) ^ ((unsigned long)key)) & \
+   CACHE_ENTRY_MASK)
+
 #define ROOT_ENTRY 65536
 #define ROOT_ENTRY_SHIFT 32
 #define ROOT_ENTRY_MASK 0xffff
+
+#define ROOT_HASH(key)                                                   \
+  (((((unsigned long)key) >> ROOT_ENTRY_SHIFT) ^ ((unsigned long)key)) & \
+   ROOT_ENTRY_MASK)
 
 // A red-black tree with caching for fast memory allocation tracking.
 // Inspired from FuZZan
@@ -28,12 +36,12 @@ class ptr_map {
 
   class rbtree_node {
    public:
-    void *key_ = 0;
-    char *type_name_ = 0;
+    void *key_ = nullptr;
+    char *type_name_ = nullptr;
     int alloc_size_ = 0;
-    rbtree_node *left_ = 0;
-    rbtree_node *right_ = 0;
-    rbtree_node *parent_ = 0;
+    rbtree_node *left_ = nullptr;
+    rbtree_node *right_ = nullptr;
+    rbtree_node *parent_ = nullptr;
     enum rbtree_node_color color_ = RED;
 
     rbtree_node(void *key, char *type_name, int alloc_size);
@@ -64,6 +72,8 @@ class ptr_map {
 
   void remove(void *key);
 
+  void print_tree(rbtree_node *n, unsigned int);
+
  private:
   void insert_case1(rbtree_node *n);
   void insert_case2(rbtree_node *n);
@@ -79,7 +89,8 @@ class ptr_map {
   void delete_case5(rbtree_node *n);
   void delete_case6(rbtree_node *n);
 
-  void print_tree(rbtree_node *n, unsigned int);
+  void print_cache();
+  void print_tree_sub(rbtree_node *n, unsigned int depth);
 };
 
 #endif
