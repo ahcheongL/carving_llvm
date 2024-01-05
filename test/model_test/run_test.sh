@@ -10,4 +10,4 @@ clang++ -O0 -g out.bc -o out.carv -L ../../lib -l:m_carver.a
 
 mkdir -p carv_out
 
-./out.carv carv_out
+../../pin/pin -t ../../pintool/obj-intel64/MemoryTrackTool.so -- ./out.carv carv_out
