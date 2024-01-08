@@ -712,13 +712,7 @@ static void dump_result(const char *func_name, char remove_dup) {
       } else if (elem->type == INPUT_TYPE::DOUBLE) {
         ss << "f64" << ' ' << ((VAR<double> *)elem)->input;
       } else if (elem->type == INPUT_TYPE::NULLPTR) {
-        ss << "nullptr";
-        if (elem->name == NULL) {
-          ss << ":"
-             << "func";
-        } else {
-          ss << ":" << elem->name;
-        }
+        ss << (elem->name == NULL ? "func" : elem->name) << ' ' << "nullptr";
       } else if (elem->type == INPUT_TYPE::PTR) {
         VAR<int> *input = (VAR<int> *)elem;
         int ptr_idx = input->input;
@@ -738,7 +732,7 @@ static void dump_result(const char *func_name, char remove_dup) {
         VAR<char *> *input = (VAR<char *> *)elem;
         ss << "func" << ' ' << input->input;
       } else if (elem->type == INPUT_TYPE::UNKNOWN_PTR) {
-        ss << "?:" << elem->name;
+        ss << elem->name << ' ' << "?";
       } else if (elem->type == INPUT_TYPE::PTR_IDX) {
         VAR<int> *input = (VAR<int> *)elem;
 
