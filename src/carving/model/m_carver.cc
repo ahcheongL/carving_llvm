@@ -643,9 +643,9 @@ static void dump_result(const char *func_name, char remove_dup) {
   snprintf(outfile_name, 256, "%s/%s_%d_%d", outdir_name, func_name,
            cur_func_call_idx, cur_carving_index);
 
-  FILE *outfile = fopen(outfile_name, "w");
+  std::ofstream outfile(outfile_name);
 
-  if (outfile == NULL) {
+  if (!outfile.is_open()) {
     UNLOCK_SHM_MAP();
     return;
   }
@@ -672,31 +672,32 @@ static void dump_result(const char *func_name, char remove_dup) {
 
   bool print_obj = true;
   int depth = 0;
-  auto format_with_indent = [&depth](std::string str, bool reached) {
+  auto format_with_indent = [&depth, &outfile](std::string str, bool reached) {
     std::string indent(2 * depth, ' ');
-    std::stringstream ss;
-    ss << (reached ? '%' : '-') << ' ' << indent << str << '\n';
-    return ss.str();
+    outfile << (reached ? '%' : '-') << ' ' << indent << str << '\n';
   };
 
   for (int idx = 0; idx < num_objs; ++idx) {
     IVAR *elem = *(carved_objs->get(idx));
-    std::stringstream ss;
-    std::string str;
 
     if (elem->type == INPUT_TYPE::PTR_BEGIN) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
-      ss << "PTR_BEGIN" << ' ' << ptr_idx;
-      str = format_with_indent(ss.str(), false);
+      format_with_indent("PTR_BEGIN " + std::to_string(ptr_idx), false);
       depth++;
     } else if (elem->type == INPUT_TYPE::PTR_END) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
-      ss << "PTR_END" << ' ' << ptr_idx;
       depth--;
-      str = format_with_indent(ss.str(), false);
+      format_with_indent("PTR_END " + std::to_string(ptr_idx), false);
+    } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
+      format_with_indent("STRUCT_BEGIN", print_obj);
+      depth++;
+    } else if (elem->type == INPUT_TYPE::STRUCT_END) {
+      depth--;
+      format_with_indent("STRUCT_END", print_obj);
     } else {
+      std::stringstream ss;
       if (elem->type == INPUT_TYPE::CHAR) {
         ss << "i8" << ' ' << (int)(((VAR<char> *)elem)->input);
       } else if (elem->type == INPUT_TYPE::SHORT) {
@@ -756,17 +757,15 @@ static void dump_result(const char *func_name, char remove_dup) {
         if (visit_ptr_stack.size() == 0) {
           print_obj = true;
         }
-      } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
-        ss << "STRUCT_BEGIN";
-      } else if (elem->type == INPUT_TYPE::STRUCT_END) {
-        ss << "STRUCT_END";
       } else {
         continue;
       }
-      str = format_with_indent(ss.str(), print_obj);
+      format_with_indent(ss.str(), print_obj);
+      ss.clear();
     }
-    fprintf(outfile, "%s", str.c_str());
   }
+
+  outfile.close();
 
   // // raw end
   /*
@@ -935,8 +934,6 @@ static void dump_result(const char *func_name, char remove_dup) {
     idx++;
   }
   */
-
-  fclose(outfile);
 
   // compute hash
   if (remove_dup) {
