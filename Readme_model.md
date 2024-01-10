@@ -35,6 +35,9 @@ Now it tries to print only data it reads during the execution.
 
 1. `opt -enable-new-pm=0 -load {$CARVING_PATH}/lib/carve_model_pass.so --carve < <target.bc> -o <out.bc>`
 
+    (Optional) You can use `--target=<target file path>` to specify functions to carve.
+    Make a file that contains a list of functions separted by line breaks.
+
 2. `clang++ <out.bc> <compile flags> -o <target.carv> -L {$CARVING_PATH}/lib -l:m_carver.a`
     * `<compile flags>` are usually shared libraries that are linked to the original target executable.
     * You can get list of shared linked shared libraries by running `ldd <target executable>`, if libpthread.so is linked, you need to put `-lpthread` as compile flags
