@@ -54,7 +54,7 @@ class CarverMPass : public llvm::ModulePass {
   bool instrument_module();
 
   // Target function including main
-  std::set<std::string> instrument_func_set;
+  set<string> instrument_func_set;
   void get_instrument_func_set();
 
   void instrument_main(llvm::Function *F);
@@ -83,6 +83,7 @@ class CarverMPass : public llvm::ModulePass {
   int func_id;
 
   std::set<std::string> struct_carvers_;
+  std::set<std::string> target_funcs_;
 
   llvm::FunctionCallee carv_file;
   llvm::FunctionCallee carv_open;

@@ -204,7 +204,7 @@ elem_type *vector<elem_type>::get(int idx) {
 }
 
 template <class elem_type>
-int vector<elem_type>::size() {
+unsigned int vector<elem_type>::size() {
   return num_elem;
 }
 

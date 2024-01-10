@@ -7,6 +7,9 @@ static cl::opt<bool> crash_cl("crash",
                               cl::desc("save result at each load instrunction"),
                               cl::init(false));
 
+static cl::opt<string> target_cl("target",
+                                 cl::desc("target function list file path"));
+
 char CarverMPass::ID = 0;
 
 CarverMPass::CarverMPass() : llvm::ModulePass(ID), func_id(0) {}
@@ -144,9 +147,25 @@ bool CarverMPass::instrument_module() {
   return true;
 }
 
-// Analyze existing llvm::Functions and write on func_types.txt and
-// target_funcs.txt.
 void CarverMPass::get_instrument_func_set() {
+  set<string> target_func_strs;
+
+  if (target_cl.getNumOccurrences() > 0) {
+    std::ifstream infile(target_cl.getValue());
+
+    if (!infile.is_open()) {
+      llvm::errs() << "Failed to open target function list file : "
+                   << target_cl.getValue() << "\n";
+      exit(1);
+    }
+
+    std::string line;
+    while (std::getline(infile, line)) {
+      target_func_strs.insert(line);
+    }
+    infile.close();
+  }
+
   for (auto &F : Mod->functions()) {
     if (F.isIntrinsic() || !F.size()) {
       continue;
@@ -188,25 +207,45 @@ void CarverMPass::get_instrument_func_set() {
       continue;
     }
 
+    if (target_func_strs.size() != 0) {
+      bool found = false;
+      for (const auto &iter : target_func_strs) {
+        if (demangled_name.find(iter) != std::string::npos) {
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        continue;
+      }
+    }
+
     // DEBUG0("Target llvm::Function : " << F.getName().str() << '\n');
     // if (func_name.find("DefaultChannelTest") == std::string::npos) {
     // continue; } if (func_name.find("TestBody") == std::string::npos) {
     // continue; }
 
-    instrument_func_set.insert(func_name);
+    instrument_func_set.insert(demangled_name);
   }
 
   DEBUG0("# of instrument llvm::Functions : " << instrument_func_set.size()
                                               << "\n");
 
+  llvm::errs() << "Found " << instrument_func_set.size()
+               << " functions to carv\n";
+  for (auto iter : instrument_func_set) {
+    llvm::errs() << "Carving target function : " << iter << "\n";
+  }
+
   instrument_func_set.insert("main");
 
-  // outfile.close();
-  // outfile2.close();
+  return;
 }
 
 void CarverMPass::instrument_func(llvm::Function *func) {
-  std::string func_name = func->getName().str();
+  const std::string func_name = func->getName().str();
+  const std::string demangled_func_name = llvm::demangle(func_name);
 
   std::vector<llvm::Instruction *> cast_instrs;
   std::vector<llvm::LoadInst *> load_instrs;
@@ -251,7 +290,7 @@ void CarverMPass::instrument_func(llvm::Function *func) {
       insert_dealloc_probes();
 
       // Insert fini
-      if (func_name == "main") {
+      if (demangled_func_name == "main") {
         IRB->CreateCall(__carv_fini, {});
       }
       continue;
@@ -261,13 +300,12 @@ void CarverMPass::instrument_func(llvm::Function *func) {
       continue;
     }
 
-    llvm::errs() << "Inserting for " << callee_name << "\n";
-
     IRB->SetInsertPoint(call_instr->getNextNonDebugInstruction());
     IRB->CreateCall(fetch_mem_alloc, {});
   }
 
-  if (instrument_func_set.find(func_name) == instrument_func_set.end()) {
+  if (instrument_func_set.find(demangled_func_name) ==
+      instrument_func_set.end()) {
     for (auto ret_instr : ret_instrs) {
       IRB->SetInsertPoint(ret_instr);
       insert_dealloc_probes();
@@ -275,8 +313,6 @@ void CarverMPass::instrument_func(llvm::Function *func) {
     tracking_allocas.clear();
     return;
   }
-
-  std::string demangled_func_name = llvm::demangle(func_name);
 
   DEBUG0("Inserting probe in " << demangled_func_name << '\n');
 
@@ -339,9 +375,6 @@ void CarverMPass::instrument_func(llvm::Function *func) {
   }
 
   tracking_allocas.clear();
-
-  DEBUG0("done in " << demangled_func_name << "\n");
-
   return;
 }
 
@@ -530,6 +563,8 @@ void CarverMPass::insert_carve_probe_m(llvm::Value *val) {
 }
 
 void CarverMPass::instrument_main(llvm::Function *main_func) {
+  llvm::errs() << "Instrumenting main\n";
+
   llvm::BasicBlock &entry_block = main_func->getEntryBlock();
   IRB->SetInsertPoint(entry_block.getFirstNonPHIOrDbgOrLifetime());
 

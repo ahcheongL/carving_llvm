@@ -102,7 +102,7 @@ class vector {
 
   elem_type *get(int idx);
 
-  int size();
+  unsigned int size();
 
   void remove(int idx);
 
@@ -113,8 +113,8 @@ class vector {
   ~vector();
 
   elem_type *data;
-  int capacity;
-  int num_elem;
+  unsigned int capacity;
+  unsigned int num_elem;
 };
 
 template <class Key, class Elem>
@@ -197,10 +197,10 @@ class FUNC_CONTEXT {
   vector<void *> loaded_ptrs;
 
   const char *func_name = nullptr;
-  int carved_ptr_begin_idx = 0;
-  int carving_index = 0;
-  int func_call_idx = 0;
-  int func_id = 0;
+  unsigned int carved_ptr_begin_idx = 0;
+  unsigned int carving_index = 0;
+  unsigned int func_call_idx = 0;
+  unsigned int func_id = 0;
   bool is_carved = false;
 };
 

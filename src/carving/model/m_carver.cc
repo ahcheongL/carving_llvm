@@ -588,8 +588,8 @@ void __carv_close(const char *func_name) {
   }
 
   if (carved_objs != NULL) {
-    int idx = 0;
-    const int num_objs = carved_objs->size();
+    unsigned int idx = 0;
+    const unsigned int num_objs = carved_objs->size();
     while (idx < num_objs) {
       delete *(carved_objs->get(idx));
       idx++;
@@ -617,8 +617,8 @@ static void dump_result(const char *func_name, char remove_dup) {
   LOCK_SHM_MAP();
 
   class FUNC_CONTEXT *cur_context = inputs.back();
-  const int cur_carving_index = cur_context->carving_index;
-  const int cur_func_call_idx = cur_context->func_call_idx;
+  const unsigned int cur_carving_index = cur_context->carving_index;
+  const unsigned int cur_func_call_idx = cur_context->func_call_idx;
 
   if (func_name != cur_context->func_name) {
     std::cerr << "Error: Returning func_name != cur_context->func_name\n";
@@ -628,8 +628,8 @@ static void dump_result(const char *func_name, char remove_dup) {
     return;
   }
 
-  const int num_objs = carved_objs->size();
-  const int num_carved_ptrs = carved_ptrs->size();
+  const unsigned num_objs = carved_objs->size();
+  const unsigned int num_carved_ptrs = carved_ptrs->size();
 
   int **hash_ptr = func_result_hash.find(func_name);
 
@@ -640,7 +640,7 @@ static void dump_result(const char *func_name, char remove_dup) {
   }
 
   char outfile_name[256];
-  snprintf(outfile_name, 256, "%s/%s_%d_%d", outdir_name, func_name,
+  snprintf(outfile_name, 256, "%s/%s_%u_%u", outdir_name, func_name,
            cur_func_call_idx, cur_carving_index);
 
   std::ofstream outfile(outfile_name);
@@ -677,7 +677,7 @@ static void dump_result(const char *func_name, char remove_dup) {
     outfile << (reached ? '%' : '-') << ' ' << indent << str << '\n';
   };
 
-  for (int idx = 0; idx < num_objs; ++idx) {
+  for (unsigned int idx = 0; idx < num_objs; ++idx) {
     IVAR *elem = *(carved_objs->get(idx));
 
     if (elem->type == INPUT_TYPE::PTR_BEGIN) {
@@ -935,7 +935,7 @@ static void dump_result(const char *func_name, char remove_dup) {
   }
   */
 
-  // compute hash
+  // compute hash and remove duplicates
   if (remove_dup) {
     int *res_hash = *(func_result_hash.find(func_name));
     int hash_val = 0;
