@@ -670,7 +670,7 @@ static void dump_result(const char *func_name, char remove_dup) {
   vector<void *> visit_ptr_stack;
   vector<int> visit_elem_size_stack;
 
-  bool print_obj = true;
+  bool print_obj = false;
   int depth = 0;
   auto format_with_indent = [&depth, &outfile](std::string str, bool reached) {
     std::string indent(2 * depth, ' ');
@@ -683,13 +683,17 @@ static void dump_result(const char *func_name, char remove_dup) {
     if (elem->type == INPUT_TYPE::PTR_BEGIN) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
-      format_with_indent("PTR_BEGIN " + std::to_string(ptr_idx), false);    // Postprocessing will handle reached info
+      // Postprocessing will handle reached info
+      format_with_indent("PTR_BEGIN " + std::to_string(ptr_idx), false);
       depth++;
     } else if (elem->type == INPUT_TYPE::PTR_END) {
+      visit_ptr_stack.pop_back();
+      visit_elem_size_stack.pop_back();
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
       depth--;
-      format_with_indent("PTR_END " + std::to_string(ptr_idx), false);      // Postprocessing will handle reached info
+      // Postprocessing will handle reached info
+      format_with_indent("PTR_END " + std::to_string(ptr_idx), false);
     } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
       format_with_indent("STRUCT_BEGIN", print_obj);
       depth++;
@@ -750,13 +754,6 @@ static void dump_result(const char *func_name, char remove_dup) {
         }
 
         ss << "PTR_IDX" << ' ' << input->input;
-      } else if (elem->type == INPUT_TYPE::PTR_END) {
-        ss << "PTR_END" << ' ' << ((VAR<int> *)elem)->input;
-        visit_ptr_stack.pop_back();
-        visit_elem_size_stack.pop_back();
-        if (visit_ptr_stack.size() == 0) {
-          print_obj = true;
-        }
       } else {
         continue;
       }
