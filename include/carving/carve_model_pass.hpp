@@ -82,6 +82,8 @@ class CarverMPass : public llvm::ModulePass {
 
   int func_id;
 
+  bool main_instrumented_ = false;
+
   std::set<std::string> struct_carvers_;
   std::set<std::string> target_funcs_;
 
@@ -119,7 +121,7 @@ class CarverMPass : public llvm::ModulePass {
   llvm::FunctionCallee insert_struct_begin;
   llvm::FunctionCallee insert_struct_end;
 
-  llvm::FunctionCallee load_addr_probe;
+  llvm::FunctionCallee mark_addr_probe;
 
   llvm::Constant *global_carve_ready;
   llvm::Constant *global_cur_class_idx;

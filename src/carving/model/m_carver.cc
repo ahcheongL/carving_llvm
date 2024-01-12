@@ -540,7 +540,7 @@ void __carv_open(const char *func_name) {
   return;
 }
 
-void __carv_mark_load_address(const char *ptr, const char is_crash) {
+void __carv_mark_address(const char *ptr, const char is_crash) {
   if (carved_ptrs == nullptr) {
     return;
   }
@@ -549,20 +549,24 @@ void __carv_mark_load_address(const char *ptr, const char is_crash) {
     return;
   }
 
+  if (ptr == nullptr) {
+    return;
+  }
+
   LOCK_SHM_MAP();
 
   int idx = 0;
-  vector<void *> *loaded_ptrs = &(inputs.back()->loaded_ptrs);
-  const int size = loaded_ptrs->size();
+  vector<void *> *used_ptrs = &(inputs.back()->used_ptrs);
+  const int size = used_ptrs->size();
 
   for (idx = 0; idx < size; idx++) {
-    if (loaded_ptrs->data[idx] == ptr) {
+    if (used_ptrs->data[idx] == ptr) {
       UNLOCK_SHM_MAP();
       return;
     }
   }
 
-  loaded_ptrs->push_back((void *)ptr);
+  used_ptrs->push_back((void *)ptr);
 
   UNLOCK_SHM_MAP();
 
@@ -652,20 +656,16 @@ static void dump_result(const char *func_name, char remove_dup) {
 
   // raw
 
-  vector<void *> *loaded_ptrs = &(cur_context->loaded_ptrs);
-  const int num_loaded_ptrs = loaded_ptrs->size();
+  vector<void *> *used_ptrs = &(cur_context->used_ptrs);
+  const unsigned int num_used_ptrs = used_ptrs->size();
 
-  /*
-  fprintf(outfile, "loaded pointers : %d\n", num_loaded_ptrs);
-
-  idx = 0;
-  while (idx < num_loaded_ptrs) {
-    fprintf(outfile, "  [%d] : %p\n", idx, loaded_ptrs->data[idx]);
-    idx++;
-  }
-
-  fprintf(outfile, "###############\n");
-  */
+  // outfile << "read pointers : " << num_used_ptrs << "\n";
+  // unsigned int idx = 0;
+  // while (idx < num_used_ptrs) {
+  //   outfile << "  [" << idx << "] : " << used_ptrs->data[idx] << "\n";
+  //   idx++;
+  // }
+  // outfile << "###############\n";
 
   vector<void *> visit_ptr_stack;
   vector<int> visit_elem_size_stack;
@@ -742,8 +742,8 @@ static void dump_result(const char *func_name, char remove_dup) {
 
         void *cur_ptr_val = *cur_ptr;
         print_obj = false;
-        for (int idx2 = 0; idx2 < num_loaded_ptrs; idx2++) {
-          if (loaded_ptrs->data[idx2] == cur_ptr_val) {
+        for (unsigned int idx2 = 0; idx2 < num_used_ptrs; idx2++) {
+          if (used_ptrs->data[idx2] == cur_ptr_val) {
             print_obj = true;
             break;
           }

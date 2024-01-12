@@ -90,10 +90,15 @@ bool CarverMPass::runOnModule(llvm::Module &M) {
 
   insert_struct_end = Mod->getOrInsertFunction("__insert_struct_end", VoidTy);
 
-  load_addr_probe = Mod->getOrInsertFunction("__carv_mark_load_address", VoidTy,
+  mark_addr_probe = Mod->getOrInsertFunction("__carv_mark_address", VoidTy,
                                              Int8PtrTy, Int8Ty);
 
   instrument_module();
+
+  if (!main_instrumented_) {
+    llvm::errs() << "Failed to instrument main\n";
+    abort();
+  }
 
   llvm::outs() << "Verifying module...\n";
   std::string out;
@@ -252,6 +257,8 @@ void CarverMPass::instrument_func(llvm::Function *func) {
   std::vector<llvm::CallInst *> call_instrs;
   std::vector<llvm::Instruction *> ret_instrs;
   std::vector<llvm::InvokeInst *> invoke_instrs;
+  std::vector<llvm::ICmpInst *> icmp_instrs;
+  std::vector<llvm::GetElementPtrInst *> gep_instrs;
 
   for (llvm::BasicBlock &BB : func->getBasicBlockList()) {
     for (llvm::Instruction &IN : BB) {
@@ -265,6 +272,10 @@ void CarverMPass::instrument_func(llvm::Function *func) {
         invoke_instrs.push_back(llvm::dyn_cast<llvm::InvokeInst>(&IN));
       } else if (llvm::isa<llvm::LoadInst>(&IN)) {
         load_instrs.push_back(llvm::dyn_cast<llvm::LoadInst>(&IN));
+      } else if (llvm::isa<llvm::ICmpInst>(&IN)) {
+        icmp_instrs.push_back(llvm::dyn_cast<llvm::ICmpInst>(&IN));
+      } else if (llvm::isa<llvm::GetElementPtrInst>(&IN)) {
+        gep_instrs.push_back(llvm::dyn_cast<llvm::GetElementPtrInst>(&IN));
       }
     }
   }
@@ -325,6 +336,7 @@ void CarverMPass::instrument_func(llvm::Function *func) {
   // Main argc argv handling
   if (demangled_func_name == "main") {
     instrument_main(func);
+    main_instrumented_ = true;
     tracking_allocas.clear();
     return;
   } else if (func->isVarArg()) {
@@ -354,17 +366,52 @@ void CarverMPass::instrument_func(llvm::Function *func) {
     insert_global_carve_probe(func);
   }
 
-  // Gather addresses the is loaded
-  for (auto load_instr : load_instrs) {
-    IRB->SetInsertPoint(load_instr);
-    llvm::Value *casted_ptr =
-        IRB->CreateCast(llvm::Instruction::CastOps::BitCast,
-                        load_instr->getPointerOperand(), Int8PtrTy);
+  // Gather addresses that are used
+  {
+    for (auto load_instr : load_instrs) {
+      IRB->SetInsertPoint(load_instr);
+      llvm::Value *casted_ptr =
+          IRB->CreateCast(llvm::Instruction::CastOps::BitCast,
+                          load_instr->getPointerOperand(), Int8PtrTy);
 
-    bool is_crash = crash_cl.getValue();
+      bool is_crash = crash_cl.getValue();
 
-    llvm::Value *bool_val = llvm::ConstantInt::get(Int8Ty, is_crash);
-    IRB->CreateCall(load_addr_probe, {casted_ptr, bool_val});
+      llvm::Value *bool_val = llvm::ConstantInt::get(Int8Ty, is_crash);
+      IRB->CreateCall(mark_addr_probe, {casted_ptr, bool_val});
+    }
+
+    for (auto icmp_instr : icmp_instrs) {
+      Value *first_operand = icmp_instr->getOperand(0);
+      Type *first_operand_type = first_operand->getType();
+      if (!first_operand_type->isPointerTy()) {
+        continue;
+      }
+
+      IRB->SetInsertPoint(icmp_instr);
+      llvm::Value *casted_ptr = IRB->CreateCast(
+          llvm::Instruction::CastOps::BitCast, first_operand, Int8PtrTy);
+
+      bool is_crash = crash_cl.getValue();
+
+      llvm::Value *bool_val = llvm::ConstantInt::get(Int8Ty, is_crash);
+      IRB->CreateCall(mark_addr_probe, {casted_ptr, bool_val});
+      llvm::Value *casted_ptr2 =
+          IRB->CreateCast(llvm::Instruction::CastOps::BitCast,
+                          icmp_instr->getOperand(1), Int8PtrTy);
+      IRB->CreateCall(mark_addr_probe, {casted_ptr2, bool_val});
+    }
+
+    for (auto gep_instr : gep_instrs) {
+      IRB->SetInsertPoint(gep_instr);
+      llvm::Value *casted_ptr =
+          IRB->CreateCast(llvm::Instruction::CastOps::BitCast,
+                          gep_instr->getPointerOperand(), Int8PtrTy);
+
+      bool is_crash = crash_cl.getValue();
+
+      llvm::Value *bool_val = llvm::ConstantInt::get(Int8Ty, is_crash);
+      IRB->CreateCall(mark_addr_probe, {casted_ptr, bool_val});
+    }
   }
 
   // Probing at return

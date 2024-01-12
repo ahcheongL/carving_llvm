@@ -194,7 +194,7 @@ class FUNC_CONTEXT {
 
   vector<IVAR *> inputs;
   vector<POINTER> carved_ptrs;
-  vector<void *> loaded_ptrs;
+  vector<void *> used_ptrs;
 
   const char *func_name = nullptr;
   unsigned int carved_ptr_begin_idx = 0;
