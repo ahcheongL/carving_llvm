@@ -633,7 +633,7 @@ FUNC_CONTEXT::FUNC_CONTEXT(int _carved_idx, int _func_call_idx,
       carved_ptr_begin_idx(0),
       inputs(),
       carved_ptrs(),
-      loaded_ptrs(),
+      used_ptrs(),
       func_name(func_name_),
       is_carved(true) {}
 
@@ -654,7 +654,7 @@ FUNC_CONTEXT::FUNC_CONTEXT(const FUNC_CONTEXT &other)
       carved_ptrs(other.carved_ptrs),
       func_id(other.func_id),
       is_carved(other.is_carved),
-      loaded_ptrs(other.loaded_ptrs),
+      used_ptrs(other.used_ptrs),
       func_name(other.func_name) {}
 
 FUNC_CONTEXT::FUNC_CONTEXT(FUNC_CONTEXT &&other)
@@ -665,7 +665,7 @@ FUNC_CONTEXT::FUNC_CONTEXT(FUNC_CONTEXT &&other)
       carved_ptrs(other.carved_ptrs),
       func_id(other.func_id),
       is_carved(other.is_carved),
-      loaded_ptrs(other.loaded_ptrs),
+      used_ptrs(other.used_ptrs),
       func_name(other.func_name) {}
 
 FUNC_CONTEXT &FUNC_CONTEXT::operator=(const FUNC_CONTEXT &other) {
@@ -677,7 +677,7 @@ FUNC_CONTEXT &FUNC_CONTEXT::operator=(const FUNC_CONTEXT &other) {
   func_id = other.func_id;
   is_carved = other.is_carved;
   func_name = other.func_name;
-  loaded_ptrs = other.loaded_ptrs;
+  used_ptrs = other.used_ptrs;
   return *this;
 }
 
@@ -690,7 +690,7 @@ FUNC_CONTEXT &FUNC_CONTEXT::operator=(FUNC_CONTEXT &&other) {
   func_id = other.func_id;
   is_carved = other.is_carved;
   func_name = other.func_name;
-  loaded_ptrs = other.loaded_ptrs;
+  used_ptrs = other.used_ptrs;
   return *this;
 }
 
