@@ -683,13 +683,13 @@ static void dump_result(const char *func_name, char remove_dup) {
     if (elem->type == INPUT_TYPE::PTR_BEGIN) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
-      format_with_indent("PTR_BEGIN " + std::to_string(ptr_idx), false);
+      format_with_indent("PTR_BEGIN " + std::to_string(ptr_idx), false);    // Postprocessing will handle reached info
       depth++;
     } else if (elem->type == INPUT_TYPE::PTR_END) {
       VAR<int> *input = (VAR<int> *)elem;
       int ptr_idx = input->input;
       depth--;
-      format_with_indent("PTR_END " + std::to_string(ptr_idx), false);
+      format_with_indent("PTR_END " + std::to_string(ptr_idx), false);      // Postprocessing will handle reached info
     } else if (elem->type == INPUT_TYPE::STRUCT_BEGIN) {
       format_with_indent("STRUCT_BEGIN", print_obj);
       depth++;
@@ -763,6 +763,7 @@ static void dump_result(const char *func_name, char remove_dup) {
       format_with_indent(ss.str(), print_obj);
       ss.clear();
     }
+    outfile.flush();
   }
 
   outfile.close();
