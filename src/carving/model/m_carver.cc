@@ -276,7 +276,17 @@ int Carv_pointer(void *ptr, char *type_name, int default_idx,
     }
   }
 
-  carved_ptrs->push_back(POINTER(ptr, type_name, ptr_alloc_size, default_size));
+  // TODO : The allocated size is smaller than the class size, why?
+  if (__carv_cur_class_size > ptr_alloc_size) {
+    VAR<void *> *inputv =
+        new VAR<void *>(ptr, type_name, INPUT_TYPE::UNKNOWN_PTR);
+    carved_objs->push_back((IVAR *)inputv);
+    UNLOCK_SHM_MAP();
+    return 0;
+  }
+
+  carved_ptrs->push_back(
+      POINTER(ptr, type_name, ptr_alloc_size, __carv_cur_class_size));
 
   VAR<int> *inputv = new VAR<int>(new_carved_ptr_index, 0, 0, INPUT_TYPE::PTR);
   carved_objs->push_back((IVAR *)inputv);
@@ -654,8 +664,6 @@ static void dump_result(const char *func_name, char remove_dup) {
     return;
   }
 
-  // raw
-
   vector<void *> *used_ptrs = &(cur_context->used_ptrs);
   const unsigned int num_used_ptrs = used_ptrs->size();
 
@@ -767,7 +775,6 @@ static void dump_result(const char *func_name, char remove_dup) {
 
   outfile.close();
 
-  // // raw end
   /*
   fprintf(outfile, "####################\n");
 
